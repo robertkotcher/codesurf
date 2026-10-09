@@ -1,6 +1,6 @@
 # CodeSurf.io
 
-A read-only GitHub pull request browser with contextual, streamed OpenAI answers.
+A GitHub pull request browser with contextual, streamed OpenAI answers.
 
 ## Run locally
 
@@ -17,7 +17,7 @@ The local-only `/?demo=1` route previews the editor with sample files and explic
 
 Public GitHub App: https://github.com/apps/codesurf-io
 
-Each user signs in with GitHub and installs the app on repositories they choose. These are distinct GitHub consent steps; installation is not restricted to the app owner's account. Organization owners may need to approve access. Permissions are read-only Contents, Pull requests, and mandatory Metadata. Callback URLs are exact matches for `https://codesurf.io/auth/github/callback` and `http://localhost:5179/auth/github/callback`. Webhooks are disabled.
+Each user signs in with GitHub and installs the app on repositories they choose. These are distinct GitHub consent steps; installation is not restricted to the app owner's account. Organization owners may need to approve access. Repository Contents and mandatory Metadata stay read-only. Publishing reviews requires Pull requests: read and write (pending owner approval of the GitHub App permission update). Existing installations must accept the update and users may need to sign in again. Callback URLs are exact matches for `https://codesurf.io/auth/github/callback` and `http://localhost:5179/auth/github/callback`. Webhooks are disabled.
 
 Tokens stay in encrypted, authenticated HTTP-only cookies. OAuth uses state and PKCE. GitHub user tokens are used for repository reads so both the app's and user's permissions apply. API endpoints never accept a caller-provided GitHub token. The server refreshes expired user tokens where possible.
 
@@ -25,7 +25,11 @@ Tokens stay in encrypted, authenticated HTTP-only cookies. OAuth uses state and 
 
 Paste a PR URL or choose an assigned/review-requested PR. Select one or more current-code lines to ask a question. Answers stream into the right panel. Citations and labeled fenced snippets open related files beside the current editor. Unrelated lines become muted. Up to three columns can be open, each with file tabs.
 
-Source requests use the PR head commit, including fork repositories. When new commits arrive, reopen the PR; stale head references are refused. PR imports currently include up to 300 changed files. AI context is bounded: changed patches, up to seven ranked changed files plus the selected file, and directly imported relative modules within retrieval limits. It does not claim exhaustive whole-repository analysis. Binary and >500 KB files are not rendered.
+Source requests use the PR head commit, including fork repositories. When new commits arrive, reopen the PR; stale head references are refused. PR imports currently include up to 300 changed files. Repository-wide search includes unchanged source at the immutable PR head. The server streams a GitHub archive into an in-memory text index, never extracts or executes source, and partitions its short-lived cache by credential and commit. Each request rechecks repository access. OpenAI can search, read numbered code blocks, and follow calls/imports over up to six model rounds and 16 tool calls. Citations open related files in columns, with multiple relevant ranges highlighted in the same file.
+
+Search safety limits: 60 MB compressed archive, 300 MB expanded archive, 80 MB indexed text, 150,000 archive entries, and 200 KB per indexed file. Binary files, dependency/build directories, lockfiles, environment files, private-key files and source maps are excluded. Exclusion counts are visible; exceeding archive limits returns an error rather than claiming a complete search. Indexes expire after five minutes and may rebuild on Vercel cold starts. Search is lexical, guided by model tool calls, and is not an exhaustive semantic index. No code is persisted to a database.
+
+Binary and >500 KB files are not rendered.
 
 ## OpenAI
 
@@ -54,3 +58,7 @@ Conversation state is held in the browser until reset or reload. Citations are g
 Private source repository: https://github.com/robertkotcher/codesurf. The repository is connected to the Vercel `codesurf` project. Push to `main` for a production deployment. Other branches and pull requests receive Vercel preview deployments. GitHub Actions runs the test suite on pushes and pull requests. Production secrets are configured in Vercel, never committed.
 
 No database is required for this version. Repository data comes from GitHub, sessions use encrypted cookies, and conversations live in browser memory.
+
+## Reviews
+
+Use the + on a diff line, or select a range and choose Comment on these lines. Draft comments and a general summary are editable in Review. Submit as Comment, Approve, or Request changes. Asking the assistant to leave a comment produces an editable draft; Publish review sends it to GitHub as the signed-in user. AI tools cannot directly publish. The server validates diff coordinates, checks the head has not moved, and posts a commit-pinned review through the user's GitHub token. Unchanged code can be discussed in a general PR review, since GitHub inline reviews require diff lines. Drafts live in browser memory and are cleared when switching PRs or reloading.

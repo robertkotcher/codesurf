@@ -15,7 +15,7 @@ const session=seal({token:'test-user-token',tokenExp:Date.now()+3600000,exp:Date
 const auth={Cookie:'codesurf_session='+session};
 test.after(()=>server.close());
 test('repository and question routes reject unauthenticated requests',async()=>{
-  for(const p of ['/api/pr?url=https://github.com/a/b/pull/1','/api/file?url=x&path=a','/api/prs'])assert.equal((await request(origin+p)).status,401);
+  for(const p of ['/api/pr?url=https://github.com/a/b/pull/1','/api/file?url=x&path=a','/api/prs','/api/search?q=retry&url=https://github.com/a/b/pull/1'])assert.equal((await request(origin+p)).status,401);
   assert.equal((await request(origin+'/api/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).status,401);
 });
 test('OAuth callback rejects missing or forged state',async()=>{
@@ -65,4 +65,13 @@ test('OAuth uses only configured origins and binds callback to its original host
     const fallback=await request(origin+'/auth/github',{redirect:'manual'});
     assert.equal(new URL(fallback.headers.get('location')).searchParams.get('redirect_uri'),process.env.APP_URL+'/auth/github/callback');
   }finally{delete process.env.APP_ALTERNATE_URLS;}
+});
+test('posting reviews pins the commit and sends only validated diff comments',async()=>{
+ const calls=[];global.fetch=async(url,options)=>{calls.push({url,options});if(options.method==='POST')return Response.json({id:42,html_url:'https://github.com/acme/project/pull/4#review-42'});if(url.includes('/files'))return Response.json([{filename:'src/a.ts',patch:'@@ -1 +1 @@\n-old\n+new'}]);return Response.json({head:{sha:'head'}})};
+ try{
+  const body={url:'https://github.com/acme/project/pull/4',head:'head',body:'Looks good',event:'COMMENT',comments:[{path:'src/a.ts',line:1,body:'Check retries',side:'RIGHT'}]};
+  const r=await request(origin+'/api/review',{method:'POST',headers:{...auth,Origin:process.env.APP_URL,'Content-Type':'application/json'},body:JSON.stringify(body)});assert.equal(r.status,200);assert.equal((await r.json()).id,42);
+  const post=calls.find(c=>c.options.method==='POST');assert.equal(JSON.parse(post.options.body).commit_id,'head');assert.equal(post.options.headers.Authorization,'Bearer test-user-token');
+  calls.length=0;body.head='old';assert.equal((await request(origin+'/api/review',{method:'POST',headers:{...auth,Origin:process.env.APP_URL,'Content-Type':'application/json'},body:JSON.stringify(body)})).status,409);assert(!calls.some(c=>c.options.method==='POST'));
+ }finally{global.fetch=request}
 });
