@@ -51,6 +51,6 @@ Conversation state is held in the browser until reset or reload. Citations are g
 
 ## Git deployment
 
-Private source repository: https://github.com/robertkotcher/codesurf. Push to `main` for a production deployment. Other branches and pull requests receive Vercel preview deployments. GitHub Actions runs the test suite on pushes and pull requests. Production secrets are configured in Vercel, never committed.
+Private source repository: https://github.com/robertkotcher/codesurf. The repository is connected to the Vercel `codesurf` project. Push to `main` for a production deployment. Other branches and pull requests receive Vercel preview deployments. GitHub Actions runs the test suite on pushes and pull requests. Production secrets are configured in Vercel, never committed.
 
 No database is required for this version. Repository data comes from GitHub, sessions use encrypted cookies, and conversations live in browser memory.
