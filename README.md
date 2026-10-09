@@ -33,7 +33,7 @@ OpenAI project: CodeSurf.io (`proj_8BfrbL1VzeoaPyX3oR10huII`). Model: `gpt-6.1-s
 
 ## Deployment
 
-Vercel team: Actually Useful Things (`actually-useful-things`). Project: `codesurf`. Framework preset: Express, with Vercel native automatic bundling (no separate frontend build required). Production URL: https://codesurf.io. Temporary deployment alias: https://codesurf-alpha.vercel.app. OAuth callbacks target the custom domain or localhost, not the temporary alias.
+Vercel team: Actually Useful Things (`actually-useful-things`). Project: `codesurf`. Framework preset: Express, with Vercel native automatic bundling (no separate frontend build required). Production URL: https://codesurf.io. Temporary deployment alias: https://codesurf-alpha.vercel.app. OAuth callbacks support the custom domain, localhost, and the temporary production alias; exact allowed origins are configured with APP_ALTERNATE_URLS.
 
 Domain bought at Namecheap for $34.98 on October 9, 2026. Registration ends October 9, 2027. Auto-renew disabled; free domain privacy enabled. Nameservers: `ns1.vercel-dns.com`, `ns2.vercel-dns.com`.
 

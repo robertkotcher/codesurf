@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {seal} from '../lib.js';
+import {seal,unseal} from '../lib.js';
 process.env.NODE_ENV='test';
 process.env.SESSION_SECRET='test-secret-'.repeat(6);
 process.env.APP_URL='http://localhost:5179';
@@ -49,4 +49,20 @@ test('source requests use immutable head commit and the user token',async()=>{
     assert(calls[1].url.endsWith('/repos/fork/project/contents/src/a.ts?ref=immutable-head'));
     assert(calls.every(c=>c.token==='Bearer test-user-token'));
   }finally{global.fetch=request;}
+});
+
+test('OAuth uses only configured origins and binds callback to its original host',async()=>{
+  process.env.APP_ALTERNATE_URLS=origin;
+  try{
+    const r=await request(origin+'/auth/github',{redirect:'manual'});
+    assert.equal(new URL(r.headers.get('location')).searchParams.get('redirect_uri'),origin+'/auth/github/callback');
+    const cookie=r.headers.get('set-cookie').split(';')[0];
+    const state=unseal(cookie.split('=')[1],process.env.SESSION_SECRET);
+    assert.equal(state.origin,origin);
+    process.env.APP_ALTERNATE_URLS='';
+    const rejected=await request(origin+'/auth/github/callback?code=fake&state='+state.state,{headers:{Cookie:cookie},redirect:'manual'});
+    assert.equal(rejected.status,400);
+    const fallback=await request(origin+'/auth/github',{redirect:'manual'});
+    assert.equal(new URL(fallback.headers.get('location')).searchParams.get('redirect_uri'),process.env.APP_URL+'/auth/github/callback');
+  }finally{delete process.env.APP_ALTERNATE_URLS;}
 });
