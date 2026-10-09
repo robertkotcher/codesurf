@@ -1,0 +1,5 @@
+.env*
+*.pem
+test/
+README.md
+node_modules/
