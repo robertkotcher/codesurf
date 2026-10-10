@@ -22,7 +22,13 @@ function renderEditors(){
     if(step&&file)rows=file.text.split('\n').slice(step.start-1,step.end).map((text,i)=>({text,line:step.start+i,kind:'context'}));
     else if(c.mode==='diff'&&changed?.patch)rows=patchRows(changed.patch);
     else if(file)rows=file.text.split('\n').map((text,i)=>({text,line:i+1,kind:'context'}));
-    const commentLines=new Set(patchRows(changed?.patch||'').map(r=>r.line));
+    const diffRows=patchRows(changed?.patch||'');
+    const addedLines=new Set(diffRows.filter(r=>r.kind==='add').map(r=>r.line));
+    const removedBefore=new Map();let removed=[];
+    for(const row of diffRows){if(row.kind==='del')removed.push(row.text);else if(row.line&&removed.length){removedBefore.set(row.line,removed);removed=[]}}
+    if(removed.length&&file)removedBefore.set(file.text.split('\n').length,removed);
+    if(step||c.mode!=='diff')rows=rows.map(r=>({...r,kind:addedLines.has(r.line)||changed?.status==='added'?'add':r.kind,removed:removedBefore.get(r.line)}));
+    const commentLines=new Set(diffRows.map(r=>r.line));
     const origin=turns.at(-1)?.origin;
     return `<section class="editor-col ${step?'flow-column':''}" data-column="${ci}">
       <div class="editor-tabs">${c.tabs.map(t=>`<button class="${t===path?'active':''}" data-tab="${esc(t)}" data-column="${ci}" title="${esc(t)}">${esc(t.split('/').pop())}</button>`).join('')}${ci>0&&!step?`<button class="close-col" data-close-column="${ci}" aria-label="Close editor column">×</button>`:''}</div>
@@ -33,7 +39,7 @@ function renderEditors(){
         const relevant=step||(focus&&(focus.ranges||[focus]).some(range=>r.line>=range.start&&r.line<=range.end));
         const next=activeFlow?.steps[ci+1],callSite=next?.relation==='call'&&r.line===next.callerLine;
         const pin=origin?.path===path&&r.line===origin.start;
-        return `<div class="editor-line ${r.kind} ${selected?'selected':''} ${relevant?'focused':''} ${callSite?'call-site':''} ${step&&r.line===(step.entryLine||step.start)?'callee-entry':''}" tabindex="0" role="button" aria-label="Select ${esc(path)} line ${r.line||'deleted '+r.old}" data-path="${esc(path)}" data-column="${ci}" data-line="${r.line||0}" data-old="${r.old||0}"><span class="line-number">${r.line||r.old}</span><span class="line-sign">${r.kind==='add'?'+':r.kind==='del'?'−':' '}</span><span class="code-text">${syntax(r.text)}</span>${pin?`<button class="thread-pin" data-thread title="${esc(turns.at(-1).q)}" aria-label="Open conversation at this line">✧</button>`:''}${changed&&(r.line?commentLines.has(r.line):r.kind==='del')?`<button class="line-comment" aria-label="Comment on ${r.line?'current':'deleted'} line ${r.line||r.old}" title="Add review comment" data-comment-path="${esc(path)}" data-comment-line="${r.line||r.old}" data-comment-side="${r.line?'RIGHT':'LEFT'}">＋</button>`:''}<button class="line-ask" aria-label="Ask AI about line ${r.line||r.old}" title="Ask AI">✧</button></div>`;
+        return `<div class="editor-line ${r.kind} ${r.removed?'deletion-boundary':''} ${selected?'selected':''} ${relevant?'focused':''} ${callSite?'call-site':''} ${step&&r.line===(step.entryLine||step.start)?'callee-entry':''}" tabindex="0" role="button" aria-label="Select ${esc(path)} line ${r.line||'deleted '+r.old}" data-path="${esc(path)}" data-column="${ci}" data-line="${r.line||0}" data-old="${r.old||0}"><span class="line-number">${r.line||r.old}</span><span class="line-sign" title="${r.removed?esc(r.removed.length+' line(s) removed here:\n'+r.removed.join('\n')):r.kind==='add'?'Added in this pull request':r.kind==='del'?'Deleted in this pull request':''}">${r.kind==='add'?'+':r.kind==='del'?'−':r.removed?'▾':' '}</span><span class="code-text">${syntax(r.text)}</span>${pin?`<button class="thread-pin" data-thread title="${esc(turns.at(-1).q)}" aria-label="Open conversation at this line">✧</button>`:''}${changed&&(r.line?commentLines.has(r.line):r.kind==='del')?`<button class="line-comment" aria-label="Comment on ${r.line?'current':'deleted'} line ${r.line||r.old}" title="Add review comment" data-comment-path="${esc(path)}" data-comment-line="${r.line||r.old}" data-comment-side="${r.line?'RIGHT':'LEFT'}">＋</button>`:''}<button class="line-ask" aria-label="Ask AI about line ${r.line||r.old}" title="Ask AI">✧</button></div>`;
       }).join('')}</div>
       <div class="editor-footer">${step?`${esc(path)}:${step.start}–${step.end}`:focus?`Relevant: ${(focus.ranges||[focus]).map(r=>r.start+'–'+r.end).join(', ')}`:c.mode==='diff'?'Changes against base':'Full source'} · ${pr.head.slice(0,7)}</div>
     </section>`;
