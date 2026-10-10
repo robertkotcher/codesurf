@@ -38,3 +38,5 @@ body:has(.flow-mode) .pr{height:76px;padding:10px 22px}body:has(.flow-mode) .pr 
 /* Soft diff blocks preserve source typography and relevance gutters. */
 .editor-line.add,.editor-line.add.focused,.editor-line.add.selected{background:#f1f8f3}
 .editor-line.del,.editor-line.del.focused,.editor-line.del.selected{background:#fcf2f1}
+#repoFolder{display:block;width:100%;text-align:left;border:0;border-radius:0;background:transparent;cursor:pointer}
+#filetree{flex:1;overflow:auto;min-height:0}.file-item{align-items:center;gap:5px;padding-top:5px;padding-bottom:5px;font:11px/18px system-ui}.file-item:hover,#repoFolder:hover{background:#eeecef}.tree-chevron{width:10px;flex-shrink:0;color:#89838e}.file-item .file-icon{width:12px;font-size:12px;flex-shrink:0}.folder-item .file-icon{color:#a9987e}.tree-note{font-size:10px;padding:8px;color:#99909f}

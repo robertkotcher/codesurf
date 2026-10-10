@@ -75,3 +75,14 @@ test('posting reviews pins the commit and sends only validated diff comments',as
   calls.length=0;body.head='old';assert.equal((await request(origin+'/api/review',{method:'POST',headers:{...auth,Origin:process.env.APP_URL,'Content-Type':'application/json'},body:JSON.stringify(body)})).status,409);assert(!calls.some(c=>c.options.method==='POST'));
  }finally{global.fetch=request}
 });
+
+test('repository folders load lazily at the pinned head using the user token',async()=>{
+  const head='a'.repeat(40),folder='b'.repeat(40),calls=[];
+  global.fetch=async(url,options)=>{calls.push({url,token:options.headers.Authorization});if(url.includes('/pulls/'))return Response.json({head:{sha:head,repo:{full_name:'fork/project'}}});return Response.json({tree:[{path:'src',type:'tree',sha:folder},{path:'readme.md',type:'blob',sha:head},{path:'submodule',type:'commit',sha:head}]})};
+  try{
+    const query=new URLSearchParams({url:'https://github.com/acme/project/pull/4',head,tree:folder});
+    const r=await request(origin+'/api/tree?'+query,{headers:auth});assert.equal(r.status,200);assert.equal((await r.json()).entries.length,2);
+    assert(calls[1].url.endsWith('/repos/fork/project/git/trees/'+folder));assert(calls.every(c=>c.token==='Bearer test-user-token'));
+    query.set('head','c'.repeat(40));assert.equal((await request(origin+'/api/tree?'+query,{headers:auth})).status,409);
+  }finally{global.fetch=request}
+});

@@ -29,6 +29,15 @@ async function pull(token,url,expectedHead){const p=parsePR(url),prefix=`/repos/
 async function changedFiles(token,p){let files=[];for(let page=1;page<=3;page++){const batch=await github(token,`${p.prefix}/pulls/${p.number}/files?per_page=100&page=${page}`);files.push(...batch);if(batch.length<100)break}return files}
 async function content(token,p,filename,side='head'){cleanPath(filename);const branch=side==='base'?p.pr.base:p.pr.head;const repo=branch.repo?.full_name;if(!repo)throw new Error('The source repository is no longer accessible.');const f=await github(token,`/repos/${repo}/contents/${encodePath(filename)}?ref=${branch.sha}`);if(f.type!=='file'||f.encoding!=='base64'||f.size>500000)throw new Error('File is binary, too large, or unavailable.');const text=Buffer.from(f.content,'base64').toString('utf8');if(text.includes('\0'))throw new Error('Binary files cannot be shown in the code editor.');return {path:filename,text,sha:branch.sha}}
 app.get('/api/pr',wrap(async(req,res)=>{const p=await pull(req.auth.token,req.query.url);const files=await changedFiles(req.auth.token,p);res.json({url:p.pr.html_url,title:p.pr.title,number:p.number,repo:`${p.owner}/${p.repo}`,head:p.pr.head.sha,base:p.pr.base.sha,author:p.pr.user.login,body:p.pr.body||'',changedFiles:p.pr.changed_files,limited:p.pr.changed_files>files.length,files:files.map(f=>({path:f.filename,previousPath:f.previous_filename,status:f.status,additions:f.additions,deletions:f.deletions,patch:f.patch||null}))})}));
+app.get('/api/tree',wrap(async(req,res)=>{
+  const p=await pull(req.auth.token,req.query.url,req.query.head);
+  const tree=String(req.query.tree||p.pr.head.sha);
+  if(!/^[a-f0-9]{40}$/i.test(tree))return res.status(400).json({error:'Invalid tree reference.'});
+  const repo=p.pr.head.repo?.full_name;if(!repo)throw new Error('Source repository unavailable.');
+  const data=await github(req.auth.token,`/repos/${repo}/git/trees/${tree}`);
+  if(data.truncated)throw new Error('This directory is too large to list completely.');
+  res.json({head:p.pr.head.sha,entries:data.tree.filter(x=>x.type==='tree'||x.type==='blob').map(x=>({name:x.path,type:x.type,sha:x.sha}))});
+}));
 app.get('/api/file',wrap(async(req,res)=>{const p=await pull(req.auth.token,req.query.url,req.query.head);res.json(await content(req.auth.token,p,req.query.path,req.query.side==='base'?'base':'head'))}));
 const recent=new Map();
 app.get('/api/search',wrap(async(req,res)=>{
