@@ -16,6 +16,7 @@ const auth={Cookie:'codesurf_session='+session};
 test.after(()=>server.close());
 test('repository and question routes reject unauthenticated requests',async()=>{
   for(const p of ['/api/pr?url=https://github.com/a/b/pull/1','/api/file?url=x&path=a','/api/prs','/api/search?q=retry&url=https://github.com/a/b/pull/1'])assert.equal((await request(origin+p)).status,401);
+  assert.equal((await request(origin+'/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).status,401);
   assert.equal((await request(origin+'/api/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).status,401);
 });
 test('OAuth callback rejects missing or forged state',async()=>{
