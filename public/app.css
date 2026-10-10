@@ -35,3 +35,6 @@ body:has(.flow-mode) .pr{height:76px;padding:10px 22px}body:has(.flow-mode) .pr 
 .editor-line.del .line-number{color:#be4a48}
 .editor-line.deletion-boundary .line-number{box-shadow:inset 0 2px #cf6965}
 .editor-line.deletion-boundary:not(.add) .line-sign{color:#be4a48}
+/* Soft diff blocks preserve source typography and relevance gutters. */
+.editor-line.add,.editor-line.add.focused,.editor-line.add.selected{background:#f1f8f3}
+.editor-line.del,.editor-line.del.focused,.editor-line.del.selected{background:#fcf2f1}
