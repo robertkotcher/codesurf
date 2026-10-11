@@ -36,7 +36,19 @@ app.get('/api/demo-plan',wrap(async(req,res)=>{
 }));
 app.use('/api',wrap(async(req,res,next)=>{if(req.path==='/status')return next();let s=session(req);if(!s)return res.status(401).json({error:'Sign in with GitHub'});if(req.method==='POST'&&req.headers.origin!==base(req))return res.sendStatus(403);if(s.tokenExp<Date.now()+60000&&s.refresh){const r=await fetch('https://github.com/login/oauth/access_token',{method:'POST',headers:{Accept:'application/json','Content-Type':'application/json'},body:JSON.stringify({client_id:env.GITHUB_CLIENT_ID,client_secret:env.GITHUB_CLIENT_SECRET,grant_type:'refresh_token',refresh_token:s.refresh})});const t=await r.json();if(!t.access_token)return res.status(401).json({error:'GitHub session expired. Sign in again.'});s={...s,token:t.access_token,refresh:t.refresh_token,tokenExp:Date.now()+t.expires_in*1000};setSession(res,s)}req.auth=s;next()}));
 app.get('/api/me',wrap(async(req,res)=>{const s=session(req);if(!s)return res.status(401).json({error:'Sign in with GitHub'});await github(s.token,'/user');res.json(s.user)}));
-app.get('/api/prs',wrap(async(req,res)=>{const relation=req.query.relation==='assigned'?'assignee':'review-requested';const q=encodeURIComponent(`is:pr is:open ${relation}:${req.auth.user.login}`);const result=await github(req.auth.token,`/search/issues?q=${q}&sort=updated&per_page=50`);res.json({items:result.items.map(x=>({title:x.title,url:x.html_url,number:x.number,repo:x.repository_url.split('/').slice(-2).join('/')})),total:result.total_count})}));
+app.get('/api/prs',wrap(async(req,res)=>{
+  if(req.query.relation==='all'){
+    const items=[];let installations=[];
+    for(let page=1;;page++){const batch=await github(req.auth.token,`/user/installations?per_page=100&page=${page}`);installations.push(...batch.installations);if(batch.installations.length<100)break}
+    const repos=new Map();
+    for(const installation of installations){for(let page=1;;page++){const batch=await github(req.auth.token,`/user/installations/${installation.id}/repositories?per_page=100&page=${page}`);for(const repo of batch.repositories)repos.set(repo.full_name,repo);if(batch.repositories.length<100)break}}
+    const names=[...repos.keys()];
+    for(let offset=0;offset<names.length;offset+=5){await Promise.all(names.slice(offset,offset+5).map(async repo=>{for(let page=1;;page++){const batch=await github(req.auth.token,`/repos/${repo}/pulls?state=open&sort=updated&direction=desc&per_page=100&page=${page}`);for(const pr of batch)items.push({title:pr.title,url:pr.html_url,number:pr.number,repo,updated:pr.updated_at,author:pr.user?.login});if(batch.length<100)break}}))}
+    items.sort((a,b)=>String(b.updated).localeCompare(String(a.updated)));
+    return res.json({items,total:items.length,repositories:repos.size});
+  }
+  const relation=req.query.relation==='assigned'?'assignee':'review-requested';const q=encodeURIComponent(`is:pr is:open ${relation}:${req.auth.user.login}`);const result=await github(req.auth.token,`/search/issues?q=${q}&sort=updated&per_page=50`);res.json({items:result.items.map(x=>({title:x.title,url:x.html_url,number:x.number,repo:x.repository_url.split('/').slice(-2).join('/')})),total:result.total_count})
+}));
 async function pull(token,url,expectedHead){const p=parsePR(url),prefix=`/repos/${p.owner}/${p.repo}`;const pr=await github(token,`${prefix}/pulls/${p.number}`);if(expectedHead&&pr.head.sha!==expectedHead){const e=new Error('This PR has new commits. Reopen it before asking about the updated code.');e.status=409;throw e}return {...p,prefix,pr}}
 async function changedFiles(token,p){let files=[];for(let page=1;page<=30;page++){const batch=await github(token,`${p.prefix}/pulls/${p.number}/files?per_page=100&page=${page}`);files.push(...batch);if(batch.length<100)break}return files}
 async function content(token,p,filename,side='head'){cleanPath(filename);const branch=side==='base'?p.pr.base:p.pr.head;const repo=branch.repo?.full_name;if(!repo)throw new Error('The source repository is no longer accessible.');const f=await github(token,`/repos/${repo}/contents/${encodePath(filename)}?ref=${branch.sha}`);if(f.type!=='file'||f.encoding!=='base64'||f.size>500000)throw new Error('File is binary, too large, or unavailable.');const raw=Buffer.from(f.content,'base64'),text=raw.toString('utf8');if(!Buffer.from(text,'utf8').equals(raw))throw new Error('Non-UTF-8 source cannot be reconstructed as text.');if(text.includes('\0'))throw new Error('Binary files cannot be shown in the code editor.');return {path:filename,text,sha:branch.sha}}
@@ -89,6 +101,7 @@ app.post('/api/ask',wrap(async(req,res)=>{
   await answer({req,res,p,changed,question,selection,history,token:req.auth.token});
 }));
 app.use(express.static(path.join(root,'public')));
+app.get('/:owner/:repo/pull/:number',(req,res,next)=>{if(!/^[1-9]\d*$/.test(req.params.number))return next();res.sendFile(path.join(root,'public/index.html'))});
 app.use((error,req,res,_next)=>{if(res.headersSent)return res.end();res.status(error.status||500).json({error:error.status?error.message:error instanceof OpenAI.APIError?'OpenAI request failed. Check project billing and model access.':error.message?.startsWith('Enter ')||error.message==='Invalid file path'?error.message:'The request could not be completed. Please retry.'})});
 if(!env.VERCEL&&process.env.NODE_ENV!=='test')app.listen(Number(env.PORT||5179),'127.0.0.1',()=>console.log('CodeSurf: http://localhost:'+(env.PORT||5179)));
 export default app;

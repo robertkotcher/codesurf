@@ -81,3 +81,7 @@ The far-left chat panel supports independent tabs with separate history and draf
 Run `docker compose up -d --wait`, set `DATABASE_URL=postgresql://codesurf:codesurf@localhost:55433/codesurf` in `.env.local`, then run `npm run db:migrate` and restart the app. The `github_users` table stores GitHub ID, login, name, avatar URL, and last update time on sign-in. Tokens remain in encrypted cookies. The local database volume persists across container restarts. Production works without DATABASE_URL; configure it and run migrations before enabling profile persistence there.
 
 The header account menu uses the GitHub avatar and provides My pull requests, review actions, and Sign out. Signed-out users see Sign in with GitHub. No avatar uploads or settings are required.
+
+## Home and direct PR links
+
+Signed-in visits to `/` show a filterable list of open pull requests across every repository available through the user's GitHub App installations, including authored and unassigned PRs. Repository and PR lists are paginated through GitHub. My pull requests returns to this overview. A URL such as `/robertkotcher/test-app/pull/2` opens that PR automatically; opening a PR updates the address, and browser Back/Forward restores the overview or linked PR. Static assets use absolute paths so direct-link refreshes work. No modal is opened by default for signed-in users.
