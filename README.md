@@ -85,3 +85,5 @@ The header account menu uses the GitHub avatar and provides My pull requests, re
 ## Home and direct PR links
 
 Signed-in visits to `/` show a filterable list of open pull requests across every repository available through the user's GitHub App installations, including authored and unassigned PRs. Repository and PR lists are paginated through GitHub. My pull requests returns to this overview. A URL such as `/robertkotcher/test-app/pull/2` opens that PR automatically; opening a PR updates the address, and browser Back/Forward restores the overview or linked PR. Static assets use absolute paths so direct-link refreshes work. No modal is opened by default for signed-in users.
+
+Follow the calls opens a horizontally scrollable call canvas at the PR head. Expand declaration callers to the left, select body lines to expand callees to the right, and ask about any line in a new chat. Branches can be collapsed or removed. Source matching is heuristic and may include ambiguous names or miss dynamic calls.

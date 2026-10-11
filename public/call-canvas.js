@@ -1,0 +1,31 @@
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+export async function openCallCanvas({host,path,line,load,ask}){
+ host.querySelector('.call-canvas')?.remove();const canvas=document.createElement('section');canvas.className='call-canvas';canvas.setAttribute('aria-label','Call canvas');
+ canvas.innerHTML='<header><div><b>Call canvas</b><span>PR head · potential source matches</span></div><button data-close>Back to review ×</button></header><div class="canvas-message" role="status">Loading code…</div><div class="canvas-scroll"><div class="canvas-map"><svg class="canvas-edges" aria-hidden="true"></svg><div class="canvas-columns"></div></div></div>';
+ host.append(canvas);let alive=true,nodes=[],expanded=new Map(),pending=new Set(),serial=0;
+ canvas.querySelector('[data-close]').onclick=()=>{alive=false;canvas.remove()};
+ const message=canvas.querySelector('.canvas-message'),columns=canvas.querySelector('.canvas-columns');
+ function render(){
+ const levels=[...new Set(nodes.map(n=>n.level))].sort((a,b)=>a-b);
+ columns.innerHTML=levels.map(level=>`<div class="canvas-column" data-level="${level}">${nodes.filter(n=>n.level===level).map(n=>`<article class="call-node" data-node="${n.id}"><header><div><b>${esc(n.symbol)}</b><span>${esc(n.path)}:${n.start}${n.parent?' · from '+esc(nodes.find(p=>p.id===n.parent)?.symbol||''):''}</span></div>${n.parent?`<button data-remove="${n.id}" aria-label="Remove branch">×</button>`:''}</header><div class="call-source">${n.text.split('\n').map((text,i)=>{const line=n.start+i;return `<div class="call-row${line===n.focus?' call-focus':''}"><button data-select="${n.id}" data-line="${line}" aria-label="Select line ${line}"><span>${line}</span><code>${esc(text)||' '}</code></button>${i===0?`<button class="call-expand" data-expand="callers" data-node-id="${n.id}" data-line="${line}" title="Expand callers">← Callers</button>`:''}${line===n.focus?`<div class="call-actions"><button data-expand="callees" data-node-id="${n.id}" data-line="${line}">Callees →</button><button data-ask-line="${n.id}" data-line="${line}">Ask ✧</button></div>`:''}</div>`}).join('')}</div></article>`).join('')}</div>`).join('');
+ requestAnimationFrame(()=>{if(!alive)return;const map=canvas.querySelector('.canvas-map'),box=map.getBoundingClientRect(),svg=canvas.querySelector('.canvas-edges');svg.setAttribute('width',map.scrollWidth);svg.setAttribute('height',map.scrollHeight);svg.innerHTML='<defs><marker id="canvasArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10" fill="#b4a0ca"/></marker></defs>';for(const n of nodes.filter(n=>n.parent)){const parent=nodes.find(p=>p.id===n.parent);const left=n.level<parent.level?n:parent,right=left===n?parent:n;const a=columns.querySelector(`[data-node="${left.id}"]`).getBoundingClientRect(),b=columns.querySelector(`[data-node="${right.id}"]`).getBoundingClientRect();const x1=a.right-box.left,y1=a.top-box.top+30,x2=b.left-box.left,y2=b.top-box.top+30;svg.innerHTML+=`<path d="M${x1} ${y1} C${(x1+x2)/2} ${y1},${(x1+x2)/2} ${y2},${x2} ${y2}" fill="none" stroke="#b4a0ca" stroke-width="1.5" marker-end="url(#canvasArrow)"/>`}});
+
+ }
+ function remove(id){for(const child of nodes.filter(n=>n.parent===id))remove(child.id);nodes=nodes.filter(n=>n.id!==id);for(const [key,ids]of expanded)if(ids.includes(id)||key.startsWith(id+':'))expanded.delete(key)}
+ columns.onclick=async e=>{
+ const select=e.target.closest('[data-select]'),expand=e.target.closest('[data-expand]'),question=e.target.closest('[data-ask-line]'),close=e.target.closest('[data-remove]');
+ if(select){nodes.find(n=>n.id===select.dataset.select).focus=Number(select.dataset.line);render()}
+ if(close){remove(close.dataset.remove);render()}
+ if(question){const node=nodes.find(n=>n.id===question.dataset.askLine);ask(node,Number(question.dataset.line))}
+ if(expand){const node=nodes.find(n=>n.id===expand.dataset.nodeId),direction=expand.dataset.expand,line=Number(expand.dataset.line),key=node.id+':'+direction+':'+line;
+ if(pending.has(key))return;
+ if(expanded.has(key)){for(const id of expanded.get(key))remove(id);expanded.delete(key);render();return}
+ pending.add(key);message.textContent='Finding '+direction+'…';
+ try{const result=await load(node.path,line,direction);if(!alive||!nodes.includes(node))return;
+ const children=result.blocks.map(block=>({...block,id:String(++serial),parent:node.id,level:node.level+(direction==='callers'?-1:1),focus:direction==='callers'?block.callLine:block.start}));nodes.push(...children);expanded.set(key,children.map(n=>n.id));render();message.textContent=result.total?`${result.total} potential ${direction}${result.total>children.length?' · showing '+children.length:''}`:`No ${direction} found in indexed source.`;
+ if(children.length)columns.querySelector(`[data-node="${children[0].id}"]`)?.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});
+ }catch(error){if(alive)message.textContent=error.message}finally{pending.delete(key)}
+ }
+ };
+ try{const result=await load(path,line,'root');if(!alive)return;nodes=result.blocks.map(block=>({...block,id:String(++serial),level:0,focus:Math.min(block.end,Math.max(block.start,line))}));render();message.textContent='Expand callers on the declaration. Select a body line to explore callees or ask a question.';}catch(error){if(alive)message.textContent=error.message}
+}
