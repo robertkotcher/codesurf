@@ -103,3 +103,12 @@ body{flex-direction:column}.app-header{width:100%;flex:0 0 auto;min-height:62px}
 .call-selected{background:#aa8ac51c}
 .call-row:hover .call-left,.call-row:hover .call-right,.call-selected .call-left,.call-selected .call-right{background:#f6f2fa}
 @media(hover:none){.call-row .call-icon{opacity:1}}
+.data-scroll{overflow:auto;flex:1;min-height:0;padding:20px 28px 50px}
+.data-heading{margin-bottom:20px}.data-heading h2{font:600 20px system-ui;color:#62516e;margin:0 0 6px}.data-heading>span{font:11px ui-monospace;color:#9c8daa}
+.data-layout{display:grid;grid-template-columns:minmax(240px,360px) 30px minmax(320px,1fr);gap:16px;align-items:start;min-width:680px}
+.data-input,.data-call{border:1px solid #e3dcea;border-radius:12px;padding:18px;background:white}
+.data-layout h3{font:600 13px system-ui;color:#6e5a7d;margin:0 0 14px}.data-arrow{padding-top:65px;color:#a18ab9;font:24px system-ui}
+.data-input label{display:block;font:11px system-ui;color:#9583a4;margin:16px 0 8px}.data-input textarea{width:100%;height:260px;resize:none;font:12px/1.6 ui-monospace;border-color:#e3dcea;white-space:pre;tab-size:2}
+.data-types summary{font:12px/1.8 ui-monospace;color:#715d83}.data-types summary>span{color:#a08caf;margin-left:8px}.data-types details>div{padding-left:12px;display:flex;gap:10px;font:11px/1.8 ui-monospace;color:#a08caf}.data-types code{color:#715d83}
+.data-error{font:11px system-ui;color:#b75971}.data-input>button{font-size:11px;padding:8px 12px}.data-calls{display:flex;flex-direction:column;gap:14px}.data-call header{display:flex;align-items:center;justify-content:space-between;gap:8px}.data-call header b{font:600 13px ui-monospace;color:#715d83}.data-call button{font:10px system-ui;padding:5px 8px}.data-call>button{display:block;margin-top:10px}.data-call>button small{display:block;margin-top:4px;color:#9d8caa}
+.data-argument{border-top:1px solid #eee8f3;margin-top:12px;padding-top:12px}.data-argument>div:first-child{display:flex;gap:10px;font:11px system-ui;color:#94809f}.data-expression{display:block;font:11px/1.7 ui-monospace;color:#94809f;white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0}.data-value{display:block;font:12px/1.7 ui-monospace;color:#6f5980;background:#f8f5fb;border-radius:6px;padding:8px;white-space:pre-wrap;overflow-wrap:anywhere}.data-argument small,.data-object small{display:block;font:10px/1.6 system-ui;color:#a18aaf;margin:4px 0}.data-object{border-left:2px solid #e4d9ee;padding-left:10px}.data-object>div>b{font:11px ui-monospace;color:#856b98}

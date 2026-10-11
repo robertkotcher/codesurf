@@ -1,3 +1,4 @@
+import {functionData} from './public/data-shapes.js';
 import {exploreCalls} from './public/call-graph.js';
 import {demoFiles} from './demo-plan.js';
 import {transformationPlan} from './transformations.js';
@@ -82,6 +83,11 @@ app.get('/api/search',wrap(async(req,res)=>{
   if(query.length<2||query.length>300)return res.status(400).json({error:'Search for 2–300 characters.'});
   const p=await pull(req.auth.token,req.query.url,req.query.head);
   res.json({...searchIndex(await repositoryIndex(req.auth.token,p.pr),query,30),head:p.pr.head.sha});
+}));
+app.get('/api/function-data',wrap(async(req,res)=>{
+ const p=await pull(req.auth.token,req.query.url,req.query.head);
+ const index=await repositoryIndex(req.auth.token,p.pr);
+ res.json({...functionData(index.files,req.query),head:p.pr.head.sha});
 }));
 app.get('/api/calls',wrap(async(req,res)=>{
  const p=await pull(req.auth.token,req.query.url,req.query.head);
