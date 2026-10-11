@@ -40,6 +40,6 @@ export async function openCallCanvas({host,path,line,load,onSelect,root=null}){
  if(!root)root=(await load(path,line,'root')).blocks[0];if(!alive)return;
  const entry={...root,id:String(++serial),level:0,focus:Math.min(root.end,Math.max(root.start,line))};nodes=[entry];render();message.textContent='Finding callers…';
  const result=await load(root.path,root.start,'callers',root.symbol);if(!alive)return;
- const children=result.blocks.map(block=>({...block,id:String(++serial),parent:entry.id,parentLine:root.start,level:-1,focus:block.callLine}));nodes.push(...children);expanded.set(entry.id+':callers:'+root.start,children.map(n=>n.id));render();message.textContent=result.total?`${result.total} caller${result.total===1?'':'s'} · expand arrows to traverse`:'No callers found in the PR-head source index.';
+ const children=result.blocks.map(block=>({...block,id:String(++serial),parent:entry.id,parentLine:root.start,level:-1,focus:block.callLine}));nodes.push(...children);expanded.set(entry.id+':callers:'+root.start,children.map(n=>n.id));render();message.textContent=result.total?`${result.total} caller${result.total===1?'':'s'} · expand arrows to traverse`:'No callers found at '+(root.snapshot||'this snapshot')+'.';
  }catch(error){if(alive)message.textContent=error.message}
 }

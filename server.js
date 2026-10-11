@@ -76,7 +76,8 @@ app.get('/api/tree',wrap(async(req,res)=>{
   if(data.truncated)throw new Error('This directory is too large to list completely.');
   res.json({head:p.pr.head.sha,entries:data.tree.filter(x=>x.type==='tree'||x.type==='blob').map(x=>({name:x.path,type:x.type,sha:x.sha}))});
 }));
-app.get('/api/file',wrap(async(req,res)=>{const p=await pull(req.auth.token,req.query.url,req.query.head);res.json(await content(req.auth.token,p,req.query.path,req.query.side==='base'?'base':'head'))}));
+app.get('/api/file',wrap(async(req,res)=>{let p=await pull(req.auth.token,req.query.url,req.query.head);if(req.query.side==='base'){const comparison=await github(req.auth.token,`${p.prefix}/compare/${p.pr.base.sha}...${p.pr.head.sha}`);const sha=comparison.merge_base_commit?.sha;if(!sha)throw new Error('Cannot determine the PR merge-base.');p={...p,pr:{...p.pr,base:{...p.pr.base,sha}}};}res.json(await content(req.auth.token,p,req.query.path,req.query.side==='base'?'base':'head'))}));
+
 const recent=new Map();
 app.get('/api/search',wrap(async(req,res)=>{
   const query=String(req.query.q||'').trim();
@@ -90,8 +91,13 @@ app.get('/api/function-data',wrap(async(req,res)=>{
  res.json({...functionData(index.files,req.query),head:p.pr.head.sha});
 }));
 app.get('/api/call-index',wrap(async(req,res)=>{
- const p=await pull(req.auth.token,req.query.url,req.query.head);const index=await repositoryIndex(req.auth.token,p.pr),graph=buildCallIndex(index.files);
- res.json({head:p.pr.head.sha,languages:graph.languages,blocks:graph.blocks.map(({text,from,to,...block})=>block),edges:graph.edges});
+ const p=await pull(req.auth.token,req.query.url,req.query.head);let snapshot=p.pr.head;
+ if(req.query.snapshot==='base'){
+ const comparison=await github(req.auth.token,`${p.prefix}/compare/${p.pr.base.sha}...${p.pr.head.sha}`);
+ const sha=comparison.merge_base_commit?.sha;if(!sha)throw new Error('Cannot determine the PR merge-base.');snapshot={...p.pr.base,sha};
+ }
+ const index=await repositoryIndex(req.auth.token,{...p.pr,head:snapshot}),graph=buildCallIndex(index.files);
+ res.json({head:p.pr.head.sha,sha:snapshot.sha,languages:graph.languages,blocks:graph.blocks.map(({text,from,to,...block})=>block),calls:graph.calls,imports:graph.imports,edges:graph.edges});
 }));
 app.get('/api/calls',wrap(async(req,res)=>{
  const p=await pull(req.auth.token,req.query.url,req.query.head);

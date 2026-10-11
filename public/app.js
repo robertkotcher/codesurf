@@ -1,4 +1,4 @@
-import {buildCallIndex,indexedCalls} from './source-index.js';
+import {buildCallIndex,indexedCalls,overlayCallIndex} from './source-index.js';
 import {selectedFunction,functionParameters,functionData} from './data-shapes.js';
 import {openDataCanvas} from './data-canvas.js';
 import {openCallCanvas} from './call-canvas.js';
@@ -43,31 +43,28 @@ $('sampleInputButton').onclick=async()=>{
  load:async(path,line)=>files?functionData(files,{path,line}):api('/api/function-data?'+new URLSearchParams({url:pr.url,head:pr.head,path,line})),
  onSelect:value=>selectReviewLines(value,value.path,false)});
 };
-let callIndexPromise=null,callIndexHead=null;
-function preloadCallIndex(){
- if(!pr)return null;if(callIndexHead===pr.head&&callIndexPromise)return callIndexPromise;
- const current=pr;callIndexHead=current.head;
- callIndexPromise=(demo?api('/api/demo-plan').then(plan=>buildCallIndex(new Map(plan.files.map(f=>[f.path,f.after])))):api('/api/call-index?'+new URLSearchParams({url:current.url,head:current.head}))).catch(error=>{if(callIndexHead===current.head)callIndexPromise=null;throw error});
- callIndexPromise.catch(()=>{});return callIndexPromise;
+const callIndexes=new Map();
+function preloadCallIndex(snapshot='head'){
+ if(!pr)return null;const current=pr,key=current.repo+':'+current.head+':'+snapshot;
+ if(callIndexes.has(key))return callIndexes.get(key);
+ const promise=(demo?api('/api/demo-plan').then(plan=>buildCallIndex(new Map(plan.files.map(f=>[snapshot==='base'?f.previousPath||f.path:f.path,snapshot==='base'?f.before:f.after])))):api('/api/call-index?'+new URLSearchParams({url:current.url,head:current.head,snapshot}))).catch(error=>{callIndexes.delete(key);throw error});
+ callIndexes.set(key,promise);promise.catch(()=>{});return promise;
 }
+
 async function launchCallCanvas(){
  const context=reviewSelection||selection||{path:reviewPath,start:1,intermediate:true};if(!pr||!context.path)return;
- closePopover();const current=pr;
+ closePopover();const current=pr,plan=reviewPlan,count=reviewCount,intermediate=context.intermediate!==false&&!!plan;
+ const snapshot=intermediate?'base':'head',label=intermediate?'Review step '+count:'PR head',overrides=new Map();
+ if(intermediate){const state=stateAt(plan,count),manifest=manifestAt(plan,count);for(const file of plan.files){if(file.unavailable)continue;overrides.set(file.path,null);if(file.previousPath)overrides.set(file.previousPath,null);const entry=manifest.find(m=>m.key===file.path);if(entry?.exists)overrides.set(entry.path,state[file.path]);}}
+ const graphPromise=preloadCallIndex(snapshot).then(base=>intermediate?overlayCallIndex(base,overrides):base);graphPromise.catch(()=>{});
  try{
  const files=await selectionSources(context),local=buildCallIndex(files),root=indexedCalls(local,{path:context.path,line:context.start}).blocks[0];
- root.snapshot=context.intermediate!==false?'Review step '+reviewCount:'PR head';
+ root.snapshot=label;
  openCallCanvas({host:document.querySelector('.code-stage'),path:context.path,line:context.start,root,
  load:async(path,line,direction,symbol,node)=>{
- const graph=await preloadCallIndex();if(pr!==current)throw new Error('The pull request changed.');
- let mappedLine=line;
- if(direction==='callees'&&node?.snapshot?.startsWith('Review step')){
- const headBlock=graph.blocks.filter(b=>b.path===path&&b.symbol===node.symbol).sort((a,b)=>Math.abs(a.start-node.start)-Math.abs(b.start-node.start))[0];if(!headBlock)return {blocks:[],total:0};
- const text=demo?(await api('/api/demo-plan')).files.find(f=>f.path===path)?.after:(await getFile(path)).text;
- const selected=node.text.split('\n')[line-node.start]?.trim();const matches=text.split('\n').map((row,i)=>({row:row.trim(),line:i+1})).filter(r=>r.line>=headBlock.start&&r.line<=headBlock.end&&r.row===selected);
- if(matches.length!==1)return {blocks:[],total:0};mappedLine=matches[0].line;
- }
- const result=indexedCalls(graph,{path,line:mappedLine,direction,symbol});
- const blocks=await Promise.all(result.blocks.map(async block=>{if(block.text)return {...block,snapshot:'PR head'};const file=await getFile(block.path);return {...block,text:file.text.split('\n').slice(block.start-1,block.end).join('\n'),snapshot:'PR head'};}));
+ const graph=await graphPromise;if(pr!==current)throw new Error('The pull request changed.');
+ const result=indexedCalls(graph,{path,line,direction,symbol});
+ const blocks=await Promise.all(result.blocks.map(async block=>{if(block.text)return {...block,snapshot:label};const text=overrides.get(block.path)??(await getFile(block.path,snapshot)).text;return {...block,text:text.split('\n').slice(block.start-1,block.end).join('\n'),snapshot:label};}));
  return {...result,blocks};
  },onSelect:value=>selectReviewLines(value,value.path,value.snapshot?.startsWith('Review step'))});
  }catch(error){toast(error.message)}
@@ -305,7 +302,7 @@ async function startWalkthrough(){
       plan=await api('/api/demo-plan');
     }else plan=await api('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:pr.url,head:pr.head})});
     if(generation!==prGeneration)return;
-    reviewPlan=plan;reviewVerified=validatePlan(plan)&&plan.verified;reviewPath=plan.files[0]?.path||'';if(demo){window.sampleRepository=plan.files.map(f=>({name:f.path,start:1,lines:f.after.split('\n')}));pr.files=plan.files.map(f=>({path:f.path,status:f.status}));$('prMeta').textContent='maya · '+plan.files.length+' changed files · '+pr.head.slice(0,7);treeNodes=new Map();loadTreeFolder()}walkthroughReady=true;$('startReview').disabled=!plan.steps.length;renderWalkthrough();
+    reviewPlan=plan;preloadCallIndex('base');reviewVerified=validatePlan(plan)&&plan.verified;reviewPath=plan.files[0]?.path||'';if(demo){window.sampleRepository=plan.files.map(f=>({name:f.path,start:1,lines:f.after.split('\n')}));pr.files=plan.files.map(f=>({path:f.path,status:f.status}));$('prMeta').textContent='maya · '+plan.files.length+' changed files · '+pr.head.slice(0,7);treeNodes=new Map();loadTreeFolder()}walkthroughReady=true;$('startReview').disabled=!plan.steps.length;renderWalkthrough();
   }catch(error){if(generation!==prGeneration)return;$('walkthrough').innerHTML=`<div class="analysis-loading"><h2>Review could not be prepared.</h2><p>${esc(error.message)}</p><button id="retryPlan">Try again</button></div>`;$('retryPlan').onclick=startWalkthrough}
 }
 function reviewAdvance(delta){if(!reviewPlan)return;reviewCount=Math.max(0,Math.min(reviewPlan.steps.length,reviewCount+delta));walkthroughIndex=reviewCount-1;reviewExploring=false;reviewSelection=null;const first=reviewPlan.operations.find(o=>reviewPlan.steps[reviewCount-1]?.ids.includes(o.id));if(first)reviewPath=first.path;renderWalkthrough();tree()}

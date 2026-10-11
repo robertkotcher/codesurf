@@ -30,15 +30,25 @@ function fileIndex(path,text){
 export function buildCallIndex(files){
  if(warmed.has(files))return warmed.get(files);
  const blocks=[],calls=[],languages={};for(const [path,text]of files){if(!/\.(?:[cm]?[jt]sx?|py|rb|go|rs|java|c|cc|cpp|h|hpp|cs|php|swift|kt)$/.test(path))continue;const result=fileIndex(path,text);blocks.push(...result.blocks);calls.push(...result.calls);languages[result.language]=(languages[result.language]||0)+1;}
+ const imports=[...files].map(([path,source])=>[path,[...source.matchAll(/import\s*\{([^}]+)\}\s*from\s*['"]([^'"]+)['"]/g)].map(m=>[null,m[1],m[2]])]);
+ const index=resolveIndex(blocks,calls,imports,languages);warmed.set(files,index);return index;
+}
+function resolveIndex(blocks,calls,imports,languages){
  const symbols=new Map();for(const b of blocks){const list=symbols.get(b.symbol)||[];list.push(b);symbols.set(b.symbol,list)}
- const edges=[],importsByPath=new Map([...files].map(([path,source])=>[path,[...source.matchAll(/import\s*\{([^}]+)\}\s*from\s*['"]([^'"]+)['"]/g)]]));
+ const edges=[],importsByPath=new Map(imports);
  for(const call of calls){let targets=symbols.get(call.symbol)||[];const same=targets.filter(b=>b.path===call.path);if(same.length)targets=same;
  // Resolve named relative imports before considering same-named definitions elsewhere.
  const imports=importsByPath.get(call.path)||[];
  for(const match of imports){for(const binding of match[1].split(',')){const [original,alias=original]=binding.trim().split(/\s+as\s+/);if(alias!==call.symbol||!match[2].startsWith('.'))continue;const segments=call.path.split('/').slice(0,-1);for(const part of match[2].split('/')){if(part==='..')segments.pop();else if(part!=='.')segments.push(part)}const imported=segments.join('/');targets=(symbols.get(original)||[]).filter(b=>b.path===imported||b.path.replace(/\.[cm]?[jt]sx?$/,'')===imported||b.path.replace(/\/index\.[cm]?[jt]sx?$/,'')===imported);}}
  for(const target of targets)edges.push({...call,targetPath:target.path,targetStart:target.start,ambiguous:targets.length>1});
  }
- const index={blocks,edges,languages};warmed.set(files,index);return index;
+ return {blocks,calls,imports,edges,languages};
+}
+// Replace changed file definitions/call sites, then resolve edges against the
+// complete base index so unchanged callers follow the displayed review state.
+export function overlayCallIndex(base,overrides){
+ const changed=buildCallIndex(new Map([...overrides].filter(([,text])=>text!==null))),paths=new Set(overrides.keys());
+ return resolveIndex([...base.blocks.filter(b=>!paths.has(b.path)),...changed.blocks], [...base.calls.filter(c=>!paths.has(c.path)),...changed.calls], [...base.imports.filter(([path])=>!paths.has(path)),...changed.imports],base.languages);
 }
 export function indexedCalls(index,{path,line,direction='root',symbol}){
  line=Number(line);let root=index.blocks.filter(b=>b.path===path&&(symbol?b.symbol===symbol:b.start<=line&&b.end>=line)).sort((a,b)=>symbol?Math.abs(a.start-line)-Math.abs(b.start-line):(a.end-a.start)-(b.end-b.start))[0];

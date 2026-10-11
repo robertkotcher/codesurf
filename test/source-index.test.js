@@ -15,3 +15,11 @@ test('Python definitions, nested calls and TypeScript arrow functions are indexe
  const index=buildCallIndex(new Map([['a.py','def entropy(value: str):\n    return len(value)\n\ndef caller(value):\n    return entropy(value)\n'],['a.ts','const entropy = (s: string) => s.length;\nconst wrapper = () => entropy("a");']]));
  assert.equal(indexedCalls(index,{path:'a.py',line:2}).blocks[0].symbol,'entropy');assert.equal(indexedCalls(index,{path:'a.py',line:1,direction:'callers'}).blocks[0].symbol,'caller');assert.equal(indexedCalls(index,{path:'a.ts',line:1,direction:'callers'}).blocks[0].symbol,'wrapper');
 });
+test('step graphs retain deleted entropy callers until their deletion and re-resolve unchanged callers',async()=>{
+ const {overlayCallIndex}=await import('../browser/source-index.js');
+ const path='route.ts',before='function entropy(str: string): number {\n return str.length;\n}\nfunction isValid(username: string): boolean {\n return entropy(username) < 3.75;\n}\nfunction POST() {\n return isValid("test");\n}';
+ const base=buildCallIndex(new Map([[path,before],['unchanged.ts','function external() {\n return entropy("abc");\n}']]));
+ const step0=overlayCallIndex(JSON.parse(JSON.stringify(base)),new Map([[path,before]]));assert.deepEqual(indexedCalls(step0,{path,line:1,direction:'callers'}).blocks.map(b=>b.symbol).sort(),['external','isValid']);assert.equal(indexedCalls(step0,{path,line:4,direction:'callers'}).blocks[0].symbol,'POST');
+ const shifted='// added line\n'+before;const step1=overlayCallIndex(base,new Map([[path,shifted]]));assert.equal(indexedCalls(step1,{path,line:2,direction:'callers'}).total,2);assert.equal(indexedCalls(step1,{path:'unchanged.ts',line:2,direction:'callees'}).blocks[0].start,2);
+ const final=overlayCallIndex(base,new Map([[path,'function POST() { return true; }']]));assert.equal(indexedCalls(final,{path,line:1,symbol:'entropy',direction:'callers'}).total,0);
+});
