@@ -57,7 +57,7 @@ Conversation state is held in the browser until reset or reload. Citations are g
 
 Private source repository: https://github.com/robertkotcher/codesurf. The repository is connected to the Vercel `codesurf` project. Push to `main` for a production deployment. Other branches and pull requests receive Vercel preview deployments. GitHub Actions runs the test suite on pushes and pull requests. Production secrets are configured in Vercel, never committed.
 
-No database is required for this version. Repository data comes from GitHub, sessions use encrypted cookies, and conversations live in browser memory.
+Local PostgreSQL optionally stores GitHub profiles. Repository data comes from GitHub, sessions use encrypted cookies, and conversations live in browser memory.
 
 ## Reviews
 
@@ -74,3 +74,10 @@ Run `npm run build` after changing `browser/review-editor.js`. Its bundled publi
 ## Tabbed exploration chats
 
 The far-left chat panel supports independent tabs with separate history and drafts. Select a line or drag across lines in the review editor to open an inline question; submitting creates a new focused chat. **New** creates a general PR chat, and each tab can be deleted (stopping its active answer). Tabs remain in browser memory until reload or switching PRs. Search/read progress updates and answer text stream over SSE; private model reasoning is not exposed. Intermediate selections are sent as quoted source with their transformation number, never as final-head line coordinates. The review footer contains step navigation and the high-level summary; default line-explanation markers are removed.
+
+
+## Local PostgreSQL
+
+Run `docker compose up -d --wait`, set `DATABASE_URL=postgresql://codesurf:codesurf@localhost:55433/codesurf` in `.env.local`, then run `npm run db:migrate` and restart the app. The `github_users` table stores GitHub ID, login, name, avatar URL, and last update time on sign-in. Tokens remain in encrypted cookies. The local database volume persists across container restarts. Production works without DATABASE_URL; configure it and run migrations before enabling profile persistence there.
+
+The header account menu uses the GitHub avatar and provides My pull requests, review actions, and Sign out. Signed-out users see Sign in with GitHub. No avatar uploads or settings are required.
