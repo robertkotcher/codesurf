@@ -27,7 +27,7 @@ let inputSelectionVersion=0;
 async function selectionSources(context){
  if(demo){const plan=await api('/api/demo-plan');return new Map(plan.files.map(f=>[f.path,context.intermediate!==false&&reviewPlan?stateAt(reviewPlan,reviewCount)[f.path]??f.after:f.after]));}
  const text=context.intermediate!==false&&reviewPlan?stateAt(reviewPlan,reviewCount)[context.path]:(await getFile(context.path)).text;
- return new Map([[context.path,text??(await getFile(context.path)).text]]);
+ return new Map([[context.path,text??(await getFile(context.path,context.intermediate!==false&&reviewPlan?'base':'head')).text]]);
 }
 async function updateSampleAction(context){
  const version=++inputSelectionVersion,button=$('sampleInputButton');button.hidden=true;
