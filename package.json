@@ -7,7 +7,7 @@
     "dev": "node --env-file-if-exists=.env.local server.js",
     "start": "node --env-file-if-exists=.env.local server.js",
     "test": "node --test",
-    "build": "esbuild browser/review-editor.js --bundle --format=esm --minify --outfile=public/vendor/review-editor.js",
+    "build": "esbuild browser/review-editor.js --bundle --format=esm --minify --outfile=public/vendor/review-editor.js && esbuild browser/source-index.js --bundle --format=esm --minify --outfile=public/source-index.js",
     "db:migrate": "node --env-file-if-exists=.env.local scripts/migrate.js"
   },
   "dependencies": {
@@ -18,6 +18,8 @@
     "@codemirror/lang-python": "^6.2.1",
     "@codemirror/lang-sql": "^6.10.0",
     "@codemirror/merge": "^6.12.2",
+    "@lezer/javascript": "^1.5.6",
+    "@lezer/python": "^1.1.19",
     "codemirror": "^6.0.2",
     "diff": "^9.0.0",
     "express": "^5.1.0",

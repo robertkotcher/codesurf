@@ -1,5 +1,5 @@
+import {buildCallIndex,indexedCalls} from './browser/source-index.js';
 import {functionData} from './public/data-shapes.js';
-import {exploreCalls} from './public/call-graph.js';
 import {demoFiles} from './demo-plan.js';
 import {transformationPlan} from './transformations.js';
 import express from 'express';
@@ -89,10 +89,14 @@ app.get('/api/function-data',wrap(async(req,res)=>{
  const index=await repositoryIndex(req.auth.token,p.pr);
  res.json({...functionData(index.files,req.query),head:p.pr.head.sha});
 }));
+app.get('/api/call-index',wrap(async(req,res)=>{
+ const p=await pull(req.auth.token,req.query.url,req.query.head);const index=await repositoryIndex(req.auth.token,p.pr),graph=buildCallIndex(index.files);
+ res.json({head:p.pr.head.sha,languages:graph.languages,blocks:graph.blocks.map(({text,from,to,...block})=>block),edges:graph.edges});
+}));
 app.get('/api/calls',wrap(async(req,res)=>{
  const p=await pull(req.auth.token,req.query.url,req.query.head);
  const index=await repositoryIndex(req.auth.token,p.pr);
- res.json({...exploreCalls(index.files,req.query),head:p.pr.head.sha});
+ const graph=buildCallIndex(index.files);const result=indexedCalls(graph,req.query);res.json({...result,blocks:result.blocks.map(b=>({...b,text:b.text??index.files.get(b.path).split('\n').slice(b.start-1,b.end).join('\n')})),head:p.pr.head.sha});
 }));
 app.post('/api/review',wrap(async(req,res)=>{
   if(!req.body.head)return res.status(400).json({error:'A PR commit is required.'});

@@ -1,3 +1,4 @@
+import {buildCallIndex,indexedCalls} from './source-index.js';
 import {selectedFunction,functionParameters,functionData} from './data-shapes.js';
 import {openDataCanvas} from './data-canvas.js';
 import {openCallCanvas} from './call-canvas.js';
@@ -42,18 +43,36 @@ $('sampleInputButton').onclick=async()=>{
  load:async(path,line)=>files?functionData(files,{path,line}):api('/api/function-data?'+new URLSearchParams({url:pr.url,head:pr.head,path,line})),
  onSelect:value=>selectReviewLines(value,value.path,false)});
 };
-async function launchCallCanvas(){
- const context=reviewSelection||selection||{path:reviewPath,start:1};if(!pr||!context.path)return;
- closePopover();
- let demoSources;
- if(demo){const plan=await api('/api/demo-plan');demoSources=new Map(plan.files.map(f=>[f.path,f.after]));}
- let canvasLine=context.start;
- if(context.text?.trim()){try{const source=demoSources?.get(context.path)??(await getFile(context.path)).text;const snippet=context.text.trim();const offset=source.indexOf(snippet);if(offset>=0&&source.indexOf(snippet,offset+1)<0)canvasLine=source.slice(0,offset).split('\n').length;}catch(error){toast(error.message);return}}
- openCallCanvas({host:document.querySelector('.code-stage'),path:context.path,line:canvasLine,
- load:async(path,line,direction)=>demoSources?(await import('./call-graph.js')).exploreCalls(demoSources,{path,line,direction}):api('/api/calls?'+new URLSearchParams({url:pr.url,head:pr.head,path,line,direction})),
- onSelect:value=>selectReviewLines(value,value.path,false)
- });
+let callIndexPromise=null,callIndexHead=null;
+function preloadCallIndex(){
+ if(!pr)return null;if(callIndexHead===pr.head&&callIndexPromise)return callIndexPromise;
+ const current=pr;callIndexHead=current.head;
+ callIndexPromise=(demo?api('/api/demo-plan').then(plan=>buildCallIndex(new Map(plan.files.map(f=>[f.path,f.after])))):api('/api/call-index?'+new URLSearchParams({url:current.url,head:current.head}))).catch(error=>{if(callIndexHead===current.head)callIndexPromise=null;throw error});
+ callIndexPromise.catch(()=>{});return callIndexPromise;
 }
+async function launchCallCanvas(){
+ const context=reviewSelection||selection||{path:reviewPath,start:1,intermediate:true};if(!pr||!context.path)return;
+ closePopover();const current=pr;
+ try{
+ const files=await selectionSources(context),local=buildCallIndex(files),root=indexedCalls(local,{path:context.path,line:context.start}).blocks[0];
+ root.snapshot=context.intermediate!==false?'Review step '+reviewCount:'PR head';
+ openCallCanvas({host:document.querySelector('.code-stage'),path:context.path,line:context.start,root,
+ load:async(path,line,direction,symbol,node)=>{
+ const graph=await preloadCallIndex();if(pr!==current)throw new Error('The pull request changed.');
+ let mappedLine=line;
+ if(direction==='callees'&&node?.snapshot?.startsWith('Review step')){
+ const headBlock=graph.blocks.filter(b=>b.path===path&&b.symbol===node.symbol).sort((a,b)=>Math.abs(a.start-node.start)-Math.abs(b.start-node.start))[0];if(!headBlock)return {blocks:[],total:0};
+ const text=demo?(await api('/api/demo-plan')).files.find(f=>f.path===path)?.after:(await getFile(path)).text;
+ const selected=node.text.split('\n')[line-node.start]?.trim();const matches=text.split('\n').map((row,i)=>({row:row.trim(),line:i+1})).filter(r=>r.line>=headBlock.start&&r.line<=headBlock.end&&r.row===selected);
+ if(matches.length!==1)return {blocks:[],total:0};mappedLine=matches[0].line;
+ }
+ const result=indexedCalls(graph,{path,line:mappedLine,direction,symbol});
+ const blocks=await Promise.all(result.blocks.map(async block=>{if(block.text)return {...block,snapshot:'PR head'};const file=await getFile(block.path);return {...block,text:file.text.split('\n').slice(block.start-1,block.end).join('\n'),snapshot:'PR head'};}));
+ return {...result,blocks};
+ },onSelect:value=>selectReviewLines(value,value.path,value.snapshot?.startsWith('Review step'))});
+ }catch(error){toast(error.message)}
+}
+
 function askInline(question){
   const context=reviewSelection?{...reviewSelection,path:reviewSelection.path||reviewPath,intermediate:reviewSelection.intermediate!==false,step:reviewCount}:selection?{...selection}:null;
   if(!pr)return toast('Open a pull request first.');
@@ -202,7 +221,7 @@ $('refreshPulls').onclick=showHome;$('filterPulls').oninput=renderHomePulls;
 $('homePulls').onclick=event=>{const link=event.target.closest('a.home-pr');if(link&&!event.metaKey&&!event.ctrlKey&&!event.shiftKey){event.preventDefault();loadPR('https://github.com'+new URL(link.href).pathname)}};
 window.addEventListener('popstate',()=>{const url=routePR();url?loadPR(url,false):showHome()});
 async function loadPR(url,navigate=true){streamAbort?.abort();const generation=++prGeneration;toast('Loading pull request…');try{const data=await api('/api/pr?'+new URLSearchParams({url}));if(generation!==prGeneration)return;if(navigate&&location.pathname!==prRoute(data.url))history.pushState({},'',prRoute(data.url));setPR(data);$('inbox').classList.add('hidden');if(pr.limited)toast('GitHub returned a partial file list. This walkthrough cannot cover the entire PR.')}catch(e){toast(e.message)}}
-function setPR(data){document.querySelectorAll('.call-canvas').forEach(el=>el.remove());document.body.classList.remove('home-view');$('prHome').hidden=true;chats.forEach(c=>c.abort?.abort());chats=[];activeChat=null;pr=data;activeFlow=null;$('flowHeader').classList.add('hidden');$('inlineThread').classList.add('hidden');setExplorerCollapsed(false);setConversationCollapsed(false);reviewComments=[];reviewSummary='';reviewPr=pr.head;$('reviewCount').textContent='';$('reviewBody').value='';treeNodes=new Map();expandedFolders=new Set(['']);treeLoading=new Set();treeErrors=new Map();columns=[];activeColumn=0;turns=[];selection=null;focused.clear();cache.clear();$('repo').textContent=pr.repo+' / PULL REQUEST';$('prTitle').textContent=pr.title+' #'+pr.number;$('prMeta').textContent=`${pr.author} · ${pr.changedFiles} changed files · ${pr.head.slice(0,7)}`;$('url').value=pr.url;$('messages').innerHTML='<div class="answer-empty"><span>✧</span><h3>Start with a question.</h3><p>Select code to ask about it. Related files open beside your current file.</p></div>';newChat();startWalkthrough();loadTreeFolder();if(pr.files.length)openFile(pr.files[0].path);else $('editors').innerHTML='<div class="editor-empty"><h2>No changed files.</h2></div>'}
+function setPR(data){document.querySelectorAll('.call-canvas').forEach(el=>el.remove());document.body.classList.remove('home-view');$('prHome').hidden=true;chats.forEach(c=>c.abort?.abort());chats=[];activeChat=null;pr=data;preloadCallIndex();activeFlow=null;$('flowHeader').classList.add('hidden');$('inlineThread').classList.add('hidden');setExplorerCollapsed(false);setConversationCollapsed(false);reviewComments=[];reviewSummary='';reviewPr=pr.head;$('reviewCount').textContent='';$('reviewBody').value='';treeNodes=new Map();expandedFolders=new Set(['']);treeLoading=new Set();treeErrors=new Map();columns=[];activeColumn=0;turns=[];selection=null;focused.clear();cache.clear();$('repo').textContent=pr.repo+' / PULL REQUEST';$('prTitle').textContent=pr.title+' #'+pr.number;$('prMeta').textContent=`${pr.author} · ${pr.changedFiles} changed files · ${pr.head.slice(0,7)}`;$('url').value=pr.url;$('messages').innerHTML='<div class="answer-empty"><span>✧</span><h3>Start with a question.</h3><p>Select code to ask about it. Related files open beside your current file.</p></div>';newChat();startWalkthrough();loadTreeFolder();if(pr.files.length)openFile(pr.files[0].path);else $('editors').innerHTML='<div class="editor-empty"><h2>No changed files.</h2></div>'}
 async function inbox(relation='review'){$('inbox').classList.remove('hidden');document.querySelectorAll('[data-relation]').forEach(x=>x.classList.toggle('active',x.dataset.relation===relation));$('prs').textContent='Loading…';try{if(demo){$('prs').innerHTML='<button class="pr-item" data-pr="demo"><b>Add retry handling to webhook delivery</b><small>acme/platform · #248 · sample PR</small></button>';return}const data=await api('/api/prs?relation='+relation);$('prs').innerHTML=data.items.length?data.items.map(p=>`<button class="pr-item" data-pr="${esc(p.url)}"><b>${esc(p.title)}</b><small>${esc(p.repo)} · #${p.number}</small></button>`).join(''):'<p class="muted">No open PRs found in connected repositories.</p>'}catch(e){$('prs').textContent=e.message}}
 $('openForm').addEventListener('submit',e=>{e.preventDefault();if(demo)return toast('Demo mode uses the sample PR. Sign in on the main app to import GitHub PRs.');loadPR($('url').value.trim())});$('filetree').addEventListener('click',e=>{const folder=e.target.closest('[data-folder]'),retry=e.target.closest('[data-retry]');if(folder){const path=folder.dataset.folder;if(expandedFolders.has(path))expandedFolders.delete(path);else{expandedFolders.add(path);if(!treeNodes.has(path))loadTreeFolder(path,folder.dataset.sha)}tree();return}if(retry){loadTreeFolder(retry.dataset.retry,retry.dataset.sha);return}const f=e.target.closest('[data-file]');if(f)openFile(f.dataset.file)});$('inlineForm').addEventListener('submit',e=>{e.preventDefault();const q=$('inlineQuestion').value.trim();if(q){$('inlineQuestion').value='';askInline(q)}});$('followup').addEventListener('submit',e=>{e.preventDefault();const q=$('followQuestion').value.trim();if(q){$('followQuestion').value='';ask(q)}});for(const id of ['inlineQuestion','followQuestion'])$(id).addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();$(id==='inlineQuestion'?'inlineForm':'followup').requestSubmit()}});document.querySelectorAll('[data-ask]').forEach(b=>b.addEventListener('click',()=>b.textContent==='Follow the calls'?launchCallCanvas():askInline(b.dataset.ask)));$('closePopover').addEventListener('click',closePopover);document.addEventListener('keydown',e=>{if(e.key==='Escape'){closePopover();$('inbox').classList.add('hidden');$('reviewModal').classList.add('hidden')}});$('inboxButton').addEventListener('click',()=>{if(location.pathname!=='/')history.pushState({},'','/');showHome()});$('closeInbox').addEventListener('click',()=>$('inbox').classList.add('hidden'));document.querySelectorAll('[data-relation]').forEach(x=>x.addEventListener('click',()=>inbox(x.dataset.relation)));$('prs').addEventListener('click',e=>{const p=e.target.closest('[data-pr]');if(p){$('inbox').classList.add('hidden');if(!demo)loadPR(p.dataset.pr)}});$('resetConversation').addEventListener('click',()=>newChat());$('logout').addEventListener('click',async()=>{await api('/auth/logout',{method:'POST'});location.href='/'});
 let previewTimer;function sourceEvent(e){if(e.target.closest('[data-open-review]')){if(e.type==='click')showReview();return}const r=e.target.closest('[data-source]');if(!r)return;clearTimeout(previewTimer);const action=()=>openFile(r.dataset.source,{start:+r.dataset.start,end:+r.dataset.end},true);if(e.type==='mouseover')previewTimer=setTimeout(action,450);else action()}
