@@ -110,3 +110,10 @@ test('direct PR URLs serve the app with absolute asset paths',async()=>{
   const response=await request(origin+'/tester/demo/pull/2');
   assert.equal(response.status,200);const html=await response.text();assert(html.includes('src="/app.js"'));assert(html.includes('id="prHome"'));assert(html.includes('class="modal-backdrop hidden" id="signin"'));
 });
+test('base call index uses the merge-base snapshot while keeping head access pinned',async()=>{
+ const {default:tar}=await import('tar-stream');const {gzipSync}=await import('node:zlib');
+ const pack=tar.pack();pack.entry({name:'snapshot/route.ts'},'function entropy(s: string) { return s.length; }\nfunction isValid(s: string) { return entropy(s); }');pack.finalize();const chunks=[];for await(const chunk of pack)chunks.push(chunk);const archive=gzipSync(Buffer.concat(chunks));
+ const head='a'.repeat(40),base='b'.repeat(40),merge='c'.repeat(40),calls=[];
+ global.fetch=async url=>{calls.push(String(url));if(String(url).includes('/pulls/22'))return Response.json({head:{sha:head,repo:{full_name:'acme/entropy'}},base:{sha:base,repo:{full_name:'acme/entropy'}}});if(String(url).includes('/compare/'))return Response.json({merge_base_commit:{sha:merge}});if(String(url).includes('/tarball/'))return new Response(archive);throw new Error('Unexpected request '+url);};
+ try{const response=await request(origin+'/api/call-index?'+new URLSearchParams({url:'https://github.com/acme/entropy/pull/22',head,snapshot:'base'}),{headers:auth});assert.equal(response.status,200);const graph=await response.json();assert.equal(graph.sha,merge);assert.equal(graph.head,head);assert(graph.edges.some(e=>e.symbol==='entropy'));assert(graph.blocks.every(b=>!Object.hasOwn(b,'text')));assert(calls.some(url=>url.endsWith('/tarball/'+merge)));assert(!calls.some(url=>url.endsWith('/tarball/'+head)));}finally{global.fetch=request;}
+});
