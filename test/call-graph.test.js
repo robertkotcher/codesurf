@@ -8,3 +8,11 @@ test('call canvas finds enclosing block and expands callers and callees recursiv
  assert.equal(exploreCalls(files,{path:'entry.js',line:1,direction:'callers'}).total,0);
 });
 test('call canvas rejects unavailable paths and invalid coordinates',()=>{assert.throws(()=>exploreCalls(files,{path:'missing',line:1}));assert.throws(()=>exploreCalls(files,{path:'child.js',line:99}));});
+test('line affordances distinguish signatures, call sites, and plain code',async()=>{const {lineAffordances}=await import('../public/call-graph.js');
+ assert.deepEqual(lineAffordances('export async function run(input) {'),{callers:true,callees:false});
+ assert.deepEqual(lineAffordances('  await child(input);'),{callers:false,callees:true});
+ assert.deepEqual(lineAffordances('  return count + 1;'),{callers:false,callees:false});
+ assert.deepEqual(lineAffordances('// child(input)'),{callers:false,callees:false});
+ assert.deepEqual(lineAffordances('const note = "child()";'),{callers:false,callees:false});
+ assert.deepEqual(lineAffordances('async def run(input):'),{callers:true,callees:false});
+});

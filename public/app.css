@@ -90,3 +90,16 @@ body{flex-direction:column}.app-header{width:100%;flex:0 0 auto;min-height:62px}
 .call-actions button{font-size:10px;padding:4px 8px}
 @media(max-width:700px){.review-explanation{gap:10px;padding:12px!important}.review-explanation>button{padding:8px;font-size:10px}.canvas-column{width:360px}}
 .canvas-map{position:relative;width:max-content;min-width:100%}.canvas-edges{position:absolute;inset:0;pointer-events:none;overflow:visible}.canvas-columns{position:relative}
+.call-row{display:flex;align-items:center;min-width:100%;width:max-content}
+.call-row>button[data-select]{flex:1;width:auto;min-width:0;gap:8px;padding:3px 4px;cursor:text}
+.call-row>button[data-select]>span{width:24px}
+.call-left,.call-right{display:flex;align-items:center;flex-shrink:0;position:sticky;background:#fff;z-index:1}
+.call-left{left:0;width:24px;justify-content:center}
+.call-right{right:0;width:52px;justify-content:flex-end;padding-right:4px;gap:2px;margin-left:auto}
+.call-row .call-icon{display:grid;place-items:center;width:23px;height:23px;padding:3px;border:0;border-radius:4px;background:transparent;color:#9075ac;opacity:0;transition:opacity .12s,background .12s}
+.call-icon svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.call-row:hover .call-icon,.call-row:focus-within .call-icon,.call-icon:focus-visible{opacity:1}
+.call-row .call-icon:hover{background:#eae2f3}
+.call-selected{background:#aa8ac51c}
+.call-row:hover .call-left,.call-row:hover .call-right,.call-selected .call-left,.call-selected .call-right{background:#f6f2fa}
+@media(hover:none){.call-row .call-icon{opacity:1}}

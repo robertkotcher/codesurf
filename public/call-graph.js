@@ -1,6 +1,12 @@
 // Lightweight source matching: candidates, rather than resolved runtime dispatch.
 const declaration=/\b(?:function\s+|def\s+)([\w$]+)\s*\(|\b(?:const|let|var)\s+([\w$]+)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[\w$]+)\s*=>|^\s*(?:async\s+)?([\w$]+)\s*\([^;]*\)\s*(?::[^=]+)?\s*\{/;
 const ignored=new Set(['if','for','while','switch','catch','with','return','function','def']);
+export function lineAffordances(text){
+ const code=text.replace(/(['"`]).*?\1/g,'').replace(/\/\/.*$|#.*$/g,'');
+ const match=code.match(declaration),symbol=match&&(match[1]||match[2]||match[3]);
+ const signature=!!symbol&&!ignored.has(symbol);
+ return {callers:signature,callees:!signature&&[...code.matchAll(/\b([\w$]+)\s*\(/g)].some(m=>!ignored.has(m[1]))};
+}
 export function sourceBlocks(files){
  const blocks=[];
  for(const [path,text] of files){const rows=text.split('\n');for(let i=0;i<rows.length;i++){const m=rows[i].match(declaration),symbol=m&&(m[1]||m[2]||m[3]);if(!symbol||ignored.has(symbol))continue;

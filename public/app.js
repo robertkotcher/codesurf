@@ -29,11 +29,11 @@ async function launchCallCanvas(){
  if(context.text?.trim()){try{const source=demoSources?.get(context.path)??(await getFile(context.path)).text;const snippet=context.text.trim();const offset=source.indexOf(snippet);if(offset>=0&&source.indexOf(snippet,offset+1)<0)canvasLine=source.slice(0,offset).split('\n').length;}catch(error){toast(error.message);return}}
  openCallCanvas({host:document.querySelector('.code-stage'),path:context.path,line:canvasLine,
  load:async(path,line,direction)=>demoSources?(await import('./call-graph.js')).exploreCalls(demoSources,{path,line,direction}):api('/api/calls?'+new URLSearchParams({url:pr.url,head:pr.head,path,line,direction})),
- ask:(block,line)=>{newChat({path:block.path,start:line,end:line,text:block.text,intermediate:false});ask('Explain this line in '+block.symbol+' and how it fits into the call flow.');}
+ onSelect:value=>selectReviewLines(value,value.path,false)
  });
 }
 function askInline(question){
-  const context=reviewSelection?{...reviewSelection,path:reviewSelection.path||reviewPath,intermediate:!reviewExploring,step:reviewCount}:selection?{...selection}:null;
+  const context=reviewSelection?{...reviewSelection,path:reviewSelection.path||reviewPath,intermediate:reviewSelection.intermediate!==false,step:reviewCount}:selection?{...selection}:null;
   if(!pr)return toast('Open a pull request first.');
   newChat(context);ask(question);
 }
