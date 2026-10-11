@@ -70,3 +70,7 @@ PR review now uses CodeMirror 6's unified merge editor, with Lucide file/folder 
 The current snapshot budget is 1.2 MB of serialized before/after source, with 500 KB per text file and GitHub's 3,000 changed-file limit. Binary, non-UTF-8, oversized, inaccessible and partial imports are explicitly flagged and prevent a complete reconstruction claim. Verification covers changed UTF-8 file contents and file presence/renames; it does not certify Git modes/submodules or program behavior. AI explanations cover the first 120 edits; remaining edits receive factual count descriptions. Progress remains in the open browser session.
 
 Run `npm run build` after changing `browser/review-editor.js`. Its bundled public asset is checked in so Express deployments work with standard defaults.
+
+## Tabbed exploration chats
+
+The far-left chat panel supports independent tabs with separate history and drafts. Select a line or drag across lines in the review editor to open an inline question; submitting creates a new focused chat. **New** creates a general PR chat, and each tab can be deleted (stopping its active answer). Tabs remain in browser memory until reload or switching PRs. Search/read progress updates and answer text stream over SSE; private model reasoning is not exposed. Intermediate selections are sent as quoted source with their transformation number, never as final-head line coordinates. The review footer contains step navigation and the high-level summary; default line-explanation markers are removed.
