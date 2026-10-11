@@ -1,1 +1,30 @@
-{"name":"codesurf","version":"0.1.0","private":true,"type":"module","scripts":{"dev":"node --env-file-if-exists=.env.local server.js","start":"node --env-file-if-exists=.env.local server.js","test":"node --test"},"dependencies":{"diff":"^9.0.0","express":"^5.1.0","openai":"^6.0.0","tar-stream":"^3.2.2"}}
+{
+  "name": "codesurf",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --env-file-if-exists=.env.local server.js",
+    "start": "node --env-file-if-exists=.env.local server.js",
+    "test": "node --test",
+    "build": "esbuild browser/review-editor.js --bundle --format=esm --minify --outfile=public/vendor/review-editor.js"
+  },
+  "dependencies": {
+    "@codemirror/lang-css": "^6.3.1",
+    "@codemirror/lang-html": "^6.4.12",
+    "@codemirror/lang-javascript": "^6.2.5",
+    "@codemirror/lang-json": "^6.0.2",
+    "@codemirror/lang-python": "^6.2.1",
+    "@codemirror/lang-sql": "^6.10.0",
+    "@codemirror/merge": "^6.12.2",
+    "codemirror": "^6.0.2",
+    "diff": "^9.0.0",
+    "express": "^5.1.0",
+    "lucide": "^1.55.0",
+    "openai": "^6.0.0",
+    "tar-stream": "^3.2.2"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  }
+}

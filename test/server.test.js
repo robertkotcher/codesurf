@@ -87,3 +87,9 @@ test('repository folders load lazily at the pinned head using the user token',as
     query.set('head','c'.repeat(40));assert.equal((await request(origin+'/api/tree?'+query,{headers:auth})).status,409);
   }finally{global.fetch=request}
 });
+
+test('review analysis reconstructs from the PR merge-base rather than the moving base branch',async()=>{
+  const head='a'.repeat(40),base='b'.repeat(40),merge='c'.repeat(40),calls=[];process.env.APP_ALTERNATE_URLS=origin;
+  global.fetch=async(url,options)=>{calls.push(url);if(url.includes('/pulls/4/files'))return Response.json([{filename:'src/a.ts',status:'modified',additions:1,deletions:1}]);if(url.includes('/pulls/4'))return Response.json({changed_files:1,head:{sha:head,repo:{full_name:'fork/project'}},base:{sha:base,repo:{full_name:'acme/project'}}});if(url.includes('/compare/'))return Response.json({merge_base_commit:{sha:merge}});if(url.includes('/contents/'))return Response.json({type:'file',encoding:'base64',size:4,content:Buffer.from(url.includes(merge)?'old\n':'new\n').toString('base64')});throw new Error('Unexpected URL')};
+  try{const response=await request(origin+'/api/analyze',{method:'POST',headers:{...auth,Origin:origin,'Content-Type':'application/json'},body:JSON.stringify({url:'https://github.com/acme/project/pull/4',head})});assert.equal(response.status,200);const plan=await response.json();assert.equal(plan.base,merge);assert.equal(plan.verified,true);assert.equal(plan.files[0].before,'old\n');assert.equal(plan.files[0].after,'new\n');assert(calls.some(url=>url.includes('/repos/acme/project/contents/src/a.ts?ref='+merge)))}finally{global.fetch=request;process.env.APP_ALTERNATE_URLS=''}
+});

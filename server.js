@@ -1,6 +1,5 @@
-import {changeChunks} from './public/walkthrough.js';
-import {createPatch} from 'diff';
-import {analyzeChanges} from './walkthrough.js';
+import {demoFiles} from './demo-plan.js';
+import {transformationPlan} from './transformations.js';
 import express from 'express';
 import crypto from 'node:crypto';
 import path from 'node:path';
@@ -25,27 +24,30 @@ app.get('/auth/github',wrap(async(req,res)=>{if(!env.GITHUB_CLIENT_ID||!env.GITH
 app.get('/auth/github/callback',wrap(async(req,res)=>{const saved=unseal(cookies(req).codesurf_oauth,env.SESSION_SECRET);res.clearCookie('codesurf_oauth',opts);if(!saved||saved.origin!==base(req)||typeof req.query.state!=='string'||saved.state!==req.query.state||typeof req.query.code!=='string')return res.status(400).send('Sign-in expired or could not be verified. Return to CodeSurf and sign in again.');const r=await fetch('https://github.com/login/oauth/access_token',{method:'POST',headers:{Accept:'application/json','Content-Type':'application/json'},body:JSON.stringify({client_id:env.GITHUB_CLIENT_ID,client_secret:env.GITHUB_CLIENT_SECRET,code:req.query.code,redirect_uri:base(req)+'/auth/github/callback',code_verifier:saved.verifier})});const t=await r.json();if(!t.access_token)throw new Error('GitHub did not authorize sign-in. Try again.');const user=await github(t.access_token,'/user');const allow=(env.ALLOWED_GITHUB_USERS||'').split(',').map(x=>x.trim()).filter(Boolean);if(allow.length&&!allow.includes(user.login))return res.status(403).send('CodeSurf is currently in a private beta.');setSession(res,{token:t.access_token,refresh:t.refresh_token,tokenExp:Date.now()+(t.expires_in||28800)*1000,exp:Date.now()+7*864e5,user:{login:user.login,name:user.name,avatar:user.avatar_url}});res.redirect('/')}));
 app.post('/auth/logout',(req,res)=>{if(req.headers.origin!==base(req))return res.sendStatus(403);res.clearCookie('codesurf_session',opts);res.json({ok:true})});
 async function github(token,url){const r=await fetch('https://api.github.com'+url,{headers:{Authorization:`Bearer ${token}`,Accept:'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'},signal:AbortSignal.timeout(20000)});if(!r.ok){const e=new Error(r.status===401?'GitHub session expired. Sign in again.':r.status===404?'PR or file unavailable. Check the app’s repository access.':r.status===403?'GitHub access denied or API limit reached.':'GitHub request failed ('+r.status+')');e.status=r.status===401?401:r.status===404?404:502;throw e}return r.json()}
+app.get('/api/demo-plan',wrap(async(req,res)=>{
+  if(process.env.VERCEL||process.env.NODE_ENV==='production'||!['localhost','127.0.0.1'].includes(req.hostname))return res.sendStatus(404);
+  const plan=await transformationPlan(demoFiles,{base:'c91b802000000000000000000000000000000000',head:'a81fc9e000000000000000000000000000000000',explain:false});
+  for(const step of plan.steps){const op=plan.operations.find(o=>step.ids.includes(o.id));step.title=op.path.includes('retry-policy')?'Define exponential retry delays':op.path.includes('types')?'Track the delivery attempt':op.path.includes('test')?'Test retry behavior':op.insert.includes('import')?'Connect delivery to attempt tracking':'Retry failed deliveries';step.summary=op.path.includes('retry-policy')?'Add a five-attempt limit and calculate a delay that doubles after each failure.':op.path.includes('types')?'Add the attempt number to the webhook event.':op.path.includes('test')?'Check that a failed request queues another delivery.':op.insert.includes('import')?'Import the attempt recorder before adding retry behavior.':'Record the result, stop at the attempt limit, and queue retries with exponential delay.'}
+  res.json(plan);
+}));
 app.use('/api',wrap(async(req,res,next)=>{if(req.path==='/status')return next();let s=session(req);if(!s)return res.status(401).json({error:'Sign in with GitHub'});if(req.method==='POST'&&req.headers.origin!==base(req))return res.sendStatus(403);if(s.tokenExp<Date.now()+60000&&s.refresh){const r=await fetch('https://github.com/login/oauth/access_token',{method:'POST',headers:{Accept:'application/json','Content-Type':'application/json'},body:JSON.stringify({client_id:env.GITHUB_CLIENT_ID,client_secret:env.GITHUB_CLIENT_SECRET,grant_type:'refresh_token',refresh_token:s.refresh})});const t=await r.json();if(!t.access_token)return res.status(401).json({error:'GitHub session expired. Sign in again.'});s={...s,token:t.access_token,refresh:t.refresh_token,tokenExp:Date.now()+t.expires_in*1000};setSession(res,s)}req.auth=s;next()}));
 app.get('/api/me',wrap(async(req,res)=>{const s=session(req);if(!s)return res.status(401).json({error:'Sign in with GitHub'});await github(s.token,'/user');res.json(s.user)}));
 app.get('/api/prs',wrap(async(req,res)=>{const relation=req.query.relation==='assigned'?'assignee':'review-requested';const q=encodeURIComponent(`is:pr is:open ${relation}:${req.auth.user.login}`);const result=await github(req.auth.token,`/search/issues?q=${q}&sort=updated&per_page=50`);res.json({items:result.items.map(x=>({title:x.title,url:x.html_url,number:x.number,repo:x.repository_url.split('/').slice(-2).join('/')})),total:result.total_count})}));
 async function pull(token,url,expectedHead){const p=parsePR(url),prefix=`/repos/${p.owner}/${p.repo}`;const pr=await github(token,`${prefix}/pulls/${p.number}`);if(expectedHead&&pr.head.sha!==expectedHead){const e=new Error('This PR has new commits. Reopen it before asking about the updated code.');e.status=409;throw e}return {...p,prefix,pr}}
 async function changedFiles(token,p){let files=[];for(let page=1;page<=30;page++){const batch=await github(token,`${p.prefix}/pulls/${p.number}/files?per_page=100&page=${page}`);files.push(...batch);if(batch.length<100)break}return files}
-async function content(token,p,filename,side='head'){cleanPath(filename);const branch=side==='base'?p.pr.base:p.pr.head;const repo=branch.repo?.full_name;if(!repo)throw new Error('The source repository is no longer accessible.');const f=await github(token,`/repos/${repo}/contents/${encodePath(filename)}?ref=${branch.sha}`);if(f.type!=='file'||f.encoding!=='base64'||f.size>500000)throw new Error('File is binary, too large, or unavailable.');const text=Buffer.from(f.content,'base64').toString('utf8');if(text.includes('\0'))throw new Error('Binary files cannot be shown in the code editor.');return {path:filename,text,sha:branch.sha}}
+async function content(token,p,filename,side='head'){cleanPath(filename);const branch=side==='base'?p.pr.base:p.pr.head;const repo=branch.repo?.full_name;if(!repo)throw new Error('The source repository is no longer accessible.');const f=await github(token,`/repos/${repo}/contents/${encodePath(filename)}?ref=${branch.sha}`);if(f.type!=='file'||f.encoding!=='base64'||f.size>500000)throw new Error('File is binary, too large, or unavailable.');const raw=Buffer.from(f.content,'base64'),text=raw.toString('utf8');if(!Buffer.from(text,'utf8').equals(raw))throw new Error('Non-UTF-8 source cannot be reconstructed as text.');if(text.includes('\0'))throw new Error('Binary files cannot be shown in the code editor.');return {path:filename,text,sha:branch.sha}}
 app.get('/api/pr',wrap(async(req,res)=>{const p=await pull(req.auth.token,req.query.url);const files=await changedFiles(req.auth.token,p);res.json({url:p.pr.html_url,title:p.pr.title,number:p.number,repo:`${p.owner}/${p.repo}`,head:p.pr.head.sha,base:p.pr.base.sha,author:p.pr.user.login,body:p.pr.body||'',changedFiles:p.pr.changed_files,limited:p.pr.changed_files>files.length,files:files.map(f=>({path:f.filename,previousPath:f.previous_filename,status:f.status,additions:f.additions,deletions:f.deletions,patch:f.patch||null}))})}));
 app.post('/api/analyze',wrap(async(req,res)=>{
   const p=await pull(req.auth.token,req.body.url,req.body.head),raw=await changedFiles(req.auth.token,p);
-  const files=[];
-  for(const f of raw){
-    let patch=f.patch;
-    if((!patch||patch.split('\n').filter(l=>l.startsWith('+')).length!==f.additions||patch.split('\n').filter(l=>l.startsWith('-')).length!==f.deletions)&&(f.additions||f.deletions)){patch=null;
-      try{const before=f.status==='added'?'':(await content(req.auth.token,p,f.previous_filename||f.filename,'base')).text;
-        const after=f.status==='removed'?'':(await content(req.auth.token,p,f.filename,'head')).text;
-        patch=createPatch(f.filename,before,after,'base','head',{context:3});const recovered=changeChunks([{path:f.filename,patch}]);if(recovered.reduce((n,c)=>n+c.added,0)!==f.additions||recovered.reduce((n,c)=>n+c.removed,0)!==f.deletions)patch=null;
-      }catch{}
-    }
-    files.push({path:f.filename,status:f.status,patch:patch||null,additions:f.additions,deletions:f.deletions});
-  }
-  res.json({...await analyzeChanges(files),head:p.pr.head.sha,files,limited:p.pr.changed_files>files.length});
+  const comparison=await github(req.auth.token,`${p.prefix}/compare/${p.pr.base.sha}...${p.pr.head.sha}`);
+  const mergeBase=comparison.merge_base_commit?.sha;if(!mergeBase)throw new Error('Cannot determine the PR merge-base.');
+  const source={...p,pr:{...p.pr,base:{...p.pr.base,sha:mergeBase}}},files=[];let bytes=0;
+  for(let i=0;i<raw.length;i+=4){if(bytes>1200000){files.push(...raw.slice(i).map(f=>({path:f.filename,status:f.status,unavailable:true,reason:'Review snapshot exceeds the current response size limit. Inspect this file on GitHub.'})));break}const batch=await Promise.all(raw.slice(i,i+4).map(async f=>{
+    const meta={path:f.filename,previousPath:f.previous_filename||f.filename,status:f.status};
+    try{const [before,after]=await Promise.all([f.status==='added'?'':content(req.auth.token,source,meta.previousPath,'base').then(x=>x.text),f.status==='removed'?'':content(req.auth.token,source,f.filename,'head').then(x=>x.text)]);return {...meta,before,after}}
+    catch(error){return {...meta,unavailable:true,reason:error.message}}
+  }));for(const file of batch){bytes+=Buffer.byteLength(JSON.stringify(file));files.push(bytes>1200000?{path:file.path,status:file.status,unavailable:true,reason:'Review snapshot exceeds the current response size limit. Inspect this file on GitHub.'}:file)}}
+  res.json(await transformationPlan(files,{limited:p.pr.changed_files>raw.length,base:mergeBase,head:p.pr.head.sha}));
 }));
 app.get('/api/tree',wrap(async(req,res)=>{
   const p=await pull(req.auth.token,req.query.url,req.query.head);
