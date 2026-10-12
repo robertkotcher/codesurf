@@ -276,7 +276,7 @@ async function toggleReviewVoice(){
   },
   onState:state=>{if(state==='ended'){voiceStarting=false;if(chat){for(const turn of chat.turns)turn.streaming=false;if(activeChat===chat)renderTurns()}resetVoiceUI();return}const label={connecting:'Connecting…',listening:'Listening…',thinking:'Thinking…',speaking:'Speaking…'}[state]||state;$('voiceStatus').textContent=label;$('reviewVoiceStatus').textContent=label;$('voiceListening').dataset.state=state;$('voicePanel').dataset.state=state},
   onLevel:level=>{for(const id of ['voiceListening','reviewVoiceWave'])$(id).style.setProperty('--voice-level',String(level))},
-  onReady:()=>{voiceStarting=false;chat=newChat(context,false);chat.title='Voice review';voiceChat=chat;renderChatTabs();voiceConversation.updateContext(localVoiceContext());voiceConversation.speak('Say exactly: How can I help? Then wait. Do not explain the review or call tools.');},
+  onReady:()=>{voiceStarting=false;chat=newChat(context,false);chat.title='Voice review';voiceChat=chat;renderChatTabs();voiceConversation.updateContext(localVoiceContext());voiceConversation.speak('Say only the question "How can I help?" Do not say any other words. Wait silently for the user. Do not explain the review or call tools.');},
   onTranscript:message=>{
    if(!chat||!message.text)return;$('voiceTranscript').textContent=message.text;
    let turn=messages.get(message.id);
