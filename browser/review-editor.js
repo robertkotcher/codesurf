@@ -28,8 +28,8 @@ export function mountEditor(parent,{before='',after='',path='',onSelect=()=>{},d
       const ask=document.createElement('button');ask.type='button';ask.className='ai-code-note-ask';ask.setAttribute('aria-label','Ask about this change: '+this.text);
       const label=document.createElement('span');label.className='ai-code-note-label';label.textContent=this.label;const text=document.createElement('span');text.className='ai-code-note-text';text.textContent=this.text;ask.append(label,text);
       box.onclick=event=>{const bounds=box.getBoundingClientRect();onExplain({start:this.start,end:this.end,text:view.state.doc.sliceString(view.state.doc.line(this.start).from,view.state.doc.line(this.end).to),explanation:this.text,x:event.clientX||bounds.left,y:event.clientY||bounds.bottom})};
-      const speaker=document.createElement('button');speaker.type='button';speaker.className='ai-note-speak';speaker.innerHTML=icon('speaker');speaker.setAttribute('aria-label','Read note aloud');speaker.setAttribute('aria-pressed','false');speaker.title='Read note aloud';
-      speaker.disabled=!('speechSynthesis' in window&&'SpeechSynthesisUtterance' in window);if(speaker.disabled)speaker.title='Read aloud is unavailable in this browser';
+      const speaker=document.createElement('button');speaker.type='button';speaker.className='ai-note-speak';speaker.innerHTML=icon('speaker');speaker.setAttribute('aria-label','Read note aloud · AI-generated voice');speaker.setAttribute('aria-pressed','false');speaker.title='Read note aloud · AI-generated voice';
+      speaker.disabled=typeof Audio==='undefined';if(speaker.disabled)speaker.title='Read aloud is unavailable in this browser';
       speaker.onclick=event=>{event.stopPropagation();readNote(this.text,speaker)};box.append(ask,speaker);block.append(box);return block;
     }
     ignoreEvent(){return true}

@@ -130,7 +130,7 @@ $('settings').onkeydown=event=>{
 };
 $('refreshRepositories').onclick=async()=>{await loadRepositories();if(!demo&&!$('prHome').hidden)await showHome()};
 function showAccount(account){
-  $('identity').textContent='@'+account.login;$('accountSignIn').hidden=true;
+  document.body.dataset.account=account.login;$('identity').textContent='@'+account.login;$('accountSignIn').hidden=true;
   for(const id of ['inboxButton','logout'])$(id).hidden=false;
   const avatar=$('accountAvatar');
   try{const url=new URL(account.avatar);if(url.protocol==='https:'&&url.hostname==='avatars.githubusercontent.com'){avatar.src=url.href;avatar.hidden=false;$('avatarFallback').hidden=true}}catch{}
@@ -472,3 +472,5 @@ async function renderWalkthrough(){
 $('startReview').onclick=()=>reviewAdvance(1);
 newChat(null,false);setConversationCollapsed(true);
 init();
+
+document.addEventListener('note-audio-error',event=>toast(event.detail));

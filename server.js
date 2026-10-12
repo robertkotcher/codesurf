@@ -141,6 +141,18 @@ app.post('/api/review',wrap(async(req,res)=>{
   if(!result.ok){const code=result.status;return res.status(code===403?403:code===422?422:502).json({error:code===403?'Posting requires Pull requests: read and write permission. Update the CodeSurf installation on GitHub, then sign in again.':code===422?'GitHub could not accept this review. Check the selected diff lines and review action (authors cannot approve their own PR).':'GitHub could not confirm this review. Check the PR before retrying to avoid duplicates.'})}
   const review=await result.json();res.json({url:review.html_url,id:review.id});
 }));
+const speechRequests=new Map();
+app.post('/api/note-audio',wrap(async(req,res)=>{
+ const text=typeof req.body.text==='string'?req.body.text.trim():'';
+ if(!text||text.length>4000)return res.status(400).json({error:'Choose a note under 4,000 characters to read aloud.'});
+ if(!env.OPENAI_API_KEY)return res.status(503).json({error:'Audio is not configured yet.'});
+ const now=Date.now(),owner=req.auth.user.login,recent=(speechRequests.get(owner)||[]).filter(t=>t>now-60000);
+ if(recent.length>=20)return res.status(429).json({error:'Please wait a minute before generating more recordings.'});
+ speechRequests.set(owner,[...recent,now]);if(speechRequests.size>10000)for(const [key,times]of speechRequests)if(times.at(-1)<now-60000)speechRequests.delete(key);
+ const client=new OpenAI({apiKey:env.OPENAI_API_KEY,maxRetries:0,timeout:30000});
+ const audio=await client.audio.speech.create({model:'gpt-4o-mini-tts',voice:'marin',input:text,response_format:'mp3',instructions:'Read this code-review explanation in a warm, clear, natural conversational voice. Use a calm, helpful tone and a comfortable pace, with brief pauses between sentences. Read the text as written; do not add commentary.'});
+ res.set('Cache-Control','private, no-store').type('audio/mpeg').send(Buffer.from(await audio.arrayBuffer()));
+}));
 app.post('/api/ask',wrap(async(req,res)=>{
   if(!env.OPENAI_API_KEY)return res.status(503).json({error:'The server OpenAI key has not been configured yet.'});
   const {url,question,selection,history=[]}=req.body;

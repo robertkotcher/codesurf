@@ -155,3 +155,17 @@ test('assigned PR inbox filters recent updates, paginates older PRs, and ignores
   calls.length=0;assert.equal((await request(origin+'/api/prs?relation=assigned&since=invalid',{headers:auth})).status,400);assert.equal(calls.length,0);
  }finally{global.fetch=request}
 });
+
+test('note audio authenticates, validates input, and returns OpenAI MP3 audio',async()=>{
+ const headers={...auth,Origin:process.env.APP_URL,'Content-Type':'application/json'};
+ const post=(body,h=headers)=>request(origin+'/api/note-audio',{method:'POST',headers:h,body:JSON.stringify(body)});
+ assert.equal((await post({text:'Hello'},{'Content-Type':'application/json'})).status,401);
+ assert.equal((await post({text:'Hello'},{...headers,Origin:'https://evil.example'})).status,403);
+ for(const text of ['', 'x'.repeat(4001),42])assert.equal((await post({text})).status,400);
+ const previousKey=process.env.OPENAI_API_KEY;process.env.OPENAI_API_KEY='test-speech-key';let payload;
+ global.fetch=async(url,options)=>{assert.equal(String(url),'https://api.openai.com/v1/audio/speech');payload=JSON.parse(options.body);return new Response('ID3test-audio',{headers:{'Content-Type':'audio/mpeg'}})};
+ try{
+  const response=await post({text:'This adds a refund check.'});assert.equal(response.status,200);assert.match(response.headers.get('content-type'),/audio\/mpeg/);assert.equal(response.headers.get('cache-control'),'private, no-store');assert.equal(await response.text(),'ID3test-audio');
+  assert.equal(payload.model,'gpt-4o-mini-tts');assert.equal(payload.voice,'marin');assert.equal(payload.input,'This adds a refund check.');assert.equal(payload.response_format,'mp3');
+ }finally{global.fetch=request;if(previousKey===undefined)delete process.env.OPENAI_API_KEY;else process.env.OPENAI_API_KEY=previousKey}
+});
