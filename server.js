@@ -1,4 +1,4 @@
-import {findReview,createReview,getReview,publicReview,nextStep,advanceReview} from './review-sessions.js';
+import {findReview,createReview,getReview,publicReview,nextStep,advanceReview,reviewPace,setReviewPace,stepBudget} from './review-sessions.js';
 import {buildCallIndex,indexedCalls} from './browser/source-index.js';
 import {functionData} from './public/data-shapes.js';
 import {demoFiles} from './demo-plan.js';
@@ -34,6 +34,11 @@ app.get('/api/demo-plan',wrap(async(req,res)=>{
   for(const step of plan.steps){const op=plan.operations.find(o=>step.ids.includes(o.id));const code=op.insert;
     const description=op.path.includes('test')?['Check retry behavior','Assert that a failed delivery schedules another attempt.']:code.includes('import { recordAttempt')?['Connect attempt tracking','Import the recorder used to save delivery outcomes.']:code.includes('recordAttempt(event.id')?['Record the result and check the limit','Save the response status, then increment the attempt counter. Once the limit is reached, enter the failure branch.']:code.includes('queue.enqueue')?['Stop or schedule another attempt','At the limit, mark the delivery as failed and return. Otherwise queue another attempt after the calculated delay.']:op.path.includes('retry-policy')?['Define retry delays','Limit retries to five attempts. Calculate a delay that doubles with each attempt.']:op.path.includes('types')?['Track the attempt number','Store the attempt number on the webhook event.']:['Check retry behavior','Assert that a failed delivery schedules another attempt.'];
     [step.title,step.summary]=description;for(const note of step.notes)note.text=step.summary;
+  }
+  const pace=reviewPace(req.query.pace);if(pace!=='guided'){
+    const original=plan.steps;plan.pace=pace;plan.steps=[];const budget=stepBudget(plan);let batch=[];
+    const flush=()=>{if(!batch.length)return;plan.steps.push({ids:batch.flatMap(step=>step.ids),title:batch.map(step=>step.title).join(' · ').slice(0,100),summary:[...new Set(batch.map(step=>step.summary))].join(' ').slice(0,600),notes:[]});batch=[]};
+    for(const step of original){batch.push(step);if(batch.flatMap(s=>s.ids).length>=budget.target)flush()}flush();
   }
   res.json(plan);
 }));
@@ -84,10 +89,10 @@ async function snapshot(req,p){
 }
 app.post('/api/analyze',wrap(async(req,res)=>{const p=await pull(req.auth.token,req.body.url,req.body.head);res.json(await snapshot(req,p))}));
 app.post('/api/reviews',wrap(async(req,res)=>{
- const p=await pull(req.auth.token,req.body.url,req.body.head);
+ const pace=reviewPace(req.body.pace);const p=await pull(req.auth.token,req.body.url,req.body.head);
  const owner=req.auth.user.login;let row=await findReview(owner,p.pr.html_url,p.pr.head.sha);
  if(!row)row=await createReview(owner,p.pr.html_url,p.pr.head.sha,await snapshot(req,p));
- res.json(publicReview(row));
+ row=await setReviewPace(row,pace);res.json(publicReview(row));
 }));
 app.post('/api/reviews/:id/next',wrap(async(req,res)=>{const row=await getReview(req.auth.user.login,req.params.id);await pull(req.auth.token,row.pr_url,row.head);res.json(await nextStep(row,req.body.index))}));
 app.post('/api/reviews/:id/progress',wrap(async(req,res)=>{const row=await getReview(req.auth.user.login,req.params.id);await pull(req.auth.token,row.pr_url,row.head);res.json(await advanceReview(row,req.body.cursor))}));
