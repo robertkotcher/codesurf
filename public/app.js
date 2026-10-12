@@ -458,7 +458,7 @@ async function renderWalkthrough(){
     for(const path of tabs){
       const source=plan.files.find(f=>f.path===path),entry=manifest.find(f=>f.key===path),inStep=stepPaths.includes(path);
       const column=document.createElement('section');column.className='review-file-column';column.dataset.reviewPath=path;
-      column.innerHTML=`<div class="review-tabs review-file-heading" title="${esc(entry?.path||path)}">${fileIcon(path)}<span>${esc(entry?.path||path)}</span>${entry?.exists===false?'<small>Deleted</small>':''}</div><div class="review-file-mount"></div>`;host.append(column);const pane=column.lastElementChild;
+      column.innerHTML=`<div class="review-tabs review-file-heading" title="${esc(entry?.path||path)}"><div class="review-file-tab">${fileIcon(path)}<span>${esc(entry?.path||path)}</span>${entry?.exists===false?'<small>Deleted</small>':''}</div></div><div class="review-file-mount"></div>`;host.append(column);const pane=column.lastElementChild;
       const mount=text=>reviewViews.push(mountEditor(pane,{before:previous[path]||'',after:text,path,diff:reviewCount>0&&inStep,blockExplanations:reviewBlocks(plan,reviewCount,path),onExplain:note=>{selectReviewLines(note,path);$('popcontext').textContent='Change note · '+path;$('inlineQuestion').value='Explain this change in more detail. Note: '+note.explanation},onSelect:s=>selectReviewLines(s,path)}));
       if(source?.unavailable)pane.innerHTML=`<p class="walk-warning">${esc(source.reason||'Source unavailable.')}</p>`;
       else if(source&&entry?.exists===false&&!inStep)pane.innerHTML='<div class="editor-loading">This file does not exist at this step.</div>';
