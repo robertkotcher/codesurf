@@ -1,5 +1,5 @@
 import {findReview,createReview,getReview,publicReview,nextStep,advanceReview,reviewPace,setReviewPace,stepBudget,ensureStepBlocks} from './review-sessions.js';
-import {buildCallIndex,indexedCalls} from './browser/source-index.js';
+import {buildCallIndex,indexedCalls,initCallParsers} from './browser/source-index.js';
 import {functionData} from './public/data-shapes.js';
 import {demoFiles} from './demo-plan.js';
 import {transformationPlan} from './transformations.js';
@@ -17,7 +17,7 @@ const app=express(),root=path.dirname(fileURLToPath(import.meta.url));
 const env=process.env;
 const base=req=>{const primary=env.APP_URL||'http://localhost:5179';const allowed=[primary,...(env.APP_ALTERNATE_URLS||'').split(',').filter(Boolean)];return allowed.find(url=>new URL(url).host===req?.get('host'))||primary};
 app.disable('x-powered-by');app.set('trust proxy',1);app.use(express.json({limit:'200kb'}));
-app.use((req,res,next)=>{res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','no-referrer');res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https://avatars.githubusercontent.com data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://github.com");if(req.path.startsWith('/api/')||req.path.startsWith('/auth/'))res.setHeader('Cache-Control','no-store');next()});
+app.use((req,res,next)=>{res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','no-referrer');res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' https://avatars.githubusercontent.com data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://github.com");if(req.path.startsWith('/api/')||req.path.startsWith('/auth/'))res.setHeader('Cache-Control','no-store');next()});
 const cookies=req=>Object.fromEntries((req.headers.cookie||'').split(';').map(s=>s.trim().split('=')).filter(x=>x.length===2));
 const opts={httpOnly:true,secure:base().startsWith('https:'),sameSite:'lax',path:'/'};
 const session=req=>unseal(cookies(req).codesurf_session,env.SESSION_SECRET);
@@ -120,18 +120,21 @@ app.get('/api/function-data',wrap(async(req,res)=>{
  res.json({...functionData(index.files,req.query),head:p.pr.head.sha});
 }));
 app.get('/api/call-index',wrap(async(req,res)=>{
+ if(!req.query.symbol&&!(req.query.path&&Number.isInteger(Number(req.query.line))))return res.status(400).json({error:'Choose a method or call site to explore.'});
  const p=await pull(req.auth.token,req.query.url,req.query.head);let snapshot=p.pr.head;
  if(req.query.snapshot==='base'){
  const comparison=await github(req.auth.token,`${p.prefix}/compare/${p.pr.base.sha}...${p.pr.head.sha}`);
  const sha=comparison.merge_base_commit?.sha;if(!sha)throw new Error('Cannot determine the PR merge-base.');snapshot={...p.pr.base,sha};
  }
- const index=await repositoryIndex(req.auth.token,{...p.pr,head:snapshot}),graph=buildCallIndex(index.files);
- res.json({head:p.pr.head.sha,sha:snapshot.sha,languages:graph.languages,blocks:graph.blocks.map(({text,from,to,...block})=>block),calls:graph.calls,imports:graph.imports,edges:graph.edges});
+ const index=await repositoryIndex(req.auth.token,{...p.pr,head:snapshot}),graph=(await initCallParsers(),buildCallIndex(index.files));
+ const names=new Set([req.query.symbol]);for(const [,bindings]of graph.imports)for(const match of bindings)for(const binding of match[1].split(',')){const [original,alias=original]=binding.trim().split(/\s+as\s+/);if(original===req.query.symbol)names.add(alias)}
+ const calls=graph.calls.filter(c=>req.query.direction==='callees'?c.path===req.query.path&&c.line===Number(req.query.line):names.has(c.symbol));
+ res.json({head:p.pr.head.sha,sha:snapshot.sha,languages:graph.languages,blocks:graph.blocks.map(({text,from,to,...block})=>block),calls:calls.map(({expression,...call})=>call),imports:graph.imports});
 }));
 app.get('/api/calls',wrap(async(req,res)=>{
  const p=await pull(req.auth.token,req.query.url,req.query.head);
  const index=await repositoryIndex(req.auth.token,p.pr);
- const graph=buildCallIndex(index.files);const result=indexedCalls(graph,req.query);res.json({...result,blocks:result.blocks.map(b=>({...b,text:b.text??index.files.get(b.path).split('\n').slice(b.start-1,b.end).join('\n')})),head:p.pr.head.sha});
+ const graph=(await initCallParsers(),buildCallIndex(index.files));const result=indexedCalls(graph,req.query);res.json({...result,blocks:result.blocks.map(b=>({...b,text:b.text??index.files.get(b.path).split('\n').slice(b.start-1,b.end).join('\n')})),head:p.pr.head.sha});
 }));
 app.post('/api/review',wrap(async(req,res)=>{
   if(!req.body.head)return res.status(400).json({error:'A PR commit is required.'});

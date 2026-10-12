@@ -7,7 +7,7 @@
     "dev": "node --env-file-if-exists=.env.local server.js",
     "start": "node --env-file-if-exists=.env.local server.js",
     "test": "node --test",
-    "build": "esbuild browser/review-editor.js --bundle --format=esm --minify --outfile=public/vendor/review-editor.js && esbuild browser/source-index.js --bundle --format=esm --minify --outfile=public/source-index.js",
+    "build": "esbuild browser/review-editor.js --bundle --format=esm --minify --outfile=public/vendor/review-editor.js && esbuild browser/source-index.js --external:web-tree-sitter --external:node:* --bundle --format=esm --minify --outfile=public/source-index.js && node scripts/copy-parsers.js",
     "db:migrate": "node --env-file-if-exists=.env.local scripts/migrate.js"
   },
   "dependencies": {
@@ -26,7 +26,9 @@
     "lucide": "^1.55.0",
     "openai": "^6.0.0",
     "pg": "^8.23.1",
-    "tar-stream": "^3.2.2"
+    "tar-stream": "^3.2.2",
+    "tree-sitter-wasms": "^0.1.13",
+    "web-tree-sitter": "^0.24.7"
   },
   "devDependencies": {
     "esbuild": "^0.28.2"

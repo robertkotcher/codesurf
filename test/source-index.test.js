@@ -1,4 +1,4 @@
-import test from 'node:test';import assert from 'node:assert/strict';import {buildCallIndex,indexedCalls} from '../browser/source-index.js';
+import test from 'node:test';import assert from 'node:assert/strict';import {buildCallIndex,indexedCalls,overlayCallIndex as overlayCallIndexForTest} from '../browser/source-index.js';
 test('typed entropy selection returns the exact function, not surrounding imports after line shifts',()=>{
  const files=new Map([['route.ts','import x from "x";\n\nfunction entropy(str: string): number {\n if (!str) return 0;\n return str.length;\n}\nfunction first() {\n return entropy("a");\n}\nfunction second() {\n return entropy("b");\n}']]);
  const index=buildCallIndex(files);assert.equal(buildCallIndex(files),index);
@@ -22,4 +22,26 @@ test('step graphs retain deleted entropy callers until their deletion and re-res
  const step0=overlayCallIndex(JSON.parse(JSON.stringify(base)),new Map([[path,before]]));assert.deepEqual(indexedCalls(step0,{path,line:1,direction:'callers'}).blocks.map(b=>b.symbol).sort(),['external','isValid']);assert.equal(indexedCalls(step0,{path,line:4,direction:'callers'}).blocks[0].symbol,'POST');
  const shifted='// added line\n'+before;const step1=overlayCallIndex(base,new Map([[path,shifted]]));assert.equal(indexedCalls(step1,{path,line:2,direction:'callers'}).total,2);assert.equal(indexedCalls(step1,{path:'unchanged.ts',line:2,direction:'callees'}).blocks[0].start,2);
  const final=overlayCallIndex(base,new Map([[path,'function POST() { return true; }']]));assert.equal(indexedCalls(final,{path,line:1,symbol:'entropy',direction:'callers'}).total,0);
+});
+
+test('Ruby syntax parses predicate methods, singleton methods, nested blocks and calls without parentheses',async()=>{
+ const {initCallParsers}=await import('../browser/source-index.js');await initCallParsers();
+ const source='class Deposit\n def disputed?\n  items.any? do |item|\n   item.active?\n  end\n end\n def check(deposit)\n  deposit.disputed?\n end\n def self.status\n  disputed?\n end\nend';
+ const index=buildCallIndex(new Map([['deposit.rb',source],['other.rb','def screen\n Deposit.status\nend\n# deposit.disputed?\ntext = "deposit.disputed?"\n']]));
+ const root=indexedCalls(index,{path:'deposit.rb',line:2}).blocks[0];assert.equal(root.symbol,'disputed?');assert.equal(root.end,6);assert.equal(root.precision,'syntax');
+ assert.deepEqual(indexedCalls(index,{path:'deposit.rb',line:2,direction:'callers'}).blocks.map(b=>b.symbol),['check','status']);
+ assert.equal(indexedCalls(index,{path:'deposit.rb',line:10,direction:'callers'}).blocks[0].symbol,'screen');
+ assert.equal(indexedCalls(index,{path:'deposit.rb',line:8,direction:'callees'}).blocks[0].symbol,'disputed?');
+});
+test('Ruby local variables do not become callers of same-named methods',async()=>{
+ const {initCallParsers}=await import('../browser/source-index.js');await initCallParsers();
+ const index=buildCallIndex(new Map([['a.rb','def total\n 1\nend\ndef local(total)\n total + 1\nend\ndef assigned\n total = 2\n puts total\nend\ndef caller\n total\nend']]));
+ assert.deepEqual(indexedCalls(index,{path:'a.rb',line:1,direction:'callers'}).blocks.map(b=>b.symbol),['caller']);
+});
+
+test('lazy caller resolution works with a scoped server index and changed-file overlays',()=>{
+ const base=buildCallIndex(new Map([['a.ts','function child() {}\nfunction local() { child(); }'],['b.ts','function external() { child(); }']]));
+ const scoped={...base,calls:base.calls.filter(c=>c.symbol==='child')};
+ const current=overlayCallIndexForTest(scoped,new Map([['a.ts','function child() {}\nfunction renamed() { child(); }']]));
+ assert.deepEqual(indexedCalls(current,{path:'a.ts',line:1,direction:'callers'}).blocks.map(b=>b.symbol).sort(),['external','renamed']);
 });

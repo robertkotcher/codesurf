@@ -1,4 +1,4 @@
-import test from 'node:test';import assert from 'node:assert/strict';import {exploreCalls} from '../public/call-graph.js';
+import test from 'node:test';import assert from 'node:assert/strict';import {exploreCalls,lineAffordances} from '../public/call-graph.js';
 const files=new Map([['entry.js','function entry() {\n  child();\n}\nfunction another() {\n  child();\n}'],['child.js','function child() {\n  grandchild();\n}'],['grand.js','function grandchild() {\n return 1;\n}']]);
 test('call canvas finds enclosing block and expands callers and callees recursively',()=>{
  assert.equal(exploreCalls(files,{path:'child.js',line:2}).blocks[0].symbol,'child');
@@ -15,4 +15,8 @@ test('line affordances distinguish signatures, call sites, and plain code',async
  assert.deepEqual(lineAffordances('// child(input)'),{callers:false,callees:false});
  assert.deepEqual(lineAffordances('const note = "child()";'),{callers:false,callees:false});
  assert.deepEqual(lineAffordances('async def run(input):'),{callers:true,callees:false});
+});
+
+test('Ruby declarations without parentheses expose caller controls',()=>{
+ for(const line of ['def disputed?','  def amount','def self.status','def update!(value)'])assert.equal(lineAffordances(line).callers,true);
 });

@@ -1,9 +1,12 @@
+import {rubyIndex} from './ruby-parser.js';
+export {initCallParsers} from './ruby-parser.js';
 import {parser as javascript} from '@lezer/javascript';
 import {parser as python} from '@lezer/python';
 import {sourceBlocks} from '../public/call-graph.js';
 const warmed=new WeakMap(),js=javascript.configure({dialect:'ts jsx'});
 const functionKinds=new Set(['FunctionDeclaration','FunctionExpression','ArrowFunction','MethodDeclaration','FunctionDefinition','LambdaExpression']);
 function fileIndex(path,text){
+ if(/\.rb$/.test(path))return rubyIndex(path,text);
  const language=/\.[cm]?[jt]sx?$/.test(path)?'javascript':/\.py$/.test(path)?'python':null;
  const starts=[0];for(let i=0;i<text.length;i++)if(text[i]==='\n')starts.push(i+1);
  const lineAt=offset=>{let l=0,r=starts.length;while(l+1<r){const m=(l+r)>>1;if(starts[m]<=offset)l=m;else r=m}return l+1};
@@ -21,7 +24,7 @@ function fileIndex(path,text){
  }
  if(node.name==='CallExpression'){
  const callee=node.firstChild,expression=callee?text.slice(callee.from,callee.to):'',symbol=expression.match(/([\w$]+)\s*$/)?.[1];
- if(symbol)calls.push({path,line:lineAt(node.from),symbol,expression,callerStart:enclosing?.start??null,precision:'syntax'});
+ if(symbol)calls.push({path,line:lineAt(node.from),symbol,expression:expression.slice(0,200),callerStart:enclosing?.start??null,precision:'syntax'});
  }
  for(let child=node.firstChild;child;child=child.nextSibling)visit(child,enclosing);
  }
@@ -33,16 +36,20 @@ export function buildCallIndex(files){
  const imports=[...files].map(([path,source])=>[path,[...source.matchAll(/import\s*\{([^}]+)\}\s*from\s*['"]([^'"]+)['"]/g)].map(m=>[null,m[1],m[2]])]);
  const index=resolveIndex(blocks,calls,imports,languages);warmed.set(files,index);return index;
 }
-function resolveIndex(blocks,calls,imports,languages){
+function resolveIndex(blocks,calls,imports,languages){return {blocks,calls,imports,languages}}
+function resolveEdges(index,root,path,line,direction){
+ const {blocks,imports}=index;
+ const names=new Set([root?.symbol]);if(direction==='callers')for(const [,bindings]of imports)for(const match of bindings)for(const binding of match[1].split(',')){const [original,alias=original]=binding.trim().split(/\s+as\s+/);if(original===root.symbol)names.add(alias)}
+ const calls=index.calls.filter(c=>direction==='callers'?names.has(c.symbol):c.path===path&&c.line===line);
  const symbols=new Map();for(const b of blocks){const list=symbols.get(b.symbol)||[];list.push(b);symbols.set(b.symbol,list)}
  const edges=[],importsByPath=new Map(imports);
  for(const call of calls){let targets=symbols.get(call.symbol)||[];const same=targets.filter(b=>b.path===call.path);if(same.length)targets=same;
  // Resolve named relative imports before considering same-named definitions elsewhere.
  const imports=importsByPath.get(call.path)||[];
  for(const match of imports){for(const binding of match[1].split(',')){const [original,alias=original]=binding.trim().split(/\s+as\s+/);if(alias!==call.symbol||!match[2].startsWith('.'))continue;const segments=call.path.split('/').slice(0,-1);for(const part of match[2].split('/')){if(part==='..')segments.pop();else if(part!=='.')segments.push(part)}const imported=segments.join('/');targets=(symbols.get(original)||[]).filter(b=>b.path===imported||b.path.replace(/\.[cm]?[jt]sx?$/,'')===imported||b.path.replace(/\/index\.[cm]?[jt]sx?$/,'')===imported);}}
- for(const target of targets)edges.push({...call,targetPath:target.path,targetStart:target.start,ambiguous:targets.length>1});
+ for(const target of targets)if(direction!=='callers'||target.path===root.path&&target.start===root.start)edges.push({...call,targetPath:target.path,targetStart:target.start,ambiguous:!!call.ambiguous||targets.length>1});
  }
- return {blocks,calls,imports,edges,languages};
+ return edges;
 }
 // Replace changed file definitions/call sites, then resolve edges against the
 // complete base index so unchanged callers follow the displayed review state.
@@ -53,11 +60,12 @@ export function overlayCallIndex(base,overrides){
 export function indexedCalls(index,{path,line,direction='root',symbol}){
  line=Number(line);let root=index.blocks.filter(b=>b.path===path&&(symbol?b.symbol===symbol:b.start<=line&&b.end>=line)).sort((a,b)=>symbol?Math.abs(a.start-line)-Math.abs(b.start-line):(a.end-a.start)-(b.end-b.start))[0];
  if(direction==='root'){if(!root)throw new Error('No function found at this selection. Select a function declaration or body.');return {blocks:[root],total:1};}
- let results=[];
+ if(direction==='callers'&&!root)return {blocks:[],total:0};
+ const edges=resolveEdges(index,root,path,line,direction);let results=[];
  if(direction==='callers'){
  if(!root)return {blocks:[],total:0};
- for(const edge of index.edges.filter(e=>e.targetPath===root.path&&e.targetStart===root.start)){const caller=index.blocks.find(b=>b.path===edge.path&&b.start===edge.callerStart)||index.blocks.filter(b=>b.path===edge.path&&b.start<=edge.line&&b.end>=edge.line).sort((a,b)=>(a.end-a.start)-(b.end-b.start))[0];if(caller)results.push({...caller,callLine:edge.line,ambiguous:edge.ambiguous});else results.push({path:edge.path,start:Math.max(1,edge.line-3),end:edge.line,symbol:'Top level',callLine:edge.line,precision:edge.precision});}
- }else if(direction==='callees')for(const edge of index.edges.filter(e=>e.path===path&&e.line===line)){const target=index.blocks.find(b=>b.path===edge.targetPath&&b.start===edge.targetStart);if(target)results.push({...target,callLine:line,ambiguous:edge.ambiguous})}
+ for(const edge of edges.filter(e=>e.targetPath===root.path&&e.targetStart===root.start)){const caller=index.blocks.find(b=>b.path===edge.path&&b.start===edge.callerStart)||index.blocks.filter(b=>b.path===edge.path&&b.start<=edge.line&&b.end>=edge.line).sort((a,b)=>(a.end-a.start)-(b.end-b.start))[0];if(caller)results.push({...caller,callLine:edge.line,ambiguous:edge.ambiguous});else results.push({path:edge.path,start:Math.max(1,edge.line-3),end:edge.line,symbol:'Top level',callLine:edge.line,precision:edge.precision});}
+ }else if(direction==='callees')for(const edge of edges.filter(e=>e.path===path&&e.line===line)){const target=index.blocks.find(b=>b.path===edge.targetPath&&b.start===edge.targetStart);if(target)results.push({...target,callLine:line,ambiguous:edge.ambiguous})}
  else throw new Error('Unknown expansion direction.');
  const unique=[...new Map(results.map(b=>[b.path+':'+b.start,b])).values()];return {blocks:unique,total:unique.length};
 }

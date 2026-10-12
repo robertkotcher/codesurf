@@ -4,7 +4,8 @@ const ignored=new Set(['if','for','while','switch','catch','with','return','func
 export function lineAffordances(text){
  const code=text.replace(/(['"`]).*?\1/g,'').replace(/\/\/.*$|#.*$/g,'');
  const match=code.match(declaration),symbol=match&&(match[1]||match[2]||match[3]);
- const signature=!!symbol&&!ignored.has(symbol);
+ const ruby=code.match(/^\s*def\s+(?:self\.)?([a-zA-Z_]\w*[!?=]?)(?=\s|\(|$)/);
+ const signature=!!ruby||!!symbol&&!ignored.has(symbol);
  return {callers:signature,callees:!signature&&[...code.matchAll(/\b([\w$]+)\s*\(/g)].some(m=>!ignored.has(m[1]))};
 }
 export function sourceBlocks(files){

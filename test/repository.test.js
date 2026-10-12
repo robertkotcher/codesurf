@@ -18,3 +18,14 @@ test('search ranks matching paths and works across tens of thousands of files',(
  const files=new Map(Array.from({length:25000},(_,i)=>[`src/file-${i}.ts`,'export const value = 1;']));files.set('src/payments/checkout.ts','export function settleInvoice() {}');
  const index={files,skipped:0};assert.equal(searchIndex(index,'settleInvoice').results[0].path,'src/payments/checkout.ts');assert.equal(searchIndex(index,'checkout').results[0].path,'src/payments/checkout.ts');
 });
+
+test('concurrent repository requests share one archive download and failed downloads can retry',async()=>{
+ const {repositoryIndex}=await import('../repository.js');const previous=global.fetch;let calls=0;
+ const stream=await archive([{path:'a.rb',text:'def ready?\n true\nend'}]),parts=[];for await(const chunk of stream)parts.push(chunk);const bytes=Buffer.concat(parts);
+ const pr={head:{sha:'concurrency-test',repo:{full_name:'acme/concurrent'}}};
+ global.fetch=async()=>{calls++;await new Promise(r=>setTimeout(r,10));return new Response(bytes)};
+ try{const [first,second]=await Promise.all([repositoryIndex('test-token',pr),repositoryIndex('test-token',pr)]);assert.equal(calls,1);assert.equal(first,second);
+  global.fetch=async()=>{calls++;return new Response('',{status:502})};pr.head.sha='retry-test';await assert.rejects(repositoryIndex('test-token',pr));
+  global.fetch=async()=>{calls++;return new Response(bytes)};assert.equal((await repositoryIndex('test-token',pr)).files.size,1);
+ }finally{global.fetch=previous}
+});

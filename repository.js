@@ -4,7 +4,7 @@ import {pipeline} from 'node:stream/promises';
 import {createGunzip} from 'node:zlib';
 import tar from 'tar-stream';
 import {cleanPath} from './lib.js';
-const indexes=new Map();
+const indexes=new Map(),loading=new Map();
 const skip=/(^|\/)(node_modules|\.git|vendor|dist|build|\.next)(\/|$)|(^|\/)\.env(?:\.|$)|\.(?:png|jpe?g|gif|webp|pdf|zip|gz|lock|map|pem|key|woff2?|ttf|mp4)$/i;
 function limiter(max){let size=0;return new Transform({transform(chunk,_enc,cb){size+=chunk.length;cb(size>max?new Error('Repository archive exceeds the safe search limit.'):null,chunk)}})}
 export async function indexArchive(body){
@@ -24,12 +24,15 @@ export async function repositoryIndex(token,pr){
   // Cache is partitioned by credential and commit; caller rechecks GitHub access first.
   const key=crypto.createHash('sha256').update(token+'\0'+repo+'\0'+pr.head.sha).digest('hex');
   const cached=indexes.get(key);if(cached&&cached.expires>Date.now())return cached.value;
+  if(loading.has(key))return loading.get(key);
   indexes.delete(key);
+  const pending=(async()=>{
   const response=await fetch(`https://api.github.com/repos/${repo}/tarball/${pr.head.sha}`,{headers:{Authorization:`Bearer ${token}`,Accept:'application/vnd.github+json'},signal:AbortSignal.timeout(90000)});
   if(!response.ok)throw new Error('Could not read the repository archive. Check GitHub repository access.');
   const value=await indexArchive(Readable.fromWeb(response.body));
   // At most one warmed snapshot per server instance. Cold starts may rebuild it.
   indexes.clear();indexes.set(key,{value,expires:Date.now()+5*60000});setTimeout(()=>indexes.delete(key),5*60000).unref();return value;
+  })();loading.set(key,pending);try{return await pending}finally{loading.delete(key)}
 }
 export function searchIndex(index,query,limit=12){
   const terms=[...new Set(String(query).slice(0,300).toLowerCase().match(/[\w./:-]{2,}/g)||[])].filter(t=>!new Set(['the','and','how','does','what','this','that','when','where','with','from','code','show','please']).has(t)).slice(0,12);
