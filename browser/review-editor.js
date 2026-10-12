@@ -1,3 +1,4 @@
+import {readNote,stopNoteSpeech} from './note-speech.js';
 import {EditorView,basicSetup} from 'codemirror';
 import {Decoration,WidgetType} from '@codemirror/view';
 import {RangeSet} from '@codemirror/state';
@@ -9,8 +10,8 @@ import {json} from '@codemirror/lang-json';
 import {html} from '@codemirror/lang-html';
 import {css} from '@codemirror/lang-css';
 import {sql} from '@codemirror/lang-sql';
-import {createElement,File,FileCode,FileJson,FileText,Folder,FolderOpen,ChevronRight,ChevronDown,MessageCircle,MessagesSquare,GitPullRequest,WrapText} from 'lucide';
-export function icon(name){return createElement(({file:File,code:FileCode,json:FileJson,text:FileText,folder:Folder,open:FolderOpen,right:ChevronRight,down:ChevronDown,comment:MessageCircle,chat:MessagesSquare,pulls:GitPullRequest,wrap:WrapText})[name]||File,{'aria-hidden':'true',width:15,height:15,'stroke-width':1.6}).outerHTML}
+import {createElement,File,FileCode,FileJson,FileText,Folder,FolderOpen,ChevronRight,ChevronDown,MessageCircle,MessagesSquare,GitPullRequest,WrapText,Volume2} from 'lucide';
+export function icon(name){return createElement(({file:File,code:FileCode,json:FileJson,text:FileText,folder:Folder,open:FolderOpen,right:ChevronRight,down:ChevronDown,comment:MessageCircle,chat:MessagesSquare,pulls:GitPullRequest,wrap:WrapText,speaker:Volume2})[name]||File,{'aria-hidden':'true',width:15,height:15,'stroke-width':1.6}).outerHTML}
 export function fileIcon(path){return icon(/\.json$/.test(path)?'json':/\.(md|txt|rst)$/.test(path)?'text':/\.(ts|tsx|js|jsx|py|go|rs|java|css|html|sql|yml|yaml)$/.test(path)?'code':'file')}
 let wrapEnabled=true;const mountedEditors=new Set();
 export function setEditorWrapping(enabled){wrapEnabled=enabled;for(const view of mountedEditors)view.setWrapping(enabled)}
@@ -22,7 +23,15 @@ export function mountEditor(parent,{before='',after='',path='',onSelect=()=>{},d
   const annotations=StateField.define({create:()=>Decoration.none,update(value,tr){for(const effect of tr.effects)if(effect.is(annotate))return effect.value;return value.map(tr.changes)},provide:field=>EditorView.decorations.from(field)});
   class Explanation extends WidgetType{
     constructor(start,end,text,label='AI note'){super();this.start=start;this.end=end;this.text=text;this.label=label}
-    toDOM(){const block=document.createElement('div');block.className='ai-code-note-block';const box=document.createElement('button');box.type='button';box.className='ai-code-note';box.setAttribute('aria-label','Ask about this change: '+this.text);const label=document.createElement('span');label.className='ai-code-note-label';label.textContent=this.label;const text=document.createElement('span');text.className='ai-code-note-text';text.textContent=this.text;box.onclick=event=>{const bounds=box.getBoundingClientRect();onExplain({start:this.start,end:this.end,text:view.state.doc.sliceString(view.state.doc.line(this.start).from,view.state.doc.line(this.end).to),explanation:this.text,x:event.clientX||bounds.left,y:event.clientY||bounds.bottom})};box.append(label,text);block.append(box);return block}
+    toDOM(){
+      const block=document.createElement('div');block.className='ai-code-note-block';const box=document.createElement('div');box.className='ai-code-note';
+      const ask=document.createElement('button');ask.type='button';ask.className='ai-code-note-ask';ask.setAttribute('aria-label','Ask about this change: '+this.text);
+      const label=document.createElement('span');label.className='ai-code-note-label';label.textContent=this.label;const text=document.createElement('span');text.className='ai-code-note-text';text.textContent=this.text;ask.append(label,text);
+      box.onclick=event=>{const bounds=box.getBoundingClientRect();onExplain({start:this.start,end:this.end,text:view.state.doc.sliceString(view.state.doc.line(this.start).from,view.state.doc.line(this.end).to),explanation:this.text,x:event.clientX||bounds.left,y:event.clientY||bounds.bottom})};
+      const speaker=document.createElement('button');speaker.type='button';speaker.className='ai-note-speak';speaker.innerHTML=icon('speaker');speaker.setAttribute('aria-label','Read note aloud');speaker.setAttribute('aria-pressed','false');speaker.title='Read note aloud';
+      speaker.disabled=!('speechSynthesis' in window&&'SpeechSynthesisUtterance' in window);if(speaker.disabled)speaker.title='Read aloud is unavailable in this browser';
+      speaker.onclick=event=>{event.stopPropagation();readNote(this.text,speaker)};box.append(ask,speaker);block.append(box);return block;
+    }
     ignoreEvent(){return true}
   }
   let anchor=null, range=null;
@@ -41,6 +50,6 @@ export function mountEditor(parent,{before='',after='',path='',onSelect=()=>{},d
   const finish=event=>{if(anchor===null)return;anchor=null;const start=view.state.doc.line(range.start).from,end=view.state.doc.line(range.end).to;onSelect({...range,text:view.state.sliceDoc(start,end),x:event.clientX,y:event.clientY})};
   view.clearQuestionSelection=()=>{anchor=null;range=null;view.dispatch({effects:highlight.of([])})};
   document.addEventListener('mouseup',finish);
-  const destroy=view.destroy.bind(view);view.destroy=()=>{noteObserver.disconnect();mountedEditors.delete(view);document.removeEventListener('mouseup',finish);destroy()};
+  const destroy=view.destroy.bind(view);view.destroy=()=>{stopNoteSpeech(view.dom);noteObserver.disconnect();mountedEditors.delete(view);document.removeEventListener('mouseup',finish);destroy()};
   requestAnimationFrame(()=>{const changes=diff?getChunks(view.state)?.chunks:[];const pos=changes?.[0]?.fromB??view.state.doc.line(Math.min(line,view.state.doc.lines)).from;view.dispatch({effects:EditorView.scrollIntoView(Math.min(pos,view.state.doc.length),{y:'start',yMargin:60})})});return view;
 }
