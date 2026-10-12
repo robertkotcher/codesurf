@@ -1,3 +1,4 @@
+import {openAIErrorMessage,reportOpenAIError} from './openai-errors.js';
 import {validateFlow} from './flow.js';
 import OpenAI from 'openai';
 import {repositoryIndex,searchIndex,readBlock} from './repository.js';
@@ -52,5 +53,5 @@ export async function answer({req,res,p,changed,question,selection,history,token
       if(shownFlow)input.push({role:'user',content:'The source layout is complete. Now answer my question in clear prose using the evidence you retrieved. Stream the answer; do not call any more tools.'});
     }
     send('error',{message:'Exploration reached its limit. Ask a narrower follow-up.'});res.end();
-  }catch(error){if(!res.destroyed){send('error',{message:error instanceof OpenAI.APIError?'OpenAI request failed. Check project billing and model access.':error.message||'Search could not complete.'});res.end()}}finally{clearTimeout(deadline)}
+  }catch(error){if(error instanceof OpenAI.APIError)reportOpenAIError(error);if(!res.destroyed){send('error',{message:error instanceof OpenAI.APIError?openAIErrorMessage(error):error.message||'Search could not complete.'});res.end()}}finally{clearTimeout(deadline)}
 }

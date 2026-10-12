@@ -190,3 +190,8 @@ test('My PRs includes requested reviews and assignments once, with recent and ol
   assert.deepEqual(await load(false),[4326,4327]);assert.deepEqual(await load(true),[4329]);
  }finally{global.fetch=request}
 });
+
+test('OpenAI audio authentication failures do not ask users to sign into GitHub',async()=>{
+ const key=process.env.OPENAI_API_KEY;process.env.OPENAI_API_KEY='test-key';global.fetch=async()=>Response.json({error:{message:'Missing scopes: api.model.audio.request',code:'missing_scope',type:'invalid_request_error'}},{status:401});
+ try{const response=await request(origin+'/api/note-audio',{method:'POST',headers:{...auth,Origin:process.env.APP_URL,'Content-Type':'application/json'},body:JSON.stringify({text:'Read this note.'})});assert.equal(response.status,502);assert.match((await response.json()).error,/audio generation permission/)}finally{global.fetch=request;if(key===undefined)delete process.env.OPENAI_API_KEY;else process.env.OPENAI_API_KEY=key}
+});

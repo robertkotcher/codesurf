@@ -1,3 +1,4 @@
+import {openAIErrorMessage,reportOpenAIError} from './openai-errors.js';
 import {findReview,createReview,getReview,publicReview,nextStep,advanceReview,reviewPace,setReviewPace,stepBudget,ensureStepBlocks} from './review-sessions.js';
 import {buildCallIndex,indexedCalls,initCallParsers} from './browser/source-index.js';
 import {functionData} from './public/data-shapes.js';
@@ -169,6 +170,6 @@ app.post('/api/ask',wrap(async(req,res)=>{
 app.use(express.static(path.join(root,'public')));
 app.get('/github/:owner/:repo/pull/:number',(req,res,next)=>{if(!/^[1-9]\d*$/.test(req.params.number))return next();res.sendFile(path.join(root,'public/index.html'))});
 app.get('/:owner/:repo/pull/:number',(req,res,next)=>{if(!/^[1-9]\d*$/.test(req.params.number))return next();res.redirect(308,'/github'+req.originalUrl)});
-app.use((error,req,res,_next)=>{if(res.headersSent)return res.end();res.status(error.status||500).json({error:error.status?error.message:error instanceof OpenAI.APIError?'OpenAI request failed. Check project billing and model access.':error.message?.startsWith('Enter ')||error.message==='Invalid file path'?error.message:'The request could not be completed. Please retry.'})});
+app.use((error,req,res,_next)=>{if(res.headersSent)return res.end();if(error instanceof OpenAI.APIError){reportOpenAIError(error);return res.status(error.status===429?429:502).json({error:openAIErrorMessage(error)})}res.status(error.status||500).json({error:error.status?error.message:error instanceof OpenAI.APIError?'OpenAI request failed. Check project billing and model access.':error.message?.startsWith('Enter ')||error.message==='Invalid file path'?error.message:'The request could not be completed. Please retry.'})});
 if(!env.VERCEL&&process.env.NODE_ENV!=='test')app.listen(Number(env.PORT||5179),'127.0.0.1',()=>console.log('CodeSurf: http://localhost:'+(env.PORT||5179)));
 export default app;
