@@ -123,3 +123,28 @@ body{flex-direction:column}.app-header{width:100%;flex:0 0 auto;min-height:62px}
 .pr{height:auto;min-height:60px;padding:9px 22px 10px;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:4px 20px}.pr>small{grid-column:1;grid-row:1;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pr .meta{grid-column:2;grid-row:1;font-size:10px;white-space:nowrap;color:#9a91a2}.pr h1{grid-column:1/-1;grid-row:2;font-size:15px;line-height:1.4;font-weight:550;margin:0;letter-spacing:-.2px;min-width:0}.workspace{height:calc(100vh - 122px)}@media(max-width:750px){.pr{padding:8px 14px;gap:4px 10px}.pr .meta{font-size:9px}.pr h1{font-size:14px}}@media(max-width:480px){.pr{grid-template-columns:minmax(0,1fr)}.pr .meta{grid-column:1;grid-row:3}.pr h1{grid-row:2}}
 /* Let footer tooltips overlap the editor instead of being clipped by scrolling. */
 .review-code{position:relative;z-index:0}.review-explanation{position:relative;z-index:1;overflow:visible}
+/* Two product surfaces: neutral source workspace and lavender AI guidance. */
+:root{--editor-surface:#fcfcfd;--editor-border:#e6e6eb;--ai-surface:#f1ebf7;--ai-border:#dcd0e8;--ai-ink:#69517e}
+.app-header,.app-shell>.pr,.step-explorer,.review-tabs,.review-document,.review-editor-host,.editor-tabs,#explorer{background:var(--editor-surface);border-color:var(--editor-border)}
+.app-header{border-bottom-color:var(--editor-border)}
+.app-shell>.pr{border-bottom-color:var(--editor-border)}
+.review-code,.review-status,.review-mode #walkthrough{background:var(--editor-surface)}
+.review-status{border-color:var(--editor-border);color:#97919f}
+.review-tabs button.active{background:var(--editor-surface);border-top-color:#9b86b3;color:#716080}
+.step-explorer{border-right-color:var(--editor-border)}
+.review-editor-host .cm-editor,.review-editor-host .cm-gutters{background:var(--editor-surface)}
+.review-editor-host .cm-gutters{border-right-color:var(--editor-border)}
+.page-content>#conversation,.review-explanation{background:var(--ai-surface);border-color:var(--ai-border)}
+.page-content>#conversation{border-right:1px solid var(--ai-border)}
+.review-explanation{border-top:1px solid var(--ai-border);box-shadow:0 -4px 16px #69517e05}
+.answer-head,.chat-tabs,#followup{background:var(--ai-surface);border-color:var(--ai-border)}
+.answer-head b,.review-explanation h3{color:var(--ai-ink)}
+.answer-head button,.footer-copy>small{color:#9277a8}
+.chat-tab{background:#ffffff45;border-color:#dcd0e8}
+.chat-tab [aria-selected=true]{background:#fff9;color:var(--ai-ink)}
+.answer-empty,.review-explanation p{color:#8b779d}
+.answer-empty h3{color:var(--ai-ink)}
+.turn-question{background:#e8def2;color:var(--ai-ink)}
+#followup>.chat-composer{background:#ffffffd9;border-color:#d7c7e5;box-shadow:0 2px 8px #69517e05}
+.review-explanation>button:not(.primary){background:#ffffff70;border-color:#d5c5e3;color:var(--ai-ink)}
+.review-explanation .review-finish{background:#ffffff65;color:#7c6a8e}
