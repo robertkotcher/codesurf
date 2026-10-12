@@ -307,24 +307,51 @@ function demoFlow(question){return {title:'Delivery → retry delay',summary:'A 
 
 let reviewPlan=null,reviewPath='',reviewCount=0,reviewExploring=false,reviewViews=[],reviewSelection=null,reviewVerified=false;
 let walkthroughReady=false,walkthroughIndex=0;
+let reviewSession=null,reviewDone=false,nextPending=false,nextError='';
 function updateReviewAnswer(){const box=$('reviewAnswer'),turn=turns.at(-1);if(box&&turn)box.textContent=turn.error||turn.a||turn.activity||(turn.streaming?'Finding relevant code…':'')}
 function destroyReviewViews(){for(const view of reviewViews)view.destroy();reviewViews=[]}
 function dockWalkthrough(){if(!reviewPlan)return;reviewExploring=true;setExplorerCollapsed(false);renderWalkthrough()}
 function returnToWalkthrough(){reviewExploring=false;renderWalkthrough()}
 async function startWalkthrough(){
-  const generation=prGeneration;reviewPlan=null;reviewCount=0;walkthroughIndex=0;walkthroughReady=false;reviewExploring=false;reviewSelection=null;destroyReviewViews();
+  const generation=prGeneration;reviewSession=null;reviewDone=false;nextPending=false;nextError='';reviewPlan=null;reviewCount=0;walkthroughIndex=0;walkthroughReady=false;reviewExploring=false;reviewSelection=null;destroyReviewViews();
   $('workspace').classList.remove('walkthrough-active','walkthrough-docked');$('workspace').classList.add('review-mode');$('walkthrough').classList.remove('hidden');$('startReview').disabled=true;
-  $('walkthrough').innerHTML='<div class="analysis-loading" role="status"><span class="analysis-spinner"></span><small>PREPARING REVIEW</small><h2>Breaking this PR into small transformations.</h2><p>Loading the merge-base and head, planning steps, and checking exact reconstruction…</p></div>';
+  $('walkthrough').innerHTML='<div class="analysis-loading" role="status"><span class="analysis-spinner"></span><small>PREPARING REVIEW</small><h2>Loading review…</h2><p>Fetching changed files.</p></div>';
   try{
     let plan;
     if(demo){
       plan=await api('/api/demo-plan');
-    }else plan=await api('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:pr.url,head:pr.head})});
+    }else {const result=await api('/api/reviews',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:pr.url,head:pr.head})});if(generation!==prGeneration)return;plan=result.plan;reviewSession=result.id;reviewCount=result.cursor;reviewDone=result.done;}
     if(generation!==prGeneration)return;
-    reviewPlan=plan;preloadCallIndex('base');reviewVerified=validatePlan(plan)&&plan.verified;reviewPath=plan.files[0]?.path||'';if(demo){window.sampleRepository=plan.files.map(f=>({name:f.path,start:1,lines:f.after.split('\n')}));pr.files=plan.files.map(f=>({path:f.path,status:f.status}));$('prMeta').textContent='maya · '+plan.files.length+' changed files · '+pr.head.slice(0,7);treeNodes=new Map();loadTreeFolder()}walkthroughReady=true;$('startReview').disabled=!plan.steps.length;renderWalkthrough();
+    reviewPlan=plan;preloadCallIndex('base');reviewVerified=reviewSession?false:validatePlan(plan)&&plan.verified;reviewPath=plan.files[0]?.path||'';if(demo){window.sampleRepository=plan.files.map(f=>({name:f.path,start:1,lines:f.after.split('\n')}));pr.files=plan.files.map(f=>({path:f.path,status:f.status}));$('prMeta').textContent='maya · '+plan.files.length+' changed files · '+pr.head.slice(0,7);treeNodes=new Map();loadTreeFolder()}walkthroughReady=true;$('startReview').disabled=!plan.steps.length;if(reviewCount){const op=plan.operations.find(o=>plan.steps[reviewCount-1]?.ids.includes(o.id));if(op)reviewPath=op.path}renderWalkthrough();if(reviewSession)prepareNext(generation,reviewCount===0);
   }catch(error){if(generation!==prGeneration)return;$('walkthrough').innerHTML=`<div class="analysis-loading"><h2>Review could not be prepared.</h2><p>${esc(error.message)}</p><button id="retryPlan">Try again</button></div>`;$('retryPlan').onclick=startWalkthrough}
 }
-function reviewAdvance(delta){if(!reviewPlan)return;reviewCount=Math.max(0,Math.min(reviewPlan.steps.length,reviewCount+delta));walkthroughIndex=reviewCount-1;reviewExploring=false;reviewSelection=null;const first=reviewPlan.operations.find(o=>reviewPlan.steps[reviewCount-1]?.ids.includes(o.id));if(first)reviewPath=first.path;renderWalkthrough();tree()}
+function updateNextControl(){
+ const button=$('reviewNext');if(!button)return;
+ const ready=reviewCount<reviewPlan.steps.length;
+ button.disabled=!ready&&!nextError;
+ button.textContent=ready?(reviewCount?'Next →':'Start Review'):nextError?'Retry next step':nextPending?'Preparing next…':'Review complete';
+ $('startReview').disabled=!ready;
+}
+async function prepareNext(generation=prGeneration,autoStart=false){
+ if(!reviewSession||nextPending||reviewDone||reviewPlan.steps.length>reviewCount){updateNextControl();return}
+ const id=reviewSession,index=reviewPlan.steps.length;nextPending=true;nextError='';updateNextControl();
+ try{
+  const result=await api('/api/reviews/'+id+'/next',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({index})});
+  if(generation!==prGeneration||id!==reviewSession)return;
+  if(result.step)reviewPlan.steps.push(result.step);reviewDone=result.done;nextPending=false;
+  if(autoStart&&result.step&&reviewCount===0){await reviewAdvance(1);return}
+  updateNextControl();
+ }catch(error){if(generation!==prGeneration||id!==reviewSession)return;nextPending=false;nextError=error.message;updateNextControl();toast(error.message)}
+}
+async function reviewAdvance(delta){
+ if(!reviewPlan)return;
+ if(delta>0&&reviewCount>=reviewPlan.steps.length){if(nextError)prepareNext();return}
+ const generation=prGeneration,id=reviewSession,target=Math.max(0,Math.min(reviewPlan.steps.length,reviewCount+delta));
+ if(id&&delta>0){try{await api('/api/reviews/'+id+'/progress',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cursor:target})})}catch(error){toast(error.message);return}if(generation!==prGeneration||id!==reviewSession)return}
+ reviewCount=target;walkthroughIndex=reviewCount-1;reviewExploring=false;reviewSelection=null;
+ const first=reviewPlan.operations.find(o=>reviewPlan.steps[reviewCount-1]?.ids.includes(o.id));if(first)reviewPath=first.path;
+ renderWalkthrough();tree();if(id)prepareNext();
+}
 async function verifyReviewHashes(){
   const final=stateAt(reviewPlan,reviewPlan.steps.length);
   for(const file of reviewPlan.files){if(file.unavailable)continue;const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(final[file.path])))).map(n=>n.toString(16).padStart(2,'0')).join('');if(hash!==file.headHash)throw new Error('Checksum mismatch in '+file.path)}
@@ -341,10 +368,11 @@ async function renderWalkthrough(){
   if(!reviewPlan)return;destroyReviewViews();const plan=reviewPlan,total=plan.steps.length,step=plan.steps[reviewCount-1],current=stateAt(plan,reviewCount),previous=stateAt(plan,Math.max(0,reviewCount-1));
   $('startReview').style.display=reviewCount?'none':'';$('startReview').textContent='Start Review';$('startReview').disabled=reviewCount===total;
   const stepPaths=[...new Set(plan.operations.filter(o=>step?.ids.includes(o.id)).map(o=>o.path))];const tabs=[...new Set([...stepPaths,reviewPath].filter(Boolean))];
-  const unavailable=plan.files.filter(f=>f.unavailable),complete=reviewCount===total;const manifest=manifestAt(plan,reviewCount);const displayed=manifest.find(f=>f.key===reviewPath);
-  $('walkthrough').innerHTML=`<div class="review-body"><div class="review-code"><div class="review-source-layout"><nav class="step-explorer" aria-label="Files at this transformation">${renderStepTree(plan,reviewCount)}</nav><div class="review-document"><div class="review-tabs">${tabs.map(path=>`<button data-review-file="${esc(path)}" class="${path===reviewPath?'active':''}">${fileIcon(path)} ${esc((manifest.find(f=>f.key===path)?.path||path).split('/').pop())}${manifest.find(f=>f.key===path)?.exists===false?' · not present':''}</button>`).join('')}</div><div id="reviewCode" class="review-editor-host"></div></div></div><div class="review-status"><span>${reviewExploring?'Answers use the PR head snapshot.':reviewCount+' of '+total+' transformations applied · '+plan.base?.slice(0,7)+' → '+plan.head?.slice(0,7)}</span><span id="reconstructionStatus">${reviewVerified?'All steps reconstruct the exact text of every changed file ✓':'Exact reconstruction incomplete'}</span></div></div><footer class="review-explanation"><button id="reviewBack" aria-label="Previous transformation" ${!reviewCount?'disabled':''}>← Previous</button><div class="footer-copy"><small>${reviewExploring?'EXPLORE PR HEAD':reviewCount?'TRANSFORMATION '+reviewCount+' / '+total:'BASE · '+total+' TRANSFORMATIONS'}</small>${reviewCount?`<h3>${esc(step.title)}</h3>`:''}<p>${step?esc(step.summary):'The editor shows the PR’s merge-base. Start Review to apply the first small diff. Each step builds on the previous one.'}</p>${reviewExploring?'<button id="backToStep">Return to transformation</button>':''}${complete?'<p class="review-finish">All transformations applied. Checking final SHA-256 checksums…</p>':''}${unavailable.length||plan.limited?`<details class="unavailable-files"><summary>${unavailable.length?unavailable.length+' unavailable '+(unavailable.length===1?'file':'files'):'Partial file list'} ⓘ</summary><div class="unavailable-tooltip">${unavailable.map(file=>`<div><code>${esc(file.path)}</code><span>${esc((file.reason||'Source unavailable.').replace(/\s*Inspect this file on GitHub\.?/g,''))}</span></div>`).join('')}${plan.limited?'<div><span>GitHub returned a partial file list.</span></div>':''}</div></details>`:''}</div><button id="reviewNext" class="primary" ${complete?'disabled':''}>${reviewCount?'Next →':'Start Review'}</button></footer></div>`;
+  const unavailable=plan.files.filter(f=>f.unavailable),complete=(reviewSession?reviewDone:true)&&reviewCount===total;
+  const weight=o=>(o.insert.match(/[^\n]*\n|[^\n]+$/g)||[]).length+(o.deleted.match(/[^\n]*\n|[^\n]+$/g)||[]).length;const selected=new Set(plan.steps.slice(0,reviewCount).flatMap(s=>s.ids));const totalLines=plan.operations.reduce((sum,o)=>sum+weight(o),0),reviewedLines=plan.operations.filter(o=>selected.has(o.id)).reduce((sum,o)=>sum+weight(o),0);const progress=totalLines?Math.floor(100*reviewedLines/totalLines):complete?100:0;const manifest=manifestAt(plan,reviewCount);const displayed=manifest.find(f=>f.key===reviewPath);
+  $('walkthrough').innerHTML=`<div class="review-body"><div class="review-code"><div class="review-source-layout"><nav class="step-explorer" aria-label="Files at this transformation">${renderStepTree(plan,reviewCount)}</nav><div class="review-document"><div class="review-tabs">${tabs.map(path=>`<button data-review-file="${esc(path)}" class="${path===reviewPath?'active':''}">${fileIcon(path)} ${esc((manifest.find(f=>f.key===path)?.path||path).split('/').pop())}${manifest.find(f=>f.key===path)?.exists===false?' · not present':''}</button>`).join('')}</div><div id="reviewCode" class="review-editor-host"></div></div></div><div class="review-status"><span>${reviewExploring?'Answers use the PR head snapshot.':progress+'% of available changed lines reviewed · '+reviewedLines+' / '+totalLines}</span><span id="reconstructionStatus">${reviewVerified?'Reconstruction verified ✓':complete?'Checking reconstruction…':'Review in progress'}</span></div></div><footer class="review-explanation"><button id="reviewBack" aria-label="Previous transformation" ${!reviewCount?'disabled':''}>← Previous</button><div class="footer-copy"><small>${reviewExploring?'EXPLORE PR HEAD':reviewCount?'STEP '+reviewCount:'BASE'}</small>${reviewCount?`<h3>${esc(step.title)}</h3>`:''}<p>${step?esc(step.summary):'The editor shows the PR’s merge-base. Start Review to apply the first small diff. Each step builds on the previous one.'}</p>${reviewExploring?'<button id="backToStep">Return to transformation</button>':''}${complete?'<p class="review-finish">All transformations applied. Checking final SHA-256 checksums…</p>':''}${unavailable.length||plan.limited?`<details class="unavailable-files"><summary>${unavailable.length?unavailable.length+' unavailable '+(unavailable.length===1?'file':'files'):'Partial file list'} ⓘ</summary><div class="unavailable-tooltip">${unavailable.map(file=>`<div><code>${esc(file.path)}</code><span>${esc((file.reason||'Source unavailable.').replace(/\s*Inspect this file on GitHub\.?/g,''))}</span></div>`).join('')}${plan.limited?'<div><span>GitHub returned a partial file list.</span></div>':''}</div></details>`:''}</div><button id="reviewNext" class="primary" ${complete?'disabled':''}>${reviewCount?'Next →':'Start Review'}</button></footer></div>`;
   $('walkthrough').querySelectorAll('[data-step-file]').forEach(button=>button.onclick=()=>{reviewPath=button.dataset.stepFile;reviewExploring=false;reviewSelection=null;renderWalkthrough()});
-  $('reviewBack').onclick=()=>reviewAdvance(-1);$('reviewNext').onclick=()=>reviewAdvance(1);
+  $('reviewBack').onclick=()=>reviewAdvance(-1);$('reviewNext').onclick=()=>reviewAdvance(1);if(reviewSession)updateNextControl();
   $('walkthrough').querySelectorAll('[data-review-file]').forEach(button=>button.onclick=()=>{reviewPath=button.dataset.reviewFile;renderWalkthrough();tree()});
   if($('backToStep'))$('backToStep').onclick=returnToWalkthrough;
   const host=$('reviewCode'),file=plan.files.find(f=>f.path===reviewPath);
@@ -355,7 +383,7 @@ async function renderWalkthrough(){
   else if(file){reviewViews.push(mountEditor(host,{before:previous[reviewPath],after:current[reviewPath],path:reviewPath,diff:reviewCount>0,onSelect:s=>selectReviewLines(s)}))}
   else {host.innerHTML='<p class="editor-loading">Loading source…</p>';try{const data=await getFile(reviewPath);if(reviewPath===data.path)reviewViews.push(mountEditor(host,{after:data.text,path:reviewPath,diff:false,onSelect:s=>selectReviewLines(s)}))}catch(error){host.textContent=error.message}}
 
-  if(complete){try{await verifyReviewHashes();const finish=$('walkthrough').querySelector('.review-finish');if(finish)finish.textContent=reviewVerified?'Verified: the reconstructed files exactly match the PR head.':'Available text files match. Unavailable files still need review.'}catch(error){reviewVerified=false;$('reconstructionStatus').textContent=error.message}}
+  if(complete){try{reviewVerified=validatePlan(plan);await verifyReviewHashes();if($('reconstructionStatus'))$('reconstructionStatus').textContent=reviewVerified?'Reconstruction verified ✓':'Available files verified';const finish=$('walkthrough').querySelector('.review-finish');if(finish)finish.textContent=reviewVerified?'Verified: the reconstructed files exactly match the PR head.':'Available text files match. Unavailable files still need review.'}catch(error){reviewVerified=false;$('reconstructionStatus').textContent=error.message}}
 }
 $('startReview').onclick=()=>reviewAdvance(1);
 newChat();
