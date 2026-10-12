@@ -14,3 +14,9 @@ test('review comments map to final lines and reject code that changes again',()=
  assert.equal(commentLines('a\nb\nc','a\nchanged\nc',2,2),null);
  assert.equal(commentLines('a\nb\nc','a\nb\nextra\nc',2,3),null);
 });
+test('repository searches rank symbol definitions above incidental references',async()=>{
+ const {searchIndex}=await import('../repository.js');
+ const files=new Map(Array.from({length:30},(_,i)=>['app/admin/ref'+i+'.rb','StashTransaction.find(1)']));files.set('app/models/stash_transaction.rb','class StashTransaction\n  def disputed?\n    true\n  end\nend');
+ assert.equal(searchIndex({files,skipped:0},'StashTransaction').results[0].path,'app/models/stash_transaction.rb');
+ assert.equal(searchIndex({files,skipped:0},'disputed').results[0].start,1);
+});

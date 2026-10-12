@@ -1,5 +1,5 @@
 export function startVoiceChat({request,onState=()=>{},onTranscript=()=>{},onLevel=()=>{},onError=()=>{},onReady=()=>{},onTool=async()=>({error:'Repository tools unavailable.'})}){
- let closed=false,peer,stream,channel,audio,analyser,frame,timer,connectTimer,audioContext;const abort=new AbortController();
+ let toolCount=0,utterance=0;let closed=false,peer,stream,channel,audio,analyser,frame,timer,connectTimer,audioContext;const abort=new AbortController();
  const state=value=>{if(!closed)onState(value)};
  const touch=()=>{clearTimeout(timer);timer=setTimeout(()=>stop(),120000)};
  function stop(){if(closed)return;closed=true;abort.abort();clearTimeout(timer);clearTimeout(connectTimer);cancelAnimationFrame(frame);channel?.close();peer?.close();stream?.getTracks().forEach(t=>t.stop());if(audio){audio.pause();audio.srcObject=null;audio.remove()}audioContext?.close().catch(()=>{});onLevel(0);onState('ended')}
@@ -19,15 +19,15 @@ export function startVoiceChat({request,onState=()=>{},onTranscript=()=>{},onLev
   channel.onmessage=event=>{if(closed)return;let data;try{data=JSON.parse(event.data)}catch{return}
    if(data.type==='response.done'&&data.response?.status==='completed'){
     const calls=(data.response.output||[]).filter(item=>item.type==='function_call');
-    if(calls.length){state('thinking');touch();(async()=>{
-     for(const call of calls){let result;try{result=await onTool(call.name,JSON.parse(call.arguments),abort.signal)}catch(error){result={error:error.message||'Source lookup failed.'}}
+    if(calls.length){const turn=utterance;state('thinking');touch();(async()=>{
+     for(const call of calls){let result;try{if(++toolCount>12)throw new Error('Lookup limit reached. Answer from verified source; explain precisely which requested definition could not be found.');result=await onTool(call.name,JSON.parse(call.arguments),abort.signal)}catch(error){result={error:error.message||'Source lookup failed.'}}
       if(closed)return;channel.send(JSON.stringify({type:'conversation.item.create',item:{type:'function_call_output',call_id:call.call_id,output:JSON.stringify(result)}}));
      }
-     if(!closed)channel.send(JSON.stringify({type:'response.create'}));
+     if(!closed&&turn===utterance)channel.send(JSON.stringify({type:'response.create',...(toolCount>=12?{response:{tools:[],instructions:'Answer the latest user question concisely using only the source already retrieved. Identify any requested definition that could not be found at this PR commit. Do not guess or continue searching.'}}:{})}));
     })().catch(error=>fail(error));return}
    }
    if(data.type==='error')return fail(new Error('Voice chat could not complete that request. Please reconnect.'));
-   if(data.type==='input_audio_buffer.speech_started'){state('listening');touch()}
+   if(data.type==='input_audio_buffer.speech_started'){utterance++;toolCount=0;state('listening');touch()}
    if(data.type==='input_audio_buffer.speech_stopped')state('thinking');
    if(data.type==='response.created')state('thinking');
    if(data.type==='output_audio_buffer.started')state('speaking');

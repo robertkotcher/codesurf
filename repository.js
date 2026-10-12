@@ -40,7 +40,16 @@ export function searchIndex(index,query,limit=12){
   const results=[];
   for(const [path,text] of index.files){
     const lower=text.toLowerCase(),pathLower=path.toLowerCase();let score=0,first=-1;
-    for(const term of terms){if(pathLower.includes(term))score+=8;const pos=lower.indexOf(term);if(pos>=0){score+=3;if(first<0||pos<first)first=pos}}
+    for(const term of terms){
+      const compact=term.replace(/[^a-z0-9]/g,'');
+      if(pathLower.includes(term))score+=8;
+      if(compact.length>2&&pathLower.split('/').pop().replace(/\.[^.]+$/,'').replace(/[^a-z0-9]/g,'')===compact)score+=35;
+      const pos=lower.indexOf(term);if(pos>=0){score+=3;if(first<0||pos<first)first=pos}
+      if(/^[a-z_][a-z0-9_]*$/.test(term)){
+        const definition=new RegExp('\\b(?:class|module|def|function|interface|struct|enum)\\s+'+term+'(?=[^a-z0-9_]|$)').exec(lower);
+        if(definition){score+=30;first=definition.index}
+      }
+    }
     if(!score)continue;
     const lines=text.split('\n'),hit=first<0?0:text.slice(0,first).split('\n').length-1,start=Math.max(0,hit-4),end=Math.min(lines.length,start+15);
     results.push({path,start:start+1,end,score,text:lines.slice(start,end).join('\n')});
