@@ -12,7 +12,7 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import OpenAI from 'openai';
-import {repositoryIndex,searchIndex} from './repository.js';
+import {repositoryIndex,searchIndex,readBlock} from './repository.js';
 import {validateReview} from './reviews.js';
 import {answer} from './answers.js';
 import {seal,unseal,parsePR,cleanPath,encodePath} from './lib.js';
@@ -149,6 +149,23 @@ app.post('/api/review',wrap(async(req,res)=>{
 }));
 const speechRequests=new Map();
 const voiceRequests=new Map();
+app.post('/api/voice/tool',wrap(async(req,res)=>{
+ const {name,args,head}=req.body;
+ if(!['search_repository','read_code','show_code'].includes(name)||!args||typeof args!=='object'||typeof head!=='string'||!head)return res.status(400).json({error:'Invalid repository tool request.'});
+ const p=await pull(req.auth.token,req.body.url,head);
+ const index=await repositoryIndex(req.auth.token,p.pr);
+ if(name==='search_repository'){
+  if(typeof args.query!=='string'||args.query.length<2||args.query.length>300)return res.status(400).json({error:'Use a short source search query.'});
+  return res.json({...searchIndex(index,args.query,10),head});
+ }
+ cleanPath(args.path);
+ const text=index.files.get(args.path);
+ if(text===undefined)return res.json({error:'File unavailable in source index. It may be excluded, binary, generated or too large.'});
+ const total=text.split('\n').length;
+ if(!Number.isInteger(args.start)||!Number.isInteger(args.end)||args.start<1||args.end<args.start||args.end>total||args.end-args.start>=160)return res.status(400).json({error:'Choose an existing source range of up to 160 lines.'});
+ const block=readBlock(index,args.path,args.start,args.end);
+ res.json({...block,head,...(name==='show_code'?{reference:{path:block.path,start:block.start,end:block.end}}:{})});
+}));
 app.post('/api/voice',wrap(async(req,res)=>{
  if(!env.OPENAI_API_KEY)return res.status(503).json({error:'Voice chat is not configured.'});
  if(typeof req.body.head!=='string'||!req.body.head)return res.status(400).json({error:'Reopen the pull request before starting voice chat.'});

@@ -208,3 +208,17 @@ test('voice requests enforce origin and pin selected source without exposing the
   calls.length=0;body.head='old';assert.equal((await request(origin+'/api/voice',{method:'POST',headers,body:JSON.stringify(body)})).status,409);assert(!calls.some(c=>c.url.includes('api.openai.com')));
  }finally{global.fetch=request;if(key===undefined)delete process.env.OPENAI_API_KEY;else process.env.OPENAI_API_KEY=key}
 });
+test('voice source tools search unchanged files and validate highlighted ranges at the pinned head',async()=>{
+ const {default:tar}=await import('tar-stream');const {gzipSync}=await import('node:zlib');
+ const pack=tar.pack();pack.entry({name:'snapshot/app/models/stash_transaction.rb'},'class StashTransaction\n  def disputed?\n    disputes.any?\n  end\nend');pack.finalize();const chunks=[];for await(const chunk of pack)chunks.push(chunk);const archive=gzipSync(Buffer.concat(chunks));
+ global.fetch=async url=>{if(String(url).includes('/pulls/79'))return Response.json({head:{sha:'voice-head',repo:{full_name:'acme/voice-tools'}}});if(String(url).includes('/tarball/voice-head'))return new Response(archive);throw new Error('Unexpected upstream request');};
+ const invoke=(name,args,head='voice-head')=>request(origin+'/api/voice/tool',{method:'POST',headers:{...auth,Origin:process.env.APP_URL,'Content-Type':'application/json'},body:JSON.stringify({url:'https://github.com/acme/voice-tools/pull/79',head,name,args})});
+ try{
+  let response=await invoke('search_repository',{query:'StashTransaction'});assert.equal(response.status,200);assert.equal((await response.json()).results[0].path,'app/models/stash_transaction.rb');
+  response=await invoke('read_code',{path:'app/models/stash_transaction.rb',start:2,end:4});const read=await response.json();assert.match(read.text,/2:   def disputed/);assert.equal(read.reference,undefined);
+  response=await invoke('show_code',{path:'app/models/stash_transaction.rb',start:2,end:4});assert.deepEqual((await response.json()).reference,{path:'app/models/stash_transaction.rb',start:2,end:4});
+  assert.equal((await invoke('show_code',{path:'app/models/stash_transaction.rb',start:2,end:400})).status,400);
+  assert.equal((await invoke('show_code',{path:'app/models/stash_transaction.rb',start:2,end:4},'stale-head')).status,409);
+  assert.equal((await invoke('unknown',{})).status,400);
+ }finally{global.fetch=request}
+});

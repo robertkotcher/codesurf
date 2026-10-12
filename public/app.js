@@ -211,10 +211,26 @@ function renderEditors(){
 }
 function selectLine(el,shift=false){reviewSelection=null;const line=Number(el.dataset.line);if(!line){toast('Deleted code is visible for comparison. Select current code to ask a question.');return false}const path=el.dataset.path,column=Number(el.dataset.column);activeColumn=column;if(!shift||anchor?.path!==path||anchor.column!==column)anchor={path,column,line};selection={path,column,start:Math.min(line,anchor.line),end:Math.max(line,anchor.line)};document.querySelectorAll('.editor-line').forEach(x=>x.classList.toggle('selected',x.dataset.path===path&&Number(x.dataset.column)===column&&Number(x.dataset.line)>=selection.start&&Number(x.dataset.line)<=selection.end));return true}
 function openPopover(x,y){if(!selection)return;updateSampleAction({...selection,intermediate:false});$('popcontext').textContent=selection.path+' : '+selection.start+'–'+selection.end;const p=$('askPopover');p.classList.remove('hidden');p.style.left=Math.max(12,Math.min(x-50,innerWidth-420))+'px';p.style.top=Math.max(70,Math.min(y+10,innerHeight-230))+'px';$('inlineQuestion').focus()}
-let voiceConversation=null,voiceChat=null;
+let voiceConversation=null,voiceChat=null,voiceReference=null;
 function resetVoiceUI(){
  $('voiceListening').hidden=true;$('inlineQuestion').hidden=false;$('inlineAsk').disabled=false;$('commentSelection').disabled=false;
  $('voiceChatButton').innerHTML=icon('mic');$('voiceChatButton').setAttribute('aria-pressed','false');$('voiceChatButton').setAttribute('aria-label','Start voice conversation');$('voiceChatButton').title='Start voice conversation';
+}
+async function showVoiceCode(reference,origin,current){
+ if(pr?.head!==current.head||pr?.url!==current.url)return;
+ const generation=prGeneration;await getFile(reference.path);
+ if(generation!==prGeneration)return;
+ voiceReference=reference;
+ if(reviewPlan){await renderWalkthrough();}
+ else {
+  if(!columns.length)columns=[{tabs:[origin.path],active:origin.path,mode:'full'}];
+  let index=columns.findIndex(c=>c.active===reference.path);
+  if(index<0){index=columns.length>1?1:columns.length;if(index===columns.length)columns.push({tabs:[],active:reference.path,mode:'full'});}
+  const column=columns[index];if(!column.tabs.includes(reference.path))column.tabs.push(reference.path);column.active=reference.path;column.mode='full';focused.set(reference.path,reference);renderEditors();tree();
+  const pane=document.querySelector(`.editor-col[data-column="${index}"]`);
+  const lines=[...(pane?.querySelectorAll('.editor-line')||[])].filter(el=>+el.dataset.line>=reference.start&&+el.dataset.line<=reference.end);
+  scrollCodeLine(lines[0]);for(const line of lines){line.classList.remove('voice-code-flash');void line.offsetWidth;line.classList.add('voice-code-flash')}
+ }
 }
 function stopVoice(){voiceConversation?.stop();voiceConversation=null;if(voiceChat){for(const turn of voiceChat.turns)turn.streaming=false;if(activeChat===voiceChat)renderTurns()}voiceChat=null;resetVoiceUI()}
 $('followCallsButton').innerHTML=icon('graph');$('followCallsButton').onclick=launchCallCanvas;
@@ -228,6 +244,11 @@ $('voiceChatButton').onclick=()=>{
  const messages=new Map();let chat=null,lastTurn=null;
  voiceConversation=startVoiceChat({
   request:async(sdp,signal)=>{const response=await fetch('/api/voice',{method:'POST',headers:{'Content-Type':'application/json'},signal,body:JSON.stringify({url:current.url,head:current.head,selection:context,reviewId:context.intermediate?reviewSession:null,step,sdp})});if(!response.ok){const error=await response.json().catch(()=>({}));throw new Error(error.error||'Voice chat could not connect.')}return response.text()},
+  onTool:async(name,args,signal)=>{
+   const result=await api('/api/voice/tool',{method:'POST',headers:{'Content-Type':'application/json'},signal,body:JSON.stringify({url:current.url,head:current.head,name,args})});
+   if(result.reference)await showVoiceCode(result.reference,context,current);
+   return result;
+  },
   onState:state=>{if(state==='ended'){if(chat){for(const turn of chat.turns)turn.streaming=false;if(activeChat===chat)renderTurns()}resetVoiceUI();return}$('voiceStatus').textContent={connecting:'Connecting…',listening:'Listening…',thinking:'Thinking…',speaking:'Speaking…'}[state]||state;$('voiceListening').dataset.state=state},
   onLevel:level=>$('voiceListening').style.setProperty('--voice-level',String(level)),
   onReady:()=>{chat=newChat({...context,step});chat.title='Voice · '+context.path.split('/').pop();voiceChat=chat;renderChatTabs()},
@@ -327,7 +348,7 @@ $('refreshPulls').onclick=showHome;$('filterPulls').oninput=renderHomePulls;
 $('homePulls').onclick=event=>{const link=event.target.closest('a.home-pr');if(link&&!event.metaKey&&!event.ctrlKey&&!event.shiftKey){event.preventDefault();loadPR('https://github.com'+new URL(link.href).pathname.slice('/github'.length))}};
 window.addEventListener('popstate',()=>{const url=routePR();url?loadPR(url,false):showHome()});
 async function loadPR(url,navigate=true){streamAbort?.abort();const generation=++prGeneration;toast('Loading pull request…');try{const data=await api('/api/pr?'+new URLSearchParams({url}));if(generation!==prGeneration)return;if(navigate&&location.pathname!==prRoute(data.url))history.pushState({},'',prRoute(data.url));setPR(data);$('inbox').classList.add('hidden');if(pr.limited)toast('GitHub returned a partial file list. This walkthrough cannot cover the entire PR.')}catch(e){toast(e.message)}}
-function setPR(data){stopVoice();document.querySelectorAll('.call-canvas').forEach(el=>el.remove());document.body.classList.remove('home-view');$('prHome').hidden=true;chats.forEach(c=>c.abort?.abort());chats=[];activeChat=null;pr=data;activeFlow=null;$('flowHeader').classList.add('hidden');$('inlineThread').classList.add('hidden');setExplorerCollapsed(false);setConversationCollapsed(true);reviewComments=[];reviewSummary='';reviewPr=pr.head;$('reviewBody').value='';treeNodes=new Map();expandedFolders=new Set(['']);treeLoading=new Set();treeErrors=new Map();columns=[];activeColumn=0;turns=[];selection=null;focused.clear();cache.clear();$('repo').textContent=pr.repo;$('prTitle').textContent=pr.title+' #'+pr.number;$('prTitle').title=pr.title+' #'+pr.number;$('prMeta').textContent=`${pr.author} · ${pr.changedFiles} changed files · ${pr.head.slice(0,7)}`;$('url').value=pr.url;newChat(null,false);showReviewSetup();loadTreeFolder();if(pr.files.length)openFile(pr.files[0].path);else $('editors').innerHTML='<div class="editor-empty"><h2>No changed files.</h2></div>'}
+function setPR(data){stopVoice();voiceReference=null;document.querySelectorAll('.call-canvas').forEach(el=>el.remove());document.body.classList.remove('home-view');$('prHome').hidden=true;chats.forEach(c=>c.abort?.abort());chats=[];activeChat=null;pr=data;activeFlow=null;$('flowHeader').classList.add('hidden');$('inlineThread').classList.add('hidden');setExplorerCollapsed(false);setConversationCollapsed(true);reviewComments=[];reviewSummary='';reviewPr=pr.head;$('reviewBody').value='';treeNodes=new Map();expandedFolders=new Set(['']);treeLoading=new Set();treeErrors=new Map();columns=[];activeColumn=0;turns=[];selection=null;focused.clear();cache.clear();$('repo').textContent=pr.repo;$('prTitle').textContent=pr.title+' #'+pr.number;$('prTitle').title=pr.title+' #'+pr.number;$('prMeta').textContent=`${pr.author} · ${pr.changedFiles} changed files · ${pr.head.slice(0,7)}`;$('url').value=pr.url;newChat(null,false);showReviewSetup();loadTreeFolder();if(pr.files.length)openFile(pr.files[0].path);else $('editors').innerHTML='<div class="editor-empty"><h2>No changed files.</h2></div>'}
 async function inbox(relation='review'){$('inbox').classList.remove('hidden');document.querySelectorAll('[data-relation]').forEach(x=>x.classList.toggle('active',x.dataset.relation===relation));$('prs').textContent='Loading…';try{if(demo){$('prs').innerHTML='<button class="pr-item" data-pr="demo"><b>Add retry handling to webhook delivery</b><small>acme/platform · #248 · sample PR</small></button>';return}const data=await api('/api/prs?relation='+relation);$('prs').innerHTML=data.items.length?data.items.map(p=>`<button class="pr-item" data-pr="${esc(p.url)}"><b>${esc(p.title)}</b><small>${esc(p.repo)} · #${p.number}</small></button>`).join(''):'<p class="muted">No open PRs found in connected repositories.</p>'}catch(e){$('prs').textContent=e.message}}
 $('openForm').addEventListener('submit',e=>{e.preventDefault();if(demo)return toast('Demo mode uses the sample PR. Sign in on the main app to import GitHub PRs.');loadPR($('url').value.trim())});$('filetree').addEventListener('click',e=>{const folder=e.target.closest('[data-folder]'),retry=e.target.closest('[data-retry]');if(folder){const path=folder.dataset.folder;if(expandedFolders.has(path))expandedFolders.delete(path);else{expandedFolders.add(path);if(!treeNodes.has(path))loadTreeFolder(path,folder.dataset.sha)}tree();return}if(retry){loadTreeFolder(retry.dataset.retry,retry.dataset.sha);return}const f=e.target.closest('[data-file]');if(f)openFile(f.dataset.file)});$('inlineForm').addEventListener('submit',e=>{e.preventDefault();const q=$('inlineQuestion').value.trim();if(q){$('inlineQuestion').value='';askInline(q)}});$('followup').addEventListener('submit',e=>{e.preventDefault();const q=$('followQuestion').value.trim();if(q){$('followQuestion').value='';ask(q)}});for(const id of ['inlineQuestion','followQuestion'])$(id).addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();$(id==='inlineQuestion'?'inlineForm':'followup').requestSubmit()}});document.querySelectorAll('[data-ask]').forEach(b=>b.addEventListener('click',()=>askInline(b.dataset.ask)));$('closePopover').addEventListener('click',dismissPopover);document.addEventListener('keydown',e=>{if(e.key==='Escape'){dismissPopover();$('inbox').classList.add('hidden');$('reviewModal').classList.add('hidden')}});$('inboxButton').addEventListener('click',()=>showHome());$('closeInbox').addEventListener('click',()=>$('inbox').classList.add('hidden'));document.querySelectorAll('[data-relation]').forEach(x=>x.addEventListener('click',()=>inbox(x.dataset.relation)));$('prs').addEventListener('click',e=>{const p=e.target.closest('[data-pr]');if(p){$('inbox').classList.add('hidden');if(!demo)loadPR(p.dataset.pr)}});$('resetConversation').addEventListener('click',()=>{newChat();$('followQuestion').focus()});$('logout').addEventListener('click',async()=>{await api('/auth/logout',{method:'POST'});location.href='/'});
 let previewTimer;function sourceEvent(e){if(e.target.closest('[data-open-review]')){if(e.type==='click')showReview();return}const r=e.target.closest('[data-source]');if(!r)return;clearTimeout(previewTimer);const action=()=>openFile(r.dataset.source,{start:+r.dataset.start,end:+r.dataset.end},true);if(e.type==='mouseover')previewTimer=setTimeout(action,450);else action()}
@@ -516,6 +537,16 @@ async function renderWalkthrough(){
       else if(source)mount(current[path]||'');
       else {pane.innerHTML='<p class="editor-loading">Loading source…</p>';try{const data=await getFile(path);if(pane.isConnected){pane.innerHTML='';mount(data.text)}}catch(error){if(pane.isConnected)pane.textContent=error.message}}
     }
+  }
+
+  if(voiceReference){
+   const reference=voiceReference,data=cache.get(pr.head+':head:'+reference.path);
+   if(data){
+    const pane=document.createElement('section');pane.className='review-file-column voice-reference-pane';
+    pane.innerHTML=`<div class="review-file-heading">${fileIcon(reference.path)}<span title="${esc(reference.path)}">${esc(reference.path)}</span><small>PR head</small><button type="button" aria-label="Close referenced code">×</button></div><div class="review-file-mount"></div>`;host.append(pane);
+    pane.querySelector('button').onclick=()=>{voiceReference=null;renderWalkthrough()};
+    const view=mountEditor(pane.lastElementChild,{after:data.text,path:reference.path,diff:false,line:reference.start,onSelect:s=>selectReviewLines(s,reference.path,false)});reviewViews.push(view);view.flashRange(reference.start,reference.end);
+   }
   }
 
   bindPaneDragging(host,{move:(path,source,target)=>{reviewPanes=movePaneFile(reviewPanes,path,source,target);reviewPath=path;reviewSelection=null;renderWalkthrough()},split:(path,source)=>{reviewPanes=movePaneFile(reviewPanes,path,source);reviewPath=path;reviewSelection=null;renderWalkthrough()}});

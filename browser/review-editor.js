@@ -53,6 +53,8 @@ export function mountEditor(parent,{before='',after='',path='',onSelect=()=>{},d
   const measureNotes=()=>view.requestMeasure({read:()=>Math.max(80,view.scrollDOM.clientWidth-(view.dom.querySelector('.cm-gutters')?.getBoundingClientRect().width||0)),write:width=>{if(view.dom.style.getPropertyValue('--review-note-width')!==width+'px'){view.dom.style.setProperty('--review-note-width',width+'px');view.requestMeasure()}}});
   const noteObserver=new ResizeObserver(measureNotes);noteObserver.observe(view.dom);measureNotes();
   const finish=event=>{if(anchor===null)return;anchor=null;const start=view.state.doc.line(range.start).from,end=view.state.doc.line(range.end).to;onSelect({...range,text:view.state.sliceDoc(start,end),x:event.clientX,y:event.clientY})};
+  let flashTimer;
+  view.flashRange=(start,end)=>{clearTimeout(flashTimer);const decorations=[];for(let n=Math.max(1,start);n<=Math.min(end,view.state.doc.lines);n++)decorations.push(Decoration.line({class:'voice-code-flash'}).range(view.state.doc.line(n).from));view.dispatch({effects:highlight.of(decorations)});flashTimer=setTimeout(()=>{if(!view.destroyed)view.dispatch({effects:highlight.of([])})},2200)};
   view.clearQuestionSelection=()=>{anchor=null;range=null;view.dispatch({effects:highlight.of([])})};
   document.addEventListener('mouseup',finish);
   const destroy=view.destroy.bind(view);view.destroy=()=>{stopNoteSpeech(view.dom);noteObserver.disconnect();mountedEditors.delete(view);document.removeEventListener('mouseup',finish);destroy()};

@@ -1,4 +1,4 @@
-export function startVoiceChat({request,onState=()=>{},onTranscript=()=>{},onLevel=()=>{},onError=()=>{},onReady=()=>{}}){
+export function startVoiceChat({request,onState=()=>{},onTranscript=()=>{},onLevel=()=>{},onError=()=>{},onReady=()=>{},onTool=async()=>({error:'Repository tools unavailable.'})}){
  let closed=false,peer,stream,channel,audio,analyser,frame,timer,connectTimer,audioContext;const abort=new AbortController();
  const state=value=>{if(!closed)onState(value)};
  const touch=()=>{clearTimeout(timer);timer=setTimeout(()=>stop(),120000)};
@@ -17,6 +17,15 @@ export function startVoiceChat({request,onState=()=>{},onTranscript=()=>{},onLev
   channel.onopen=()=>{if(closed)return;clearTimeout(connectTimer);state('listening');touch();onReady()};
   channel.onclose=()=>{if(!closed)stop()};
   channel.onmessage=event=>{if(closed)return;let data;try{data=JSON.parse(event.data)}catch{return}
+   if(data.type==='response.done'&&data.response?.status==='completed'){
+    const calls=(data.response.output||[]).filter(item=>item.type==='function_call');
+    if(calls.length){state('thinking');touch();(async()=>{
+     for(const call of calls){let result;try{result=await onTool(call.name,JSON.parse(call.arguments),abort.signal)}catch(error){result={error:error.message||'Source lookup failed.'}}
+      if(closed)return;channel.send(JSON.stringify({type:'conversation.item.create',item:{type:'function_call_output',call_id:call.call_id,output:JSON.stringify(result)}}));
+     }
+     if(!closed)channel.send(JSON.stringify({type:'response.create'}));
+    })().catch(error=>fail(error));return}
+   }
    if(data.type==='error')return fail(new Error('Voice chat could not complete that request. Please reconnect.'));
    if(data.type==='input_audio_buffer.speech_started'){state('listening');touch()}
    if(data.type==='input_audio_buffer.speech_stopped')state('thinking');
