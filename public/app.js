@@ -106,6 +106,7 @@ function selectReviewLines(value,path=reviewPath,intermediate=true){
 const cache=new Map();
 let activeFlow=null;
 let reviewComments=[],reviewSummary='',reviewPr=null;
+document.querySelector('.account-chevron').innerHTML=icon('down');
 function closeAccountMenu(){ $('accountMenu').hidden=true;$('accountButton').setAttribute('aria-expanded','false'); }
 $('accountButton').onclick=()=>{const open=$('accountMenu').hidden;$('accountMenu').hidden=!open;$('accountButton').setAttribute('aria-expanded',String(open))};
 document.addEventListener('click',event=>{if(!event.target.closest('.account-dropdown'))closeAccountMenu()});
@@ -153,7 +154,7 @@ function tree(){
     }).join('');
   };
   $('filetree').innerHTML=expandedFolders.has('')?render('',0):'';
-  $('repoFolder').textContent=(expandedFolders.has('')?'⌄ ':'› ')+pr.repo.split('/').pop().toUpperCase();$('repoFolder').setAttribute('aria-expanded',String(expandedFolders.has('')));
+  $('repoFolder').innerHTML=icon(expandedFolders.has('')?'down':'right')+'<span>'+esc(pr.repo.split('/').pop().toUpperCase())+'</span>';$('repoFolder').setAttribute('aria-expanded',String(expandedFolders.has('')));
   $('commit').textContent='⑂ '+pr.head.slice(0,7);
 }
 async function loadTreeFolder(path='',sha=''){
@@ -440,7 +441,7 @@ function showLineNotes(notes){const panel=$('lineExplanation');panel.classList.r
 function renderStepTree(plan,count){
   const entries=stepFiles(plan,count),root={};
   for(const file of entries){const parts=file.path.split('/');let node=root;for(const part of parts.slice(0,-1))node=node[part]??={};node[parts.at(-1)]={file}}
-  const render=(node)=>Object.entries(node).sort(([a,av],[b,bv])=>Number(!!av.file)-Number(!!bv.file)||a.localeCompare(b)).map(([name,item])=>item.file?`<button data-step-file="${esc(item.file.key)}" class="step-file ${item.file.key===reviewPath?'active':''} status-${item.file.status}" title="${esc(item.file.path)}${item.file.status?' · '+({A:'Added',M:'Modified',D:'Deleted',R:'Renamed'}[item.file.status]):''}">${fileIcon(name)}<span>${esc(name)}</span><b>${item.file.status}</b></button>`:`<details open><summary>${icon('folder')}<span>${esc(name)}</span></summary><div>${render(item)}</div></details>`).join('');
+  const render=(node)=>Object.entries(node).sort(([a,av],[b,bv])=>Number(!!av.file)-Number(!!bv.file)||a.localeCompare(b)).map(([name,item])=>item.file?`<button data-step-file="${esc(item.file.key)}" class="step-file ${item.file.key===reviewPath?'active':''} status-${item.file.status}" title="${esc(item.file.path)}${item.file.status?' · '+({A:'Added',M:'Modified',D:'Deleted',R:'Renamed'}[item.file.status]):''}">${fileIcon(name)}<span>${esc(name)}</span><b>${item.file.status}</b></button>`:`<details open><summary><span class="folder-chevron">${icon('right')}</span>${icon('folder')}<span>${esc(name)}</span></summary><div>${render(item)}</div></details>`).join('');
   return '<small>FILES AT THIS STEP</small>'+(entries.length?render(root):'<p>No files yet.</p>');
 }
 async function renderWalkthrough(){
