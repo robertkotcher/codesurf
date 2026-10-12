@@ -26,10 +26,10 @@ test('step graphs retain deleted entropy callers until their deletion and re-res
 
 test('Ruby syntax parses predicate methods, singleton methods, nested blocks and calls without parentheses',async()=>{
  const {initCallParsers}=await import('../browser/source-index.js');await initCallParsers();
- const source='class Deposit\n def disputed?\n  items.any? do |item|\n   item.active?\n  end\n end\n def check(deposit)\n  deposit.disputed?\n end\n def self.status\n  disputed?\n end\nend';
+ const source='class Deposit\n def disputed?\n  items.any? do |item|\n   item.active?\n  end\n end\n def check\n  Deposit.new.disputed?\n end\n def self.status\n  disputed?\n end\nend';
  const index=buildCallIndex(new Map([['deposit.rb',source],['other.rb','def screen\n Deposit.status\nend\n# deposit.disputed?\ntext = "deposit.disputed?"\n']]));
  const root=indexedCalls(index,{path:'deposit.rb',line:2}).blocks[0];assert.equal(root.symbol,'disputed?');assert.equal(root.end,6);assert.equal(root.precision,'syntax');
- assert.deepEqual(indexedCalls(index,{path:'deposit.rb',line:2,direction:'callers'}).blocks.map(b=>b.symbol),['check','status']);
+ assert.deepEqual(indexedCalls(index,{path:'deposit.rb',line:2,direction:'callers'}).blocks.map(b=>b.symbol),['check']);
  assert.equal(indexedCalls(index,{path:'deposit.rb',line:10,direction:'callers'}).blocks[0].symbol,'screen');
  assert.equal(indexedCalls(index,{path:'deposit.rb',line:8,direction:'callees'}).blocks[0].symbol,'disputed?');
 });
@@ -44,4 +44,25 @@ test('lazy caller resolution works with a scoped server index and changed-file o
  const scoped={...base,calls:base.calls.filter(c=>c.symbol==='child')};
  const current=overlayCallIndexForTest(scoped,new Map([['a.ts','function child() {}\nfunction renamed() { child(); }']]));
  assert.deepEqual(indexedCalls(current,{path:'a.ts',line:1,direction:'callers'}).blocks.map(b=>b.symbol).sort(),['external','renamed']);
+});
+
+test('Ruby callers resolve receiver classes, instance types and namespaces instead of matching every update',async()=>{
+ const {initCallParsers}=await import('../browser/source-index.js');await initCallParsers();
+ const index=buildCallIndex(new Map([
+ ['one.rb','class One\n def update\n end\n def self.update\n end\n def internal\n update\n end\nend'],
+ ['two.rb','class Two\n def update\n end\n def internal\n self.update\n end\nend'],
+ ['uses.rb','def correct\n one = One.new\n one.update\nend\ndef wrong\n two = Two.new\n two.update\nend\ndef unknown(value)\n value.update\nend\ndef static\n One.update\nend'],
+ ['namespaced.rb','module Admin\n class One\n def update\n end\n def internal\n self.update\n end\n end\nend']
+ ]));
+ assert.deepEqual(indexedCalls(index,{path:'one.rb',line:2,direction:'callers'}).blocks.map(b=>b.symbol).sort(),['correct','internal']);
+ assert.deepEqual(indexedCalls(index,{path:'one.rb',line:4,direction:'callers'}).blocks.map(b=>b.symbol),['static']);
+ assert.deepEqual(indexedCalls(index,{path:'two.rb',line:2,direction:'callers'}).blocks.map(b=>b.symbol).sort(),['internal','wrong']);
+ assert.deepEqual(indexedCalls(index,{path:'namespaced.rb',line:3,direction:'callers'}).blocks.map(b=>b.symbol),['internal']);
+});
+
+test('Ruby inherited methods resolve to their defining class, overridden methods stay separate',async()=>{
+ const {initCallParsers}=await import('../browser/source-index.js');await initCallParsers();
+ const index=buildCallIndex(new Map([['a.rb','module A\n class Base\n def update\n end\n end\n class Child < Base\n def run\n update\n end\n end\n class Other < Base\n def update\n end\n def run\n update\n end\n end\nend']]));
+ assert.deepEqual(indexedCalls(index,{path:'a.rb',line:3,direction:'callers'}).blocks.map(b=>b.owner),['A::Child']);
+ assert.deepEqual(indexedCalls(index,{path:'a.rb',line:12,direction:'callers'}).blocks.map(b=>b.owner),['A::Other']);
 });

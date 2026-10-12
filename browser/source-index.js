@@ -42,8 +42,15 @@ function resolveEdges(index,root,path,line,direction){
  const names=new Set([root?.symbol]);if(direction==='callers')for(const [,bindings]of imports)for(const match of bindings)for(const binding of match[1].split(',')){const [original,alias=original]=binding.trim().split(/\s+as\s+/);if(original===root.symbol)names.add(alias)}
  const calls=index.calls.filter(c=>direction==='callers'?names.has(c.symbol):c.path===path&&c.line===line);
  const symbols=new Map();for(const b of blocks){const list=symbols.get(b.symbol)||[];list.push(b);symbols.set(b.symbol,list)}
- const edges=[],importsByPath=new Map(imports);
- for(const call of calls){let targets=symbols.get(call.symbol)||[];const same=targets.filter(b=>b.path===call.path);if(same.length)targets=same;
+ const edges=[],importsByPath=new Map(imports),owners=new Set(blocks.filter(b=>b.owner).map(b=>b.owner));
+ for(const call of calls){let targets=symbols.get(call.symbol)||[];
+ if(call.ruby){
+  const receiver=call.receiver;
+  if(receiver){let owner=receiver.owner;if(receiver.namespace&&!owner.includes('::')){const parts=receiver.namespace.split('::');while(parts.length){const candidate=parts.join('::')+'::'+owner;if(owners.has(candidate)){owner=candidate;break}parts.pop()}}
+   // Resolve the selected receiver's method, walking known inheritance only.
+   const seen=new Set();let resolved=[];while(owner&&!seen.has(owner)){seen.add(owner);resolved=targets.filter(b=>b.owner===owner&&b.methodKind===receiver.kind);if(resolved.length)break;const parent=blocks.find(b=>b.owner===owner&&b.parentClass)?.parentClass;const namespace=owner.split('::').slice(0,-1).join('::');owner=parent&&namespace&&owners.has(namespace+'::'+parent)?namespace+'::'+parent:parent||null}targets=resolved;
+  }else targets=targets.filter(b=>!b.owner&&b.path===call.path);
+ }else{const same=targets.filter(b=>b.path===call.path);if(same.length)targets=same;}
  // Resolve named relative imports before considering same-named definitions elsewhere.
  const imports=importsByPath.get(call.path)||[];
  for(const match of imports){for(const binding of match[1].split(',')){const [original,alias=original]=binding.trim().split(/\s+as\s+/);if(alias!==call.symbol||!match[2].startsWith('.'))continue;const segments=call.path.split('/').slice(0,-1);for(const part of match[2].split('/')){if(part==='..')segments.pop();else if(part!=='.')segments.push(part)}const imported=segments.join('/');targets=(symbols.get(original)||[]).filter(b=>b.path===imported||b.path.replace(/\.[cm]?[jt]sx?$/,'')===imported||b.path.replace(/\/index\.[cm]?[jt]sx?$/,'')===imported);}}
