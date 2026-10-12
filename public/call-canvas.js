@@ -15,6 +15,7 @@ export async function openCallCanvas({host,path,line,load,onSelect,root=null}){
 
  }
  function remove(id){for(const child of nodes.filter(n=>n.parent===id))remove(child.id);nodes=nodes.filter(n=>n.id!==id);for(const [key,ids]of expanded)if(ids.includes(id)||key.startsWith(id+':'))expanded.delete(key)}
+ canvas.addEventListener('clear-question-selection',()=>{drag=null;for(const node of nodes){if(node.selected){delete node.selected;node.focus=null}}render()});
  function choose(id,start,end,event){const node=nodes.find(n=>n.id===id);if(!node)return;node.focus=start;node.selected={start,end};render();onSelect({path:node.path,start,end,text:node.text.split('\n').slice(start-node.start,end-node.start+1).join('\n'),snapshot:node.snapshot,x:event.clientX,y:event.clientY});}
  let drag=null;
  columns.onpointerdown=e=>{const button=e.target.closest('[data-select]');if(!button)return;e.preventDefault();drag={id:button.dataset.select,start:Number(button.dataset.line),end:Number(button.dataset.line)};button.setPointerCapture(e.pointerId)};
