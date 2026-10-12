@@ -147,7 +147,8 @@ app.post('/api/ask',wrap(async(req,res)=>{
   await answer({req,res,p,changed,question,selection,history,token:req.auth.token});
 }));
 app.use(express.static(path.join(root,'public')));
-app.get('/:owner/:repo/pull/:number',(req,res,next)=>{if(!/^[1-9]\d*$/.test(req.params.number))return next();res.sendFile(path.join(root,'public/index.html'))});
+app.get('/github/:owner/:repo/pull/:number',(req,res,next)=>{if(!/^[1-9]\d*$/.test(req.params.number))return next();res.sendFile(path.join(root,'public/index.html'))});
+app.get('/:owner/:repo/pull/:number',(req,res,next)=>{if(!/^[1-9]\d*$/.test(req.params.number))return next();res.redirect(308,'/github'+req.originalUrl)});
 app.use((error,req,res,_next)=>{if(res.headersSent)return res.end();res.status(error.status||500).json({error:error.status?error.message:error instanceof OpenAI.APIError?'OpenAI request failed. Check project billing and model access.':error.message?.startsWith('Enter ')||error.message==='Invalid file path'?error.message:'The request could not be completed. Please retry.'})});
 if(!env.VERCEL&&process.env.NODE_ENV!=='test')app.listen(Number(env.PORT||5179),'127.0.0.1',()=>console.log('CodeSurf: http://localhost:'+(env.PORT||5179)));
 export default app;

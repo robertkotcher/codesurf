@@ -260,8 +260,8 @@ async function ask(question){
   }catch(error){turn.error=error.name==='AbortError'?'Answer stopped.':error.message}
   finally{turn.streaming=false;turn.activity='';chat.abort=null;render();renderChatTabs()}
 }
-function prRoute(url){return new URL(url).pathname}
-function routePR(){return /^\/[^/]+\/[^/]+\/pull\/[1-9]\d*\/?$/.test(location.pathname)?'https://github.com'+location.pathname:null}
+function prRoute(url){return '/github'+new URL(url).pathname}
+function routePR(){const match=location.pathname.match(/^\/github(\/[^/]+\/[^/]+\/pull\/[1-9]\d*\/?)$/);return match?'https://github.com'+match[1]:null}
 let homeItems=[],homeCutoff='',homeShowOlder=false,homeOlderLoaded=false,homeRequest=0;
 function renderHomePulls(){
  const groups=groupPullRequests(homeItems,{query:$('filterPulls').value,cutoff:Date.parse(homeCutoff),includeOlder:homeShowOlder});
@@ -285,7 +285,7 @@ $('showMorePulls').onclick=async()=>{
  }catch(error){if(generation===homeRequest){$('showMorePulls').textContent='Retry loading older pull requests';toast(error.message)}}finally{if(generation===homeRequest)$('showMorePulls').disabled=false}
 };
 $('refreshPulls').onclick=showHome;$('filterPulls').oninput=renderHomePulls;
-$('homePulls').onclick=event=>{const link=event.target.closest('a.home-pr');if(link&&!event.metaKey&&!event.ctrlKey&&!event.shiftKey){event.preventDefault();loadPR('https://github.com'+new URL(link.href).pathname)}};
+$('homePulls').onclick=event=>{const link=event.target.closest('a.home-pr');if(link&&!event.metaKey&&!event.ctrlKey&&!event.shiftKey){event.preventDefault();loadPR('https://github.com'+new URL(link.href).pathname.slice('/github'.length))}};
 window.addEventListener('popstate',()=>{const url=routePR();url?loadPR(url,false):showHome()});
 async function loadPR(url,navigate=true){streamAbort?.abort();const generation=++prGeneration;toast('Loading pull request…');try{const data=await api('/api/pr?'+new URLSearchParams({url}));if(generation!==prGeneration)return;if(navigate&&location.pathname!==prRoute(data.url))history.pushState({},'',prRoute(data.url));setPR(data);$('inbox').classList.add('hidden');if(pr.limited)toast('GitHub returned a partial file list. This walkthrough cannot cover the entire PR.')}catch(e){toast(e.message)}}
 function setPR(data){document.querySelectorAll('.call-canvas').forEach(el=>el.remove());document.body.classList.remove('home-view');$('prHome').hidden=true;chats.forEach(c=>c.abort?.abort());chats=[];activeChat=null;pr=data;preloadCallIndex();activeFlow=null;$('flowHeader').classList.add('hidden');$('inlineThread').classList.add('hidden');setExplorerCollapsed(false);setConversationCollapsed(false);reviewComments=[];reviewSummary='';reviewPr=pr.head;$('reviewBody').value='';treeNodes=new Map();expandedFolders=new Set(['']);treeLoading=new Set();treeErrors=new Map();columns=[];activeColumn=0;turns=[];selection=null;focused.clear();cache.clear();$('repo').textContent=pr.repo;$('prTitle').textContent=pr.title+' #'+pr.number;$('prTitle').title=pr.title+' #'+pr.number;$('prMeta').textContent=`${pr.author} · ${pr.changedFiles} changed files · ${pr.head.slice(0,7)}`;$('url').value=pr.url;newChat();startWalkthrough();loadTreeFolder();if(pr.files.length)openFile(pr.files[0].path);else $('editors').innerHTML='<div class="editor-empty"><h2>No changed files.</h2></div>'}

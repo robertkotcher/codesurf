@@ -232,3 +232,4 @@ body{font-family:var(--product-font)}
 .app-header *,#conversation :not(pre,pre *,code,code *),#prHome *, .modal-backdrop *, .ask-pop *, .review-explanation *, .ai-code-note *, .toast{font-family:var(--product-font)}
 .brand{gap:8px;align-items:center}.brand b{display:flex;align-items:center;justify-content:center;width:29px;height:29px;flex-shrink:0}.brand b svg{display:block;width:29px;height:29px}.brand .brand-name{font-size:19px;font-weight:750;letter-spacing:-.8px;line-height:1.2}.brand-name>span{font-weight:500;color:#a09aa9;letter-spacing:-.5px}
 @media(max-width:750px){.app-header .brand-name{font-size:16px}.app-header .brand{gap:6px}.app-header .brand b,.app-header .brand b svg{width:25px;height:25px}}
+.github-sign{display:flex;align-items:center;justify-content:center;gap:10px;font-weight:600}.github-sign img{display:block;flex-shrink:0;filter:brightness(0) invert(1)}

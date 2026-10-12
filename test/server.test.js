@@ -108,8 +108,13 @@ test('all PRs includes authored and unassigned changes from connected repositori
 });
 
 test('direct PR URLs serve the app with absolute asset paths',async()=>{
-  const response=await request(origin+'/tester/demo/pull/2');
+  const response=await request(origin+'/github/tester/demo/pull/2');
   assert.equal(response.status,200);const html=await response.text();assert(html.includes('src="/app.js"'));assert(html.includes('id="prHome"'));assert(html.includes('class="modal-backdrop hidden" id="signin"'));
+});
+test('legacy PR links redirect into the GitHub namespace',async()=>{
+ const response=await request(origin+'/tester/demo/pull/2?view=code',{redirect:'manual'});
+ assert.equal(response.status,308);assert.equal(response.headers.get('location'),'/github/tester/demo/pull/2?view=code');
+ assert.equal((await request(origin+'/github/tester/demo/pull/0')).status,404);
 });
 test('base call index uses the merge-base snapshot while keeping head access pinned',async()=>{
  const {default:tar}=await import('tar-stream');const {gzipSync}=await import('node:zlib');
