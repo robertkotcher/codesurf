@@ -17,5 +17,7 @@ test('typed AI can request navigation and show parser-resolved callers with revi
   let output=await invoke();assert.match(output,/event: navigation\ndata: {"direction":"next"}/);assert.equal(requests.length,1);assert(requests[0].tools.some(t=>t.name==='navigate_review'));assert.match(requests[0].input[0].content,/Review step 1/);
   desired={name:'explore_calls',args:{path:'a.ts',line:1,direction:'callers'}};output=await invoke();assert.match(output,/event: peeks/);assert.match(output,/"symbol":"caller"/);assert.match(output,/"snapshot":"Review step 1"/);assert.equal(requests.length,2);
   desired={name:'show_code',args:{path:'a.ts',start:2,end:2}};output=await invoke();assert.match(output,/"direction":"body"/);assert.match(output,/function caller/);
+ desired={name:'complete_review',args:{event:'APPROVE'}};output=await invoke();assert.match(output,/event: review\ndata: {"event":"APPROVE"}/);
+  desired={name:'draft_review',args:{path:null,start:null,end:null,body:'Please add a test',snapshot:null}};output=await invoke();assert.match(output,/event: draft/);assert.match(output,/Please add a test/);
  }finally{globalThis.fetch=fetch;if(key===undefined)delete process.env.OPENAI_API_KEY;else process.env.OPENAI_API_KEY=key}
 });

@@ -15,7 +15,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import OpenAI from 'openai';
 import {repositoryIndex,searchIndex,readBlock} from './repository.js';
-import {validateReview} from './reviews.js';
+import {validateReview,draftReview} from './reviews.js';
 import {answer} from './answers.js';
 import {seal,unseal,parsePR,cleanPath,encodePath} from './lib.js';
 const app=express(),root=path.dirname(fileURLToPath(import.meta.url));
@@ -188,13 +188,20 @@ async function reviewCallPeeks(req,p,args){
  }
  return {...result,root:source(result.root),blocks:result.blocks.map(source)};
 }
+async function reviewDraft(req,p,args,files){
+ const row=req.body.reviewId?await ownedVoiceReview(req,p):null;
+ const snapshot=args.snapshot||(req.body.selection?.intermediate===false?'head':row?'review':'head');
+ if(!['review','head'].includes(snapshot))throw Object.assign(new Error('Invalid comment snapshot.'),{status:400});
+ return draftReview(args,files||await changedFiles(req.auth.token,p),{plan:row?.plan,count:req.body.step,snapshot});
+}
 app.post('/api/voice/context',wrap(async(req,res)=>{const p=await pull(req.auth.token,req.body.url,req.body.head);res.json(await voiceContext(req,p))}));
 const speechRequests=new Map();
 const voiceRequests=new Map();
 app.post('/api/voice/tool',wrap(async(req,res)=>{
  const {name,args,head}=req.body;
- if(!['search_repository','read_code','show_code','explore_calls'].includes(name)||!args||typeof args!=='object'||typeof head!=='string'||!head)return res.status(400).json({error:'Invalid repository tool request.'});
+ if(!['search_repository','read_code','show_code','explore_calls','draft_review'].includes(name)||!args||typeof args!=='object'||typeof head!=='string'||!head)return res.status(400).json({error:'Invalid repository tool request.'});
  const p=await pull(req.auth.token,req.body.url,head);
+ if(name==='draft_review')return res.json({draft:await reviewDraft(req,p,args),drafted:true,published:false,head});
  if(name==='explore_calls'){
   cleanPath(args.path);
   return res.json({...await reviewCallPeeks(req,p,args),head});
@@ -247,7 +254,7 @@ app.post('/api/ask',wrap(async(req,res)=>{
   const p=await pull(req.auth.token,url,req.body.head),changed=await changedFiles(req.auth.token,p);
   const snapshot=selection?.intermediate&&req.body.reviewId?await voiceCallSnapshot(req,p,{path:selection.path,snapshot:'review'}):null;
   const context=req.body.reviewId?await voiceContext(req,p):null;
-  await answer({req,res,p,changed,question,selection,history,token:req.auth.token,sourceIndex:snapshot?.index,snapshot:snapshot?.snapshot||'PR head',reviewContext:context,finalSourceIndex:()=>repositoryIndex(req.auth.token,p.pr),exploreCalls:args=>reviewCallPeeks(req,p,{...args,snapshot:args.snapshot||(selection?.intermediate===false?'head':req.body.reviewId?'review':'head')})});
+  await answer({draftReview:args=>reviewDraft(req,p,args,changed),req,res,p,changed,question,selection,history,token:req.auth.token,sourceIndex:snapshot?.index,snapshot:snapshot?.snapshot||'PR head',reviewContext:context,finalSourceIndex:()=>repositoryIndex(req.auth.token,p.pr),exploreCalls:args=>reviewCallPeeks(req,p,{...args,snapshot:args.snapshot||(selection?.intermediate===false?'head':req.body.reviewId?'review':'head')})});
 }));
 app.use(express.static(path.join(root,'public')));
 app.get('/github/:owner/:repo/pull/:number',(req,res,next)=>{if(!/^[1-9]\d*$/.test(req.params.number))return next();res.sendFile(path.join(root,'public/index.html'))});

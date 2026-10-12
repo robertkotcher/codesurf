@@ -226,3 +226,25 @@ test('voice source tools search unchanged files and validate highlighted ranges 
 
  }finally{global.fetch=request}
 });
+
+test('voice comments are validated drafts and both review outcomes publish all comments to GitHub',async()=>{
+ const calls=[];
+ global.fetch=async(url,options)=>{
+  calls.push({url,options});
+  if(options.method==='POST')return Response.json({id:43,html_url:'https://github.com/acme/project/pull/4#review-43'});
+  if(url.includes('/files'))return Response.json([{filename:'src/a.ts',patch:'@@ -1 +1 @@\n-old\n+new'}]);
+  return Response.json({head:{sha:'head'}});
+ };
+ const post=(path,body)=>request(origin+path,{method:'POST',headers:{...auth,Origin:process.env.APP_URL,'Content-Type':'application/json'},body:JSON.stringify(body)});
+ const target={url:'https://github.com/acme/project/pull/4',head:'head'};
+ try{
+  let response=await post('/api/voice/tool',{...target,name:'draft_review',args:{path:'src/a.ts',start:1,end:1,body:'Please add coverage',snapshot:'head'}});
+  assert.equal(response.status,200);const result=await response.json();assert.equal(result.published,false);assert.equal(result.draft.comments[0].line,1);assert(!calls.some(c=>c.options.method==='POST'));
+  response=await post('/api/voice/tool',{...target,name:'draft_review',args:{path:'src/a.ts',start:99,end:99,body:'Wrong line',snapshot:'head'}});assert.equal(response.status,400);
+  for(const event of ['APPROVE','REQUEST_CHANGES']){
+   calls.length=0;response=await post('/api/review',{...target,...result.draft,body:'Reviewed changes',event});assert.equal(response.status,200);
+   const sent=JSON.parse(calls.find(c=>c.options.method==='POST').options.body);assert.equal(sent.event,event);assert.equal(sent.commit_id,'head');assert.deepEqual(sent.comments,result.draft.comments);
+  }
+  calls.length=0;response=await post('/api/voice/tool',{...target,head:'stale',name:'draft_review',args:{path:null,body:'Concern'}});assert.equal(response.status,409);assert(!calls.some(c=>c.options.method==='POST'));
+ }finally{global.fetch=request}
+});
