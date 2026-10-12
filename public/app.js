@@ -272,10 +272,10 @@ function renderHomePulls(){
 async function showHome(){
   setConversationCollapsed(true);$('prHome').hidden=false;$('openPulls').setAttribute('aria-expanded','true');$('openPulls').classList.add('active');
   homeItems=[];homeShowOlder=false;homeOlderLoaded=false;homeCutoff=new Date(Date.now()-14*864e5).toISOString();
-  $('inbox').classList.add('hidden');$('homePulls').textContent='Loading pull requests…';$('showMorePulls').hidden=true;$('refreshPulls').disabled=true;
+  $('inbox').classList.add('hidden');$('prHome').classList.add('pulls-loading');$('homePulls').innerHTML='<p class="pulls-loading-message" role="status">Loading pull requests…</p>';$('showMorePulls').hidden=true;$('refreshPulls').disabled=true;
   $('homeRange').textContent='Assigned to you · Updated in the last two weeks.';
   const generation=++homeRequest;
-  try{const result=await api('/api/prs?'+new URLSearchParams({relation:'assigned',since:homeCutoff}));if(generation!==homeRequest)return;homeItems=result.items;renderHomePulls();$('showMorePulls').hidden=false;$('showMorePulls').disabled=false}catch(error){if(generation===homeRequest)$('homePulls').textContent=error.message}finally{if(generation===homeRequest)$('refreshPulls').disabled=false}
+  try{const result=await api('/api/prs?'+new URLSearchParams({relation:'assigned',since:homeCutoff}));if(generation!==homeRequest)return;homeItems=result.items;renderHomePulls();$('showMorePulls').hidden=false;$('showMorePulls').disabled=false}catch(error){if(generation===homeRequest)$('homePulls').textContent=error.message}finally{if(generation===homeRequest){$('refreshPulls').disabled=false;$('prHome').classList.remove('pulls-loading')}}
 }
 $('showMorePulls').onclick=async()=>{
  if(homeOlderLoaded){homeShowOlder=!homeShowOlder;renderHomePulls();return}
