@@ -90,7 +90,7 @@ function askInline(question){
 function selectReviewLines(value,path=reviewPath,intermediate=true){
   if(!voiceConversation?.active)stopVoice();
   reviewSelection={...value,path,intermediate};selection=null;updateSampleAction(reviewSelection);
-  if(voiceConversation?.active){voiceConversation.updateContext(localVoiceContext());$('reviewVoiceTranscript').textContent='Selected '+path+':'+value.start+'–'+value.end;return}
+  if(voiceConversation?.active){voiceConversation.updateContext(localVoiceContext());return}
   $('popcontext').textContent=path+':'+value.start+'–'+value.end;
   const pop=$('askPopover');pop.classList.remove('hidden');
   pop.style.left=Math.max(12,Math.min(value.x||innerWidth/2,innerWidth-420))+'px';
@@ -214,7 +214,7 @@ function showCodePeeks(result,context){
  if(result.error)return;let anchor={...context,path:context.path||result.root.path,start:result.direction==='callers'?result.root.start:context.start,end:result.direction==='callers'?result.root.end:context.end||context.start};
  if(context.path!==result.root.path&&result.direction!=='body'){const root=codePeeks.add({block:result.root,anchor:context,direction:'body',step:reviewCount});anchor={path:result.root.path,start:result.root.start,end:result.root.end,peekId:root.id,intermediate:result.root.snapshot?.startsWith('Review step')}}
  for(const [index,block]of result.blocks.entries())codePeeks.add({block,anchor:result.direction==='callees'?{...anchor,start:block.callLine,end:block.callLine}:anchor,direction:result.direction,step:reviewCount,expanded:index<3});
- if(!result.blocks.length)toast('No resolved '+result.direction+' found in this source snapshot.');
+ if(result.future?.total)toast(result.future.message);else if(!result.blocks.length)toast('No resolved '+result.direction+' found in this source snapshot.');
 }
 function defaultVoiceSelection(){
  if(!pr)return null;
@@ -245,7 +245,7 @@ async function navigateReview(direction,signal,{fromVoice=false}={}){
 function resetVoiceUI(){
  $('voiceListening').hidden=true;$('inlineQuestion').hidden=false;$('inlineAsk').disabled=false;$('commentSelection').disabled=false;
  for(const [id,label]of [['voiceChatButton','Start voice conversation'],['reviewMicrophone','Start voice review']]){const button=$(id);button.innerHTML=icon('mic');button.setAttribute('aria-pressed','false');button.setAttribute('aria-label',label);button.title=label}
- $('reviewVoiceStatus').textContent='Review by voice';$('reviewVoiceTranscript').textContent='Ask about this change, or say “next.”';$('reviewVoiceWave').hidden=true;$('voicePanel').dataset.state='idle';
+ $('reviewVoiceStatus').textContent='Review by voice';$('reviewVoiceWave').hidden=true;$('voicePanel').dataset.state='idle';
 }
 function hideQuestionPopover(){$('askPopover').classList.add('hidden')}
 function stopVoice(){voiceConversation?.stop();voiceConversation=null;voiceStarting=false;if(voiceChat){for(const turn of voiceChat.turns)turn.streaming=false;if(activeChat===voiceChat)renderTurns()}voiceChat=null;resetVoiceUI()}
@@ -257,7 +257,7 @@ $('voiceChatButton').innerHTML=icon('mic');$('reviewMicrophone').innerHTML=icon(
 async function toggleReviewVoice(){
  if(voiceConversation?.active||voiceStarting){stopVoice();return}if(!pr)return toast('Open a pull request first.');if(demo)return toast('Voice chat is available on connected pull requests.');
  const context=reviewSelection||selection||defaultVoiceSelection(),current=pr,startingStep=reviewCount,startingReview=reviewSession;voiceStarting=true;
- stopNoteSpeech();hideQuestionPopover();$('reviewVoiceTranscript').textContent='';$('reviewVoiceWave').hidden=false;
+ stopNoteSpeech();hideQuestionPopover();$('reviewVoiceWave').hidden=false;
  for(const id of ['voiceChatButton','reviewMicrophone']){$(id).innerHTML=icon('stop');$(id).setAttribute('aria-pressed','true');$(id).setAttribute('aria-label','End voice review');$(id).title='End voice review'}
  const messages=new Map();let chat=null,lastTurn=null;
  voiceConversation=startVoiceChat({
@@ -276,9 +276,9 @@ async function toggleReviewVoice(){
   },
   onState:state=>{if(state==='ended'){voiceStarting=false;if(chat){for(const turn of chat.turns)turn.streaming=false;if(activeChat===chat)renderTurns()}resetVoiceUI();return}const label={connecting:'Connecting…',listening:'Listening…',thinking:'Thinking…',speaking:'Speaking…'}[state]||state;$('voiceStatus').textContent=label;$('reviewVoiceStatus').textContent=label;$('voiceListening').dataset.state=state;$('voicePanel').dataset.state=state},
   onLevel:level=>{for(const id of ['voiceListening','reviewVoiceWave'])$(id).style.setProperty('--voice-level',String(level))},
-  onReady:()=>{voiceStarting=false;chat=newChat(context,false);chat.title='Voice review';voiceChat=chat;renderChatTabs();voiceConversation.updateContext(localVoiceContext());voiceConversation.speak('Briefly explain the current displayed review change in simple language, then listen for my questions. Do not navigate yet.');},
+  onReady:()=>{voiceStarting=false;chat=newChat(context,false);chat.title='Voice review';voiceChat=chat;renderChatTabs();voiceConversation.updateContext(localVoiceContext());voiceConversation.speak('Say exactly: How can I help? Then wait. Do not explain the review or call tools.');},
   onTranscript:message=>{
-   if(!chat||!message.text)return;$('voiceTranscript').textContent=message.text;$('reviewVoiceTranscript').textContent=message.text;
+   if(!chat||!message.text)return;$('voiceTranscript').textContent=message.text;
    let turn=messages.get(message.id);
    if(message.role==='user'){
     if(!turn){turn=lastTurn&&!lastTurn.voiceQuestion?lastTurn:{q:'',a:'',origin:reviewSelection||selection||defaultVoiceSelection(),head:current.head};if(!chat.turns.includes(turn))chat.turns.push(turn);messages.set(message.id,turn)}turn.q=message.text;turn.voiceQuestion=true;lastTurn=turn;
@@ -336,7 +336,7 @@ async function ask(question){
   const abort=new AbortController();chat.abort=abort;closePopover();renderChatTabs();
   const render=()=>{if(chat===activeChat)renderTurns()};render();
   try{
-    const move=async direction=>{const result=await navigateReview(direction,abort.signal);if(generation!==prGeneration||abort.signal.aborted)return;const step=result.review||result;turn.a=result.moved?`Step ${step.step}: ${step.title||'Review change'}${step.summary?'\n'+step.summary:''}`:result.error||result.message;chat.context=defaultVoiceSelection();if(chat.context)chat.context.step=reviewCount;turn.activity='';render()};
+    const move=async direction=>{const result=await navigateReview(direction,abort.signal);if(generation!==prGeneration||abort.signal.aborted)return;const step=result.review||result;turn.a=result.moved?`Now showing step ${step.step}.`:result.error||result.message;chat.context=defaultVoiceSelection();if(chat.context)chat.context.step=reviewCount;turn.activity='';render()};
     const navigation=reviewNavigationCommand(question);
     if(navigation){await move(navigation);return}
     if(demo){const text='A failed delivery queues a retry. The delay doubles each attempt; the fifth attempt stops the chain.';for(let i=0;i<text.length;i+=12){if(abort.signal.aborted)throw new DOMException('Stopped','AbortError');turn.a+=text.slice(i,i+12);render();await new Promise(r=>setTimeout(r,40))}}
@@ -378,7 +378,7 @@ $('refreshPulls').onclick=showHome;$('filterPulls').oninput=renderHomePulls;
 $('homePulls').onclick=event=>{const link=event.target.closest('a.home-pr');if(link&&!event.metaKey&&!event.ctrlKey&&!event.shiftKey){event.preventDefault();loadPR('https://github.com'+new URL(link.href).pathname.slice('/github'.length))}};
 window.addEventListener('popstate',()=>{const url=routePR();url?loadPR(url,false):showHome()});
 async function loadPR(url,navigate=true){streamAbort?.abort();const generation=++prGeneration;toast('Loading pull request…');try{const data=await api('/api/pr?'+new URLSearchParams({url}));if(generation!==prGeneration)return;if(navigate&&location.pathname!==prRoute(data.url))history.pushState({},'',prRoute(data.url));setPR(data);$('inbox').classList.add('hidden');if(pr.limited)toast('GitHub returned a partial file list. This walkthrough cannot cover the entire PR.')}catch(e){toast(e.message)}}
-function setPR(data){stopVoice();codePeeks.clear();document.querySelectorAll('.call-canvas').forEach(el=>el.remove());document.body.classList.remove('home-view');$('prHome').hidden=true;chats.forEach(c=>c.abort?.abort());chats=[];activeChat=null;pr=data;activeFlow=null;$('flowHeader').classList.add('hidden');$('inlineThread').classList.add('hidden');setExplorerCollapsed(false);setConversationCollapsed(true);reviewComments=[];reviewSummary='';reviewPr=pr.head;$('reviewBody').value='';treeNodes=new Map();expandedFolders=new Set(['']);treeLoading=new Set();treeErrors=new Map();columns=[];activeColumn=0;turns=[];selection=null;focused.clear();cache.clear();$('repo').textContent=pr.repo;$('prTitle').textContent=pr.title+' #'+pr.number;$('prTitle').title=pr.title+' #'+pr.number;$('prMeta').textContent=`${pr.author} · ${pr.changedFiles} changed files · ${pr.head.slice(0,7)}`;$('url').value=pr.url;newChat(null,false);showReviewSetup();loadTreeFolder();if(pr.files.length)openFile(pr.files[0].path);else $('editors').innerHTML='<div class="editor-empty"><h2>No changed files.</h2></div>'}
+function setPR(data){stopVoice();codePeeks.clear();document.querySelectorAll('.call-canvas').forEach(el=>el.remove());document.body.classList.remove('home-view');$('prHome').hidden=true;chats.forEach(c=>c.abort?.abort());chats=[];activeChat=null;pr=data;activeFlow=null;$('flowHeader').classList.add('hidden');$('inlineThread').classList.add('hidden');setExplorerCollapsed(false);setConversationCollapsed(false);reviewComments=[];reviewSummary='';reviewPr=pr.head;$('reviewBody').value='';treeNodes=new Map();expandedFolders=new Set(['']);treeLoading=new Set();treeErrors=new Map();columns=[];activeColumn=0;turns=[];selection=null;focused.clear();cache.clear();$('repo').textContent=pr.repo;$('prTitle').textContent=pr.title+' #'+pr.number;$('prTitle').title=pr.title+' #'+pr.number;$('prMeta').textContent=`${pr.author} · ${pr.changedFiles} changed files · ${pr.head.slice(0,7)}`;$('url').value=pr.url;newChat(null,false);showReviewSetup();loadTreeFolder();if(pr.files.length)openFile(pr.files[0].path);else $('editors').innerHTML='<div class="editor-empty"><h2>No changed files.</h2></div>'}
 async function inbox(relation='review'){$('inbox').classList.remove('hidden');document.querySelectorAll('[data-relation]').forEach(x=>x.classList.toggle('active',x.dataset.relation===relation));$('prs').textContent='Loading…';try{if(demo){$('prs').innerHTML='<button class="pr-item" data-pr="demo"><b>Add retry handling to webhook delivery</b><small>acme/platform · #248 · sample PR</small></button>';return}const data=await api('/api/prs?relation='+relation);$('prs').innerHTML=data.items.length?data.items.map(p=>`<button class="pr-item" data-pr="${esc(p.url)}"><b>${esc(p.title)}</b><small>${esc(p.repo)} · #${p.number}</small></button>`).join(''):'<p class="muted">No open PRs found in connected repositories.</p>'}catch(e){$('prs').textContent=e.message}}
 $('openForm').addEventListener('submit',e=>{e.preventDefault();if(demo)return toast('Demo mode uses the sample PR. Sign in on the main app to import GitHub PRs.');loadPR($('url').value.trim())});$('filetree').addEventListener('click',e=>{const folder=e.target.closest('[data-folder]'),retry=e.target.closest('[data-retry]');if(folder){const path=folder.dataset.folder;if(expandedFolders.has(path))expandedFolders.delete(path);else{expandedFolders.add(path);if(!treeNodes.has(path))loadTreeFolder(path,folder.dataset.sha)}tree();return}if(retry){loadTreeFolder(retry.dataset.retry,retry.dataset.sha);return}const f=e.target.closest('[data-file]');if(f)openFile(f.dataset.file)});$('inlineForm').addEventListener('submit',e=>{e.preventDefault();const q=$('inlineQuestion').value.trim();if(q){$('inlineQuestion').value='';askInline(q)}});$('followup').addEventListener('submit',e=>{e.preventDefault();const q=$('followQuestion').value.trim();if(q){$('followQuestion').value='';ask(q)}});for(const id of ['inlineQuestion','followQuestion'])$(id).addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();$(id==='inlineQuestion'?'inlineForm':'followup').requestSubmit()}});document.querySelectorAll('[data-ask]').forEach(b=>b.addEventListener('click',()=>askInline(b.dataset.ask)));$('closePopover').addEventListener('click',dismissPopover);document.addEventListener('keydown',e=>{if(e.key==='Escape'){dismissPopover();$('inbox').classList.add('hidden');$('reviewModal').classList.add('hidden')}});$('inboxButton').addEventListener('click',()=>showHome());$('closeInbox').addEventListener('click',()=>$('inbox').classList.add('hidden'));document.querySelectorAll('[data-relation]').forEach(x=>x.addEventListener('click',()=>inbox(x.dataset.relation)));$('prs').addEventListener('click',e=>{const p=e.target.closest('[data-pr]');if(p){$('inbox').classList.add('hidden');if(!demo)loadPR(p.dataset.pr)}});$('resetConversation').addEventListener('click',()=>{newChat();$('followQuestion').focus()});$('logout').addEventListener('click',async()=>{await api('/auth/logout',{method:'POST'});location.href='/'});
 let previewTimer;function sourceEvent(e){if(e.target.closest('[data-open-review]')){if(e.type==='click')showReview();return}const r=e.target.closest('[data-source]');if(!r)return;clearTimeout(previewTimer);const action=()=>openFile(r.dataset.source,{start:+r.dataset.start,end:+r.dataset.end},true);if(e.type==='mouseover')previewTimer=setTimeout(action,450);else action()}
@@ -475,7 +475,7 @@ function dockWalkthrough(){if(!reviewPlan)return;reviewExploring=true;setExplore
 function returnToWalkthrough(){reviewExploring=false;renderWalkthrough()}
 function showReviewSetup(){
  for(const id of ['reviewBack','reviewNext','reviewProgress','voicePanel'])$(id).hidden=true;nextPreparation=null;reviewMoving=false;codePeeks.clear();
- reviewPanes=[];reviewLayoutStep=null;$('reviewStepHeader').hidden=true;$('reviewStepTree').hidden=true;
+ reviewPanes=[];reviewLayoutStep=null;$('voiceWarnings').innerHTML='';$('reviewStepHeader').hidden=true;$('reviewStepTree').hidden=true;
  reviewPlan=null;reviewSession=null;reviewCount=0;walkthroughReady=false;reviewExploring=false;reviewSelection=null;destroyReviewViews();$('startReview').disabled=true;
  $('workspace').classList.add('review-mode');$('walkthrough').classList.remove('hidden');
  const paces=['guided','moderate','quick'];let position=Math.max(0,paces.indexOf(reviewPace));
@@ -529,7 +529,7 @@ async function reviewAdvance(delta,{fromVoice=false}={}){
  reviewCount=target;walkthroughIndex=reviewCount-1;reviewExploring=false;reviewSelection=null;
  const first=reviewPlan.operations.find(o=>reviewPlan.steps[reviewCount-1]?.ids.includes(o.id));if(first)reviewPath=first.path;
  await renderWalkthrough();tree();reviewMoving=false;if(id)prepareNext();
- if(!fromVoice&&voiceConversation?.active){const voice=voiceConversation,context=await currentVoiceContext().catch(()=>localVoiceContext());if(voice===voiceConversation&&voice.active){voice.updateContext(context);voice.speak('Explain the newly displayed review change briefly. Do not navigate.')}}
+ if(!fromVoice&&voiceConversation?.active){const voice=voiceConversation,context=await currentVoiceContext().catch(()=>localVoiceContext());if(voice===voiceConversation&&voice.active){voice.updateContext(context)}}
  return true;
 }
 async function verifyReviewHashes(){
@@ -542,7 +542,7 @@ function renderStepTree(plan,count){
   const entries=stepFiles(plan,count).filter(file=>file.status),root={};
   for(const file of entries){const parts=file.path.split('/');let node=root;for(const part of parts.slice(0,-1))node=node[part]??={};node[parts.at(-1)]={file}}
   const render=(node)=>Object.entries(node).sort(([a,av],[b,bv])=>Number(!!av.file)-Number(!!bv.file)||a.localeCompare(b)).map(([name,item])=>item.file?`<button data-step-file="${esc(item.file.key)}" class="step-file ${item.file.key===reviewPath?'active':''} status-${item.file.status}" title="${esc(item.file.path)}${item.file.status?' · '+({A:'Added',M:'Modified',D:'Deleted',R:'Renamed'}[item.file.status]):''}">${fileIcon(name)}<span>${esc(name)}</span><b>${item.file.status}</b></button>`:`<details open><summary><span class="folder-chevron">${icon('right')}</span>${icon('folder')}<span>${esc(name)}</span></summary><div>${render(item)}</div></details>`).join('');
-  return '<small>THIS STEP</small>'+(entries.length?render(root):'<p>No files yet.</p>');
+  return '<small>FILES CHANGED IN THIS STEP</small><p class="file-scope-note">Only this review change. Browse all repository files below.</p>'+(entries.length?render(root):'<p>No files yet.</p>');
 }
 async function renderWalkthrough(){
   if(!reviewPlan)return;destroyReviewViews();const plan=reviewPlan,total=plan.steps.length,step=plan.steps[reviewCount-1],current=stateAt(plan,reviewCount),previous=stateAt(plan,Math.max(0,reviewCount-1));
@@ -592,11 +592,11 @@ async function renderWalkthrough(){
 
   if(complete){try{reviewVerified=validatePlan(plan);await verifyReviewHashes();if($('reconstructionStatus'))$('reconstructionStatus').textContent=reviewVerified?'Reconstruction verified ✓':'Available files verified';const finish=$('walkthrough').querySelector('.review-finish');if(finish)finish.textContent=reviewVerified?'Verified: the reconstructed files exactly match the PR head.':'Available text files match. Unavailable files still need review.'}catch(error){reviewVerified=false;$('reconstructionStatus').textContent=error.message}}
 }
-$('reviewBack').innerHTML=icon('left');$('reviewNext').innerHTML=icon('right');
+$('reviewBack').textContent='Previous';$('reviewNext').textContent='Next';
 $('reviewBack').onclick=()=>reviewAdvance(-1);$('reviewNext').onclick=()=>reviewAdvance(1);
 $('startReview').onclick=()=>reviewAdvance(1);
 attachSidebarResize($('explorer'));
-newChat(null,false);setConversationCollapsed(true);
+newChat(null,false);setConversationCollapsed(false);
 init();
 
 document.addEventListener('note-audio-error',event=>toast(event.detail));

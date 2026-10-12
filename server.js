@@ -1,3 +1,4 @@
+import {futureCallers} from './browser/future-callers.js';
 import {functionPeeks} from './browser/function-peeks.js';
 import {voiceSelection,voiceSession,voiceReviewContext} from './realtime-voice.js';
 import {stateAt,manifestAt} from './public/transformations.js';
@@ -173,6 +174,20 @@ async function voiceCallSnapshot(req,p,args){
  await initCallParsers();const files=new Map(base.files);for(const [path,text]of overrides){if(text===null)files.delete(path);else files.set(path,text)}
  return {index:{...base,files},graph:overlayCallIndex(buildCallIndex(base.files),overrides),snapshot:'Review step '+count};
 }
+async function reviewCallPeeks(req,p,args){
+ const request={...args};
+ const {index,graph,snapshot}=await voiceCallSnapshot(req,p,request),result=functionPeeks(graph,request);
+ const source=block=>({...block,text:index.files.get(block.path)?.split('\n').slice(block.start-1,block.end).join('\n'),snapshot});
+ if(args.direction==='callers'&&req.body.reviewId){
+  try{
+   const head=args.snapshot==='head'?{index,graph}:await voiceCallSnapshot(req,p,{...args,snapshot:'head'});
+   const applied=args.snapshot==='head'?await voiceCallSnapshot(req,p,{...args,snapshot:'review'}):{index,graph};
+   const row=await ownedVoiceReview(req,p),file=row.plan.files.find(f=>f.path===args.path||f.previousPath===args.path);
+   result.future=futureCallers(applied.graph,head.graph,result.root,applied.index.files,head.index.files,[file?.path,file?.previousPath].filter(Boolean));
+  }catch{result.future={checked:false,total:0,message:'The applied callers are shown, but callers in later PR changes could not be checked.'}}
+ }
+ return {...result,root:source(result.root),blocks:result.blocks.map(source)};
+}
 app.post('/api/voice/context',wrap(async(req,res)=>{const p=await pull(req.auth.token,req.body.url,req.body.head);res.json(await voiceContext(req,p))}));
 const speechRequests=new Map();
 const voiceRequests=new Map();
@@ -182,9 +197,7 @@ app.post('/api/voice/tool',wrap(async(req,res)=>{
  const p=await pull(req.auth.token,req.body.url,head);
  if(name==='explore_calls'){
   cleanPath(args.path);
-  const {index,graph,snapshot}=await voiceCallSnapshot(req,p,args),result=functionPeeks(graph,args);
-  const source=block=>({...block,text:index.files.get(block.path)?.split('\n').slice(block.start-1,block.end).join('\n'),snapshot});
-  return res.json({...result,root:source(result.root),blocks:result.blocks.map(source),head});
+  return res.json({...await reviewCallPeeks(req,p,args),head});
  }
  const index=await repositoryIndex(req.auth.token,p.pr);
  if(name==='search_repository'){
@@ -234,7 +247,7 @@ app.post('/api/ask',wrap(async(req,res)=>{
   const p=await pull(req.auth.token,url,req.body.head),changed=await changedFiles(req.auth.token,p);
   const snapshot=selection?.intermediate&&req.body.reviewId?await voiceCallSnapshot(req,p,{path:selection.path,snapshot:'review'}):null;
   const context=req.body.reviewId?await voiceContext(req,p):null;
-  await answer({req,res,p,changed,question,selection,history,token:req.auth.token,sourceIndex:snapshot?.index,snapshot:snapshot?.snapshot||'PR head',reviewContext:context});
+  await answer({req,res,p,changed,question,selection,history,token:req.auth.token,sourceIndex:snapshot?.index,snapshot:snapshot?.snapshot||'PR head',reviewContext:context,finalSourceIndex:()=>repositoryIndex(req.auth.token,p.pr),exploreCalls:args=>reviewCallPeeks(req,p,{...args,snapshot:args.snapshot||(selection?.intermediate===false?'head':req.body.reviewId?'review':'head')})});
 }));
 app.use(express.static(path.join(root,'public')));
 app.get('/github/:owner/:repo/pull/:number',(req,res,next)=>{if(!/^[1-9]\d*$/.test(req.params.number))return next();res.sendFile(path.join(root,'public/index.html'))});
