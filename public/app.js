@@ -90,6 +90,25 @@ $('accountButton').onclick=()=>{const open=$('accountMenu').hidden;$('accountMen
 document.addEventListener('click',event=>{if(!event.target.closest('.account-dropdown'))closeAccountMenu()});
 document.addEventListener('keydown',event=>{if(event.key==='Escape'){closeAccountMenu();if(event.target.closest('.account-dropdown'))$('accountButton').focus()}});
 $('accountMenu').addEventListener('click',event=>{if(event.target.closest('button,a'))closeAccountMenu()});
+async function loadRepositories(){
+  const container=$('repositoryConnections');container.textContent='Loading repositories…';
+  $('addRepositories').href=status?.installUrl||'https://github.com/settings/installations';
+  $('refreshRepositories').disabled=true;
+  try{
+    if(demo){container.textContent='Repository connections are unavailable in the demo. Sign in with GitHub to manage access.';return}
+    const data=await api('/api/repositories');
+    container.innerHTML=data.items.length?data.items.map(item=>`<section class="repository-connection"><div><b>${esc(item.account)}</b><a href="${esc(item.manageUrl)}" target="_blank" rel="noopener">Choose repositories / disconnect ↗</a></div>${item.repositories.length?'<ul>'+item.repositories.map(repo=>`<li>${esc(repo.name)}<small>${repo.private?'Private':'Public'}</small></li>`).join('')+'</ul>':'<p>No repositories connected.</p>'}</section>`).join(''):'<p>No repositories connected. Connect a repository to get started.</p>';
+  }catch(error){container.textContent=error.message}finally{$('refreshRepositories').disabled=false}
+}
+function closeSettings(){$('settings').classList.add('hidden');$('accountButton').focus()}
+$('settingsButton').onclick=()=>{$('settings').classList.remove('hidden');$('closeSettings').focus();loadRepositories()};
+$('closeSettings').onclick=closeSettings;
+$('settings').onclick=event=>{if(event.target===$('settings'))closeSettings()};
+$('settings').onkeydown=event=>{
+  if(event.key==='Escape')closeSettings();
+  if(event.key==='Tab'){const controls=[...$('settings').querySelectorAll('button:not(:disabled),a[href]')];const first=controls[0],last=controls.at(-1);if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus()}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus()}}
+};
+$('refreshRepositories').onclick=async()=>{await loadRepositories();if(!demo&&!$('prHome').hidden)await showHome()};
 function showAccount(account){
   $('identity').textContent='@'+account.login;$('accountSignIn').hidden=true;
   for(const id of ['inboxButton','reviewButton','logout'])$(id).hidden=false;

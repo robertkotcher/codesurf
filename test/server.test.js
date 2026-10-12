@@ -117,3 +117,14 @@ test('base call index uses the merge-base snapshot while keeping head access pin
  global.fetch=async url=>{calls.push(String(url));if(String(url).includes('/pulls/22'))return Response.json({head:{sha:head,repo:{full_name:'acme/entropy'}},base:{sha:base,repo:{full_name:'acme/entropy'}}});if(String(url).includes('/compare/'))return Response.json({merge_base_commit:{sha:merge}});if(String(url).includes('/tarball/'))return new Response(archive);throw new Error('Unexpected request '+url);};
  try{const response=await request(origin+'/api/call-index?'+new URLSearchParams({url:'https://github.com/acme/entropy/pull/22',head,snapshot:'base'}),{headers:auth});assert.equal(response.status,200);const graph=await response.json();assert.equal(graph.sha,merge);assert.equal(graph.head,head);assert(graph.edges.some(e=>e.symbol==='entropy'));assert(graph.blocks.every(b=>!Object.hasOwn(b,'text')));assert(calls.some(url=>url.endsWith('/tarball/'+merge)));assert(!calls.some(url=>url.endsWith('/tarball/'+head)));}finally{global.fetch=request;}
 });
+
+test('repository settings list installation access using the signed-in user',async()=>{
+ const calls=[];
+ global.fetch=async(url,options)=>{calls.push({url,options});return Response.json(url.includes('/repositories?')?{repositories:[{full_name:'acme/project',private:true}]}:{installations:[{id:123,account:{login:'acme'}}]})};
+ try{
+  assert.equal((await request(origin+'/api/repositories')).status,401);
+  const r=await request(origin+'/api/repositories',{headers:auth});assert.equal(r.status,200);
+  assert.deepEqual(await r.json(),{items:[{account:'acme',manageUrl:'https://github.com/settings/installations/123',repositories:[{name:'acme/project',private:true}]}]});
+  assert(calls.every(c=>c.options.headers.Authorization==='Bearer test-user-token'));
+ }finally{global.fetch=request}
+});

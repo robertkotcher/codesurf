@@ -38,6 +38,17 @@ app.get('/api/demo-plan',wrap(async(req,res)=>{
 }));
 app.use('/api',wrap(async(req,res,next)=>{if(req.path==='/status')return next();let s=session(req);if(!s)return res.status(401).json({error:'Sign in with GitHub'});if(req.method==='POST'&&req.headers.origin!==base(req))return res.sendStatus(403);if(s.tokenExp<Date.now()+60000&&s.refresh){const r=await fetch('https://github.com/login/oauth/access_token',{method:'POST',headers:{Accept:'application/json','Content-Type':'application/json'},body:JSON.stringify({client_id:env.GITHUB_CLIENT_ID,client_secret:env.GITHUB_CLIENT_SECRET,grant_type:'refresh_token',refresh_token:s.refresh})});const t=await r.json();if(!t.access_token)return res.status(401).json({error:'GitHub session expired. Sign in again.'});s={...s,token:t.access_token,refresh:t.refresh_token,tokenExp:Date.now()+t.expires_in*1000};setSession(res,s)}req.auth=s;next()}));
 app.get('/api/me',wrap(async(req,res)=>{const s=session(req);if(!s)return res.status(401).json({error:'Sign in with GitHub'});await github(s.token,'/user');res.json(s.user)}));
+app.get('/api/repositories',wrap(async(req,res)=>{
+  const installations=[];
+  for(let page=1;;page++){const batch=await github(req.auth.token,`/user/installations?per_page=100&page=${page}`);installations.push(...batch.installations);if(batch.installations.length<100)break}
+  const items=[];
+  for(const installation of installations){
+    const repositories=[];
+    for(let page=1;;page++){const batch=await github(req.auth.token,`/user/installations/${installation.id}/repositories?per_page=100&page=${page}`);repositories.push(...batch.repositories.map(repo=>({name:repo.full_name,private:repo.private})));if(batch.repositories.length<100)break}
+    items.push({account:installation.account.login,manageUrl:`https://github.com/settings/installations/${installation.id}`,repositories});
+  }
+  res.json({items});
+}));
 app.get('/api/prs',wrap(async(req,res)=>{
   if(req.query.relation==='all'){
     const items=[];let installations=[];
