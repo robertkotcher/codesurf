@@ -1,3 +1,4 @@
+import {reviewNavigationCommand} from './review-commands.js';
 import {createCodePeeks} from './code-peeks.js';
 import {startVoiceChat} from './voice-chat.js';
 import {stepChangeCounts} from './file-details.js';
@@ -211,7 +212,7 @@ const codePeeks=createCodePeeks({host:document.querySelector('.code-stage'),moun
  },onSelect:value=>selectReviewLines(value,value.path,value.intermediate),onExpand:(context,direction)=>exploreCode(context,direction),onError:toast});
 function showCodePeeks(result,context){
  if(result.error)return;let anchor={...context,path:context.path||result.root.path,start:result.direction==='callers'?result.root.start:context.start,end:result.direction==='callers'?result.root.end:context.end||context.start};
- if(context.path!==result.root.path){const root=codePeeks.add({block:result.root,anchor:context,direction:'body',step:reviewCount});anchor={path:result.root.path,start:result.root.start,end:result.root.end,peekId:root.id,intermediate:result.root.snapshot?.startsWith('Review step')}}
+ if(context.path!==result.root.path&&result.direction!=='body'){const root=codePeeks.add({block:result.root,anchor:context,direction:'body',step:reviewCount});anchor={path:result.root.path,start:result.root.start,end:result.root.end,peekId:root.id,intermediate:result.root.snapshot?.startsWith('Review step')}}
  for(const [index,block]of result.blocks.entries())codePeeks.add({block,anchor:result.direction==='callees'?{...anchor,start:block.callLine,end:block.callLine}:anchor,direction:result.direction,step:reviewCount,expanded:index<3});
  if(!result.blocks.length)toast('No resolved '+result.direction+' found in this source snapshot.');
 }
@@ -231,6 +232,15 @@ function localVoiceContext(){
 async function currentVoiceContext(signal){
  const context=localVoiceContext();if(demo)return context;
  return api('/api/voice/context',{method:'POST',headers:{'Content-Type':'application/json'},signal,body:JSON.stringify({url:pr.url,head:pr.head,reviewId:reviewSession,step:reviewCount,selection:context.selection})});
+}
+async function navigateReview(direction,signal,{fromVoice=false}={}){
+ if(!['next','previous'].includes(direction))return {error:'Choose next or previous.'};
+ if(!reviewPlan)return {moved:false,message:'Start a review first.'};
+ const current=pr,id=reviewSession;
+ if(direction==='next'&&reviewCount>=reviewPlan.steps.length&&!reviewDone)await prepareNext();
+ if(signal?.aborted||current!==pr||id!==reviewSession)return {error:'Navigation interrupted.'};
+ const moved=await reviewAdvance(direction==='next'?1:-1,{fromVoice});
+ return {...await currentVoiceContext(signal),moved:!!moved,message:moved?'Now showing the new review step.':direction==='previous'?'Already at the beginning.':reviewMoving?'A step is already opening.':nextError||'No next step available yet.'};
 }
 function resetVoiceUI(){
  $('voiceListening').hidden=true;$('inlineQuestion').hidden=false;$('inlineAsk').disabled=false;$('commentSelection').disabled=false;
@@ -256,13 +266,7 @@ async function toggleReviewVoice(){
   onTool:async(name,args,signal)=>{
    if(current!==pr||signal.aborted)return {error:'The review changed.'};
    if(name==='get_review_context')return currentVoiceContext(signal);
-   if(name==='navigate_review'){
-    if(!['next','previous'].includes(args.direction))return {error:'Choose next or previous.'};
-    if(args.direction==='next'&&reviewPlan&&reviewCount>=reviewPlan.steps.length&&!reviewDone)await prepareNext();
-    if(signal.aborted)return {error:'Navigation interrupted.'};
-    const moved=await reviewAdvance(args.direction==='next'?1:-1,{fromVoice:true});
-    return {...await currentVoiceContext(signal),moved:!!moved,message:moved?'Now showing the new review step.':args.direction==='previous'?'Already at the beginning.':'No next step available yet.'};
-   }
+   if(name==='navigate_review')return navigateReview(args.direction,signal,{fromVoice:true});
    const step=reviewCount,origin=reviewSelection||selection||defaultVoiceSelection();
    const result=await api('/api/voice/tool',{method:'POST',headers:{'Content-Type':'application/json'},signal,body:JSON.stringify({url:current.url,head:current.head,reviewId:reviewSession,step,name,args})});
    if(signal.aborted||current!==pr||step!==reviewCount)return {error:'The displayed step changed.'};
@@ -326,19 +330,22 @@ async function ask(question){
   if(!pr)return toast('Open a pull request first.');
   codePeeks.collapse();
   setConversationCollapsed(false);const chat=activeChat||newChat();if(chat.abort)return toast('This chat is still answering. Open another tab to ask in parallel.');
-  const generation=prGeneration, context=chat.context, prior=chat.turns.filter(t=>!t.error).flatMap(t=>[{role:'user',content:t.q},{role:'assistant',content:t.a}]);
+  const generation=prGeneration, requestStep=reviewCount, context=reviewSelection||selection||(chat.context&&(!chat.context.intermediate||chat.context.step===reviewCount)?chat.context:null)||defaultVoiceSelection(), prior=chat.turns.filter(t=>!t.error).flatMap(t=>[{role:'user',content:t.q},{role:'assistant',content:t.a}]);
   const turn={q:question,a:'',streaming:true,activity:'Finding relevant source…',origin:context,head:pr.head};chat.turns.push(turn);
   if(chat.turns.length===1&&!context)chat.title=question.slice(0,32);
   const abort=new AbortController();chat.abort=abort;closePopover();renderChatTabs();
   const render=()=>{if(chat===activeChat)renderTurns()};render();
   try{
+    const move=async direction=>{const result=await navigateReview(direction,abort.signal);if(generation!==prGeneration||abort.signal.aborted)return;const step=result.review||result;turn.a=result.moved?`Step ${step.step}: ${step.title||'Review change'}${step.summary?'\n'+step.summary:''}`:result.error||result.message;chat.context=defaultVoiceSelection();if(chat.context)chat.context.step=reviewCount;turn.activity='';render()};
+    const navigation=reviewNavigationCommand(question);
+    if(navigation){await move(navigation);return}
     if(demo){const text='A failed delivery queues a retry. The delay doubles each attempt; the fifth attempt stops the chain.';for(let i=0;i<text.length;i+=12){if(abort.signal.aborted)throw new DOMException('Stopped','AbortError');turn.a+=text.slice(i,i+12);render();await new Promise(r=>setTimeout(r,40))}}
     else{
-      const questionContext=context?.intermediate?'\nSelected intermediate transformation '+context.step+' in '+context.path+' (these are not head coordinates):\n'+context.text.slice(0,2800):'';
-      const response=await fetch('/api/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:pr.url,head:pr.head,question:question+questionContext,selection:context?{path:context.path,start:context.start,end:context.end,intermediate:context.intermediate}:null,reviewId:context?.intermediate?reviewSession:null,step:context?.step??reviewCount,history:prior}),signal:abort.signal});
+      const questionContext=context?.intermediate?'\nSelected intermediate transformation '+(context.step??reviewCount)+' in '+context.path+' (these are not head coordinates):\n'+(context.text||'').slice(0,2800):'';
+      const response=await fetch('/api/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:pr.url,head:pr.head,question:question+questionContext,selection:context?{path:context.path,start:context.start,end:context.end,intermediate:context.intermediate}:null,reviewId:reviewSession,step:context?.step??reviewCount,history:prior}),signal:abort.signal});
       if(!response.ok){const body=await response.json();throw new Error(body.error||'Could not start answer')}
       const reader=response.body.getReader(),decoder=new TextDecoder();let pending='';
-      while(true){const {value,done}=await reader.read();if(done)break;pending+=decoder.decode(value,{stream:true});const events=pending.split('\n\n');pending=events.pop();for(const raw of events){const event=raw.match(/^event: (.+)$/m)?.[1],data=raw.match(/^data: (.+)$/m)?.[1];if(!data)continue;const body=JSON.parse(data);if(generation!==prGeneration)return;if(event==='delta')turn.a+=body.text;if(event==='activity')turn.activity=body.text;if(event==='scope')turn.activity='Exploring '+body.indexedFiles+' repository files';if(event==='flow')turn.flow=body;if(event==='peeks'){turn.peeks=body;showCodePeeks(body,context||defaultVoiceSelection()||{path:body.root.path,start:body.root.start,end:body.root.end,intermediate:false})};if(event==='draft'){mergeDraft(body);turn.drafted=true}if(event==='error')throw new Error(body.message);render()}}
+      while(true){const {value,done}=await reader.read();if(done)break;pending+=decoder.decode(value,{stream:true});const events=pending.split('\n\n');pending=events.pop();for(const raw of events){const event=raw.match(/^event: (.+)$/m)?.[1],data=raw.match(/^data: (.+)$/m)?.[1];if(!data)continue;const body=JSON.parse(data);if(generation!==prGeneration)return;if(event==='delta')turn.a+=body.text;if(event==='activity')turn.activity=body.text;if(event==='scope')turn.activity='Exploring '+body.indexedFiles+' repository files';if(event==='flow')turn.flow=body;if(event==='navigation'){if(requestStep!==reviewCount){turn.a='The displayed step changed; please try again.';return}await move(body.direction);return}if(event==='peeks'&&requestStep===reviewCount){turn.peeks=body;showCodePeeks(body,context||defaultVoiceSelection()||{path:body.root.path,start:body.root.start,end:body.root.end,intermediate:false})};if(event==='draft'){mergeDraft(body);turn.drafted=true}if(event==='error')throw new Error(body.message);render()}}
     }
   }catch(error){turn.error=error.name==='AbortError'?'Answer stopped.':error.message}
   finally{turn.streaming=false;turn.activity='';chat.abort=null;render();renderChatTabs()}

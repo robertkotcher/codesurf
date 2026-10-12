@@ -157,7 +157,7 @@ async function voiceContext(req,p){
  const selection=req.body.selection;let review=null,text,snapshot='PR head';
  if(req.body.reviewId){const row=await ownedVoiceReview(req,p);review=voiceReviewContext(row.plan,req.body.step,publicReview(row).done);if(selection?.intermediate!==false){
   snapshot='Review step '+req.body.step;
-  if(selection){if(!manifestAt(row.plan,req.body.step).some(file=>file.key===selection.path&&file.exists))throw Object.assign(new Error('The selected file is unavailable at this review step.'),{status:400});text=stateAt(row.plan,req.body.step)[selection.path]}
+  if(selection){const entry=manifestAt(row.plan,req.body.step).find(file=>file.key===selection.path);if(entry&&!entry.exists)throw Object.assign(new Error('The selected file is unavailable at this review step.'),{status:400});text=stateAt(row.plan,req.body.step)[selection.path]}
  }}
  if(selection&&text===undefined)text=(await content(req.auth.token,p,selection.path)).text;
  return {title:p.pr.title,description:(p.pr.body||'').slice(0,6000),head:p.pr.head.sha,snapshot,review,selection:selection?voiceSelection(selection,text):null};
@@ -233,7 +233,8 @@ app.post('/api/ask',wrap(async(req,res)=>{
   recent.set(id,[...attempts,now]);if(recent.size>10000)for(const [k,v]of recent)if(v.at(-1)<now-60000)recent.delete(k);
   const p=await pull(req.auth.token,url,req.body.head),changed=await changedFiles(req.auth.token,p);
   const snapshot=selection?.intermediate&&req.body.reviewId?await voiceCallSnapshot(req,p,{path:selection.path,snapshot:'review'}):null;
-  await answer({req,res,p,changed,question,selection,history,token:req.auth.token,sourceIndex:snapshot?.index,snapshot:snapshot?.snapshot||'PR head'});
+  const context=req.body.reviewId?await voiceContext(req,p):null;
+  await answer({req,res,p,changed,question,selection,history,token:req.auth.token,sourceIndex:snapshot?.index,snapshot:snapshot?.snapshot||'PR head',reviewContext:context});
 }));
 app.use(express.static(path.join(root,'public')));
 app.get('/github/:owner/:repo/pull/:number',(req,res,next)=>{if(!/^[1-9]\d*$/.test(req.params.number))return next();res.sendFile(path.join(root,'public/index.html'))});
