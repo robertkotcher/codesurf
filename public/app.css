@@ -224,3 +224,11 @@ body{flex-direction:column}.app-header{width:100%;flex:0 0 auto;min-height:62px}
 .ai-code-note-label{flex-shrink:0;margin-top:2px;font-size:9px;font-weight:600;letter-spacing:.3px;text-transform:uppercase;color:#9b85af}.ai-code-note-text{flex:1;min-width:0;overflow-wrap:anywhere}.ai-code-note button{flex-shrink:0;padding:2px 6px;margin-top:0;border:0;background:transparent;font:10px/1.8 system-ui;color:#9274ad}.ai-code-note button:hover{background:#ece5f3}.ai-code-note button:focus-visible{outline:2px solid #a58bbf;outline-offset:1px}
 @media(max-width:700px){.review-explanation{gap:8px;padding:7px 10px!important}.line-progress-track{width:45px}.review-explanation>button{padding:6px;font-size:10px}.ai-code-note{gap:6px;margin:6px;padding:7px;font-size:11px}}
 .review-line-progress::details-content,.unavailable-files::details-content{content-visibility:visible}
+/* Product UI uses Manrope; source, file navigation and PR heading keep their typography. */
+@font-face{font-family:Manrope;src:url('/fonts/manrope-variable.ttf') format('truetype');font-style:normal;font-weight:200 800;font-display:swap}
+:root{--product-font:Manrope,system-ui,-apple-system,sans-serif}
+body{font-family:var(--product-font)}
+.app-shell>.pr,.workspace{font-family:system-ui,-apple-system,sans-serif}
+.app-header *,#conversation :not(pre,pre *,code,code *),#prHome *, .modal-backdrop *, .ask-pop *, .review-explanation *, .ai-code-note *, .toast{font-family:var(--product-font)}
+.brand{gap:8px;align-items:center}.brand b{display:flex;align-items:center;justify-content:center;width:29px;height:29px;flex-shrink:0}.brand b svg{display:block;width:29px;height:29px}.brand .brand-name{font-size:19px;font-weight:750;letter-spacing:-.8px;line-height:1.2}.brand-name>span{font-weight:500;color:#a09aa9;letter-spacing:-.5px}
+@media(max-width:750px){.app-header .brand-name{font-size:16px}.app-header .brand{gap:6px}.app-header .brand b,.app-header .brand b svg{width:25px;height:25px}}
