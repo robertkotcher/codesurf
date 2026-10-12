@@ -1,3 +1,4 @@
+import {syncFilePanes,movePaneFile,bindPaneDragging} from './file-panes.js';
 import {attachSidebarResize} from './sidebar-resize.js';
 import {reviewBlocks} from './review-notes.js';
 import {groupPullRequests} from './pull-list.js';
@@ -188,8 +189,8 @@ function renderEditors(){
     if(step||c.mode!=='diff')rows=rows.map(r=>({...r,kind:addedLines.has(r.line)||changed?.status==='added'?'add':r.kind,removed:removedBefore.get(r.line)}));
     const commentLines=new Set(diffRows.map(r=>r.line));
     const origin=turns.at(-1)?.origin;
-    return `<section class="editor-col ${step?'flow-column':''}" data-column="${ci}">
-      <div class="editor-tabs">${c.tabs.map(t=>`<button class="${t===path?'active':''}" data-tab="${esc(t)}" data-column="${ci}" title="${esc(t)}">${esc(t.split('/').pop())}</button>`).join('')}${ci>0&&!step?`<button class="close-col" data-close-column="${ci}" aria-label="Close editor column">×</button>`:''}</div>
+    return `<section class="editor-col ${step?'flow-column':''}" data-column="${ci}" data-pane-index="${ci}">
+      <div class="editor-tabs">${c.tabs.map(t=>`<button class="${t===path?'active':''}" data-tab="${esc(t)}" data-column="${ci}" ${!step?`draggable="true" data-pane-file="${esc(t)}"`:""} title="${esc(t)}">${esc(t.split('/').pop())}</button>`).join('')}${ci>0&&!step?`<button class="close-col" data-close-column="${ci}" aria-label="Close editor column">×</button>`:''}</div>
       ${step?`<div class="flow-caption"><div><span class="step-number">${ci+1}</span><b>${esc(step.label)}</b></div><small>${ci?(step.relation==='call'?`Called at ${esc(activeFlow.steps[ci-1].path)}:${step.callerLine}`:'Related source · not a direct call'):'Entry point'}<button data-full-source="${ci}">Full file ↗</button></small></div>`:`<div class="editor-toolbar"><span title="${esc(path)}">${esc(path.split('/').slice(0,-1).join('/')||'Repository root')}</span><button data-mode="${ci}" class="${c.mode==='diff'?'mode-selected':''}">${c.mode==='diff'?'Diff':'Full file'}</button><button data-split="${ci}" title="Open file beside">◫</button>${focus?`<button data-unfocus="${esc(path)}">Clear focus</button>`:''}</div>`}
       <div class="editor-lines ${step?'flow-lines':''}" ${step?`style="padding-top:${12+step.offset}px"`:''}>${c.error?`<div class="editor-loading error">${esc(c.error)}</div>`:!rows.length?`<div class="editor-loading">Loading source…</div>`:rows.map(r=>{
         if(r.kind==='hunk')return `<div class="hunk">${esc(r.text)}</div>`;
@@ -230,6 +231,7 @@ $('editors').addEventListener('mousedown',e=>{const line=e.target.closest('.edit
 $('editors').addEventListener('mouseover',e=>{if(!dragging)return;const l=e.target.closest('.editor-line');if(l&&l.dataset.path===anchor.path&&Number(l.dataset.column)===anchor.column)selectLine(l,true)});
 document.addEventListener('mouseup',e=>{if(dragging){dragging=false;openPopover(e.clientX,e.clientY)}});
 $('editors').addEventListener('keydown',e=>{if(e.target.classList.contains('line-ask')&&e.key==='Enter')return;const l=e.target.closest('.editor-line');if(l&&(e.key==='Enter'||e.key===' ')){e.preventDefault();if(selectLine(l,e.shiftKey)){const r=l.getBoundingClientRect();openPopover(r.x+100,r.y)}}});
+bindPaneDragging($('editors'),{move:(path,source,target)=>{if(activeFlow)return;columns=movePaneFile(columns,path,source,target);activeColumn=Math.max(0,columns.findIndex(c=>c.active===path));selection=null;renderEditors();tree()},split:(path,source)=>{if(activeFlow)return;if(columns.length>=3)return toast('Up to three editor columns are open.');const mode=columns[source]?.mode||'full';columns=movePaneFile(columns,path,source);columns.at(-1).mode=mode;activeColumn=columns.length-1;selection=null;renderEditors();tree()}});
 $('editors').addEventListener('click',e=>{const x=e.target.closest('button');if(!x)return;if(x.hasAttribute('data-thread')){showLineThread(x)}else if(x.dataset.fullSource!==undefined){leaveFlow(+x.dataset.fullSource)}else if(x.classList.contains('line-comment')){addLineComment({path:x.dataset.commentPath,line:+x.dataset.commentLine,side:x.dataset.commentSide,body:''})}else if(x.classList.contains('line-ask')){const l=x.closest('.editor-line');selectLine(l);const r=x.getBoundingClientRect();openPopover(r.x,r.y)}else if(x.dataset.tab){activeColumn=Number(x.dataset.column);openFile(x.dataset.tab)}else if(x.dataset.mode!==undefined){const c=columns[+x.dataset.mode];c.mode=c.mode==='full'?'diff':'full';renderEditors()}else if(x.dataset.split!==undefined){const c=columns[+x.dataset.split];if(columns.length<3){columns.push({...c,tabs:[...c.tabs]});renderEditors()}else toast('Up to three editor columns are open.')}else if(x.dataset.closeColumn){columns.splice(+x.dataset.closeColumn,1);activeColumn=0;renderEditors()}else if(x.dataset.unfocus){focused.delete(x.dataset.unfocus);renderEditors()}});
 function parseRef(value){const m=value.trim().match(/^(.+?):L?(\d+)(?:-L?(\d+))?$/);if(!m)return null;return {path:m[1],start:+m[2],end:+(m[3]||m[2])}}
 function refAttrs(r){return `data-source="${esc(r.path)}" data-start="${r.start}" data-end="${r.end}"`}
@@ -369,6 +371,7 @@ $('threadForm').onsubmit=e=>{e.preventDefault();const question=$('threadInput').
 window.addEventListener('resize',drawFlowLinks);
 function demoFlow(question){return {title:'Delivery → retry delay',summary:'A failed delivery queues another attempt using an exponentially increasing delay.',steps:[{path:'src/delivery.ts',start:4,end:20,entryLine:4,label:'deliver(event)',relation:'entry',callerLine:null},{path:'src/retry-policy.ts',start:1,end:6,entryLine:4,label:'retryDelay(attempt)',relation:'call',callerLine:18}]}}
 
+let reviewPanes=[];
 let reviewPlan=null,reviewPath='',reviewCount=0,reviewExploring=false,reviewViews=[],reviewSelection=null,reviewVerified=false;
 let walkthroughReady=false,walkthroughIndex=0;
 let reviewSession=null,reviewDone=false,nextPending=false,nextError='',reviewPace='moderate';
@@ -379,6 +382,7 @@ function destroyReviewViews(){for(const view of reviewViews)view.destroy();revie
 function dockWalkthrough(){if(!reviewPlan)return;reviewExploring=true;setExplorerCollapsed(false);renderWalkthrough()}
 function returnToWalkthrough(){reviewExploring=false;renderWalkthrough()}
 function showReviewSetup(){
+ reviewPanes=[];
  reviewPlan=null;reviewSession=null;reviewCount=0;walkthroughReady=false;reviewExploring=false;reviewSelection=null;destroyReviewViews();$('startReview').disabled=true;
  $('workspace').classList.add('review-mode');$('walkthrough').classList.remove('hidden');
  const paces=['guided','moderate','quick'];let position=Math.max(0,paces.indexOf(reviewPace));
@@ -456,10 +460,15 @@ async function renderWalkthrough(){
     host.classList.add('investigation-editors');for(const source of activeFlow.steps){const data=cache.get(pr.head+':head:'+source.path);if(!data)continue;const pane=document.createElement('div');pane.className='investigation-pane';pane.innerHTML=`<div class="investigation-label">${fileIcon(source.path)} ${esc(source.path)} · PR head</div><div class="investigation-mount"></div>`;host.append(pane);reviewViews.push(mountEditor(pane.lastElementChild,{after:data.text,path:source.path,diff:false,line:source.entryLine||source.start,onSelect:s=>selectReviewLines(s,source.path,false)}))}
   }else {
     host.classList.add('review-columns');
-    for(const path of tabs){
+    reviewPanes=syncFilePanes(reviewPanes,tabs);
+    for(const [paneIndex,group] of reviewPanes.entries()){
+      const visible=group.tabs.filter(path=>tabs.includes(path));if(!visible.length)continue;
+      const path=visible.includes(reviewPath)?reviewPath:visible.includes(group.active)?group.active:visible[0];group.active=path;
       const source=plan.files.find(f=>f.path===path),entry=manifest.find(f=>f.key===path),inStep=stepPaths.includes(path);
-      const column=document.createElement('section');column.className='review-file-column';column.dataset.reviewPath=path;
-      column.innerHTML=`<div class="review-tabs review-file-heading" title="${esc(entry?.path||path)}"><div class="review-file-tab">${fileIcon(path)}<span>${esc(entry?.path||path)}</span>${entry?.exists===false?'<small>Deleted</small>':''}</div></div><div class="review-file-mount"></div>`;host.append(column);const pane=column.lastElementChild;
+      const column=document.createElement('section');column.className='review-file-column';column.dataset.reviewPath=path;column.dataset.paneIndex=paneIndex;
+      column.innerHTML=`<div class="review-tabs review-file-heading" role="tablist" aria-label="Files in pane">${visible.map(file=>`<button type="button" role="tab" aria-selected="${file===path}" draggable="true" data-pane-file="${esc(file)}" data-pane-tab="${esc(file)}" class="review-file-tab ${file===path?'active':''}" title="${esc(manifest.find(f=>f.key===file)?.path||file)} · Drag to another pane to group files">${fileIcon(file)}<span>${esc((manifest.find(f=>f.key===file)?.path||file).split('/').pop())}</span>${manifest.find(f=>f.key===file)?.exists===false?'<small>Deleted</small>':''}</button>`).join('')}${visible.length>1?'<button type="button" class="split-file-pane" aria-label="Move active file to a new pane" title="Move active file to a new pane">◫</button>':''}</div><div class="review-file-mount"></div>`;host.append(column);const pane=column.lastElementChild;
+      column.querySelectorAll('[data-pane-tab]').forEach(tab=>tab.onclick=()=>{group.active=tab.dataset.paneTab;reviewPath=group.active;reviewSelection=null;renderWalkthrough();tree()});
+      const splitButton=column.querySelector('.split-file-pane');if(splitButton)splitButton.onclick=()=>{reviewPanes=movePaneFile(reviewPanes,path,paneIndex);reviewPath=path;renderWalkthrough()};
       const mount=text=>reviewViews.push(mountEditor(pane,{before:previous[path]||'',after:text,path,diff:reviewCount>0&&inStep,blockExplanations:reviewBlocks(plan,reviewCount,path),onExplain:note=>{selectReviewLines(note,path);$('popcontext').textContent='Change note · '+path;$('inlineQuestion').value='Explain this change in more detail. Note: '+note.explanation},onSelect:s=>selectReviewLines(s,path)}));
       if(source?.unavailable)pane.innerHTML=`<p class="walk-warning">${esc(source.reason||'Source unavailable.')}</p>`;
       else if(source&&entry?.exists===false&&!inStep)pane.innerHTML='<div class="editor-loading">This file does not exist at this step.</div>';
@@ -467,6 +476,8 @@ async function renderWalkthrough(){
       else {pane.innerHTML='<p class="editor-loading">Loading source…</p>';try{const data=await getFile(path);if(pane.isConnected){pane.innerHTML='';mount(data.text)}}catch(error){if(pane.isConnected)pane.textContent=error.message}}
     }
   }
+
+  bindPaneDragging(host,{move:(path,source,target)=>{reviewPanes=movePaneFile(reviewPanes,path,source,target);reviewPath=path;reviewSelection=null;renderWalkthrough()},split:(path,source)=>{reviewPanes=movePaneFile(reviewPanes,path,source);reviewPath=path;reviewSelection=null;renderWalkthrough()}});
 
   if(complete){try{reviewVerified=validatePlan(plan);await verifyReviewHashes();if($('reconstructionStatus'))$('reconstructionStatus').textContent=reviewVerified?'Reconstruction verified ✓':'Available files verified';const finish=$('walkthrough').querySelector('.review-finish');if(finish)finish.textContent=reviewVerified?'Verified: the reconstructed files exactly match the PR head.':'Available text files match. Unavailable files still need review.'}catch(error){reviewVerified=false;$('reconstructionStatus').textContent=error.message}}
 }

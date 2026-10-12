@@ -270,3 +270,14 @@ body{font-family:var(--product-font)}
 body.resizing-files{cursor:col-resize;user-select:none}body.resizing-files *{cursor:col-resize!important}
 .explorer-collapsed #explorer+.file-sidebar-resize,.review-mode>#explorer+.file-sidebar-resize{display:none}
 @media(max-width:750px){.workspace>#explorer+.file-sidebar-resize{display:none}}
+
+.review-file-heading{padding:0 4px;gap:3px;overflow-x:auto;align-items:end;flex-shrink:0}
+.review-file-heading .review-file-tab{flex:0 1 auto;min-width:70px;max-width:260px;height:33px;border-top-color:var(--tab-border);background:transparent;opacity:.75;cursor:grab}
+.review-file-heading .review-file-tab.active{border-top-color:var(--tab-accent);background:var(--tab-surface);opacity:1}
+.review-file-tab:focus-visible{outline:2px solid var(--tab-accent);outline-offset:-3px}
+.review-file-heading .split-file-pane{flex:none;margin-left:auto;border:0;background:transparent;color:inherit;padding:7px;cursor:pointer}
+.review-file-column,.editor-col{position:relative}
+.pane-drop-target:after,.pane-split-target:after{content:"Drop to group as tabs";position:absolute;inset:39px 0 0;display:grid;place-items:center;background:#a58abb22;border:2px solid #a58abb;color:#77628f;font:12px system-ui;pointer-events:none;z-index:9}
+.pane-split-target:after{content:"";left:auto;width:32px;background:#a58abb55}
+.dragging-file [data-pane-file]{cursor:grabbing}
+.editor-dark .pane-drop-target:after{color:#d0bce8}
