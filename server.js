@@ -1,3 +1,5 @@
+import {voiceSelection,voiceSession} from './realtime-voice.js';
+import {stateAt,manifestAt} from './public/transformations.js';
 import {openAIErrorMessage,reportOpenAIError} from './openai-errors.js';
 import {findReview,createReview,getReview,publicReview,nextStep,advanceReview,reviewPace,setReviewPace,stepBudget,ensureStepBlocks} from './review-sessions.js';
 import {buildCallIndex,indexedCalls,initCallParsers} from './browser/source-index.js';
@@ -18,7 +20,7 @@ const app=express(),root=path.dirname(fileURLToPath(import.meta.url));
 const env=process.env;
 const base=req=>{const primary=env.APP_URL||'http://localhost:5179';const allowed=[primary,...(env.APP_ALTERNATE_URLS||'').split(',').filter(Boolean)];return allowed.find(url=>new URL(url).host===req?.get('host'))||primary};
 app.disable('x-powered-by');app.set('trust proxy',1);app.use(express.json({limit:'200kb'}));
-app.use((req,res,next)=>{res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','no-referrer');res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' https://avatars.githubusercontent.com data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://github.com");if(req.path.startsWith('/api/')||req.path.startsWith('/auth/'))res.setHeader('Cache-Control','no-store');next()});
+app.use((req,res,next)=>{res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','no-referrer');res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' https://avatars.githubusercontent.com data:; connect-src 'self'; media-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://github.com");if(req.path.startsWith('/api/')||req.path.startsWith('/auth/'))res.setHeader('Cache-Control','no-store');next()});
 const cookies=req=>Object.fromEntries((req.headers.cookie||'').split(';').map(s=>s.trim().split('=')).filter(x=>x.length===2));
 const opts={httpOnly:true,secure:base().startsWith('https:'),sameSite:'lax',path:'/'};
 const session=req=>unseal(cookies(req).codesurf_session,env.SESSION_SECRET);
@@ -146,6 +148,30 @@ app.post('/api/review',wrap(async(req,res)=>{
   const review=await result.json();res.json({url:review.html_url,id:review.id});
 }));
 const speechRequests=new Map();
+const voiceRequests=new Map();
+app.post('/api/voice',wrap(async(req,res)=>{
+ if(!env.OPENAI_API_KEY)return res.status(503).json({error:'Voice chat is not configured.'});
+ if(typeof req.body.head!=='string'||!req.body.head)return res.status(400).json({error:'Reopen the pull request before starting voice chat.'});
+ if(typeof req.body.sdp!=='string'||!req.body.sdp.startsWith('v=0')||req.body.sdp.length>30000)return res.status(400).json({error:'Invalid voice connection offer.'});
+ const owner=req.auth.user.login,now=Date.now(),recent=(voiceRequests.get(owner)||[]).filter(t=>t>now-60000);
+ if(recent.length>=5)return res.status(429).json({error:'Please wait a minute before starting another voice chat.'});
+ voiceRequests.set(owner,[...recent,now]);if(voiceRequests.size>10000)for(const [key,times]of voiceRequests)if(times.at(-1)<now-60000)voiceRequests.delete(key);
+ const selection=req.body.selection;if(!selection||typeof selection.path!=='string')return res.status(400).json({error:'Select code before starting voice chat.'});cleanPath(selection.path);
+ const p=await pull(req.auth.token,req.body.url,req.body.head);
+ let text,snapshot='PR head';
+ if(selection?.intermediate!==false&&req.body.reviewId){
+  const row=await getReview(owner,req.body.reviewId),count=req.body.step;
+  if(row.head!==p.pr.head.sha||row.pr_url!==p.pr.html_url||!Number.isInteger(count)||count<0||count>row.cursor)return res.status(409).json({error:'Reopen this review before starting voice chat.'});
+  if(!manifestAt(row.plan,count).some(f=>f.key===selection.path&&f.exists))return res.status(400).json({error:'This file is not available at this review step.'});
+  text=stateAt(row.plan,count)[selection.path];snapshot='Review step '+count;
+ }else if(selection?.path)text=(await content(req.auth.token,p,selection.path)).text;
+ if(typeof text!=='string')return res.status(400).json({error:'Select available source code for voice chat.'});
+ const context={title:p.pr.title,description:(p.pr.body||'').slice(0,6000),head:p.pr.head.sha,snapshot,selection:voiceSelection(selection,text)};
+ const form=new FormData();form.set('sdp',req.body.sdp);form.set('session',JSON.stringify(voiceSession(context)));
+ const response=await fetch('https://api.openai.com/v1/realtime/calls',{method:'POST',headers:{Authorization:'Bearer '+env.OPENAI_API_KEY,'OpenAI-Safety-Identifier':crypto.createHash('sha256').update(owner).digest('hex')},body:form,signal:AbortSignal.timeout(35000)});
+ if(!response.ok){const body=await response.json().catch(()=>({}));const error={status:response.status,...body.error};reportOpenAIError(error);return res.status(response.status===429?429:502).json({error:openAIErrorMessage(error)})}
+ res.type('application/sdp').send(await response.text());
+}));
 app.post('/api/note-audio',wrap(async(req,res)=>{
  const text=typeof req.body.text==='string'?req.body.text.trim():'';
  if(!text||text.length>4000)return res.status(400).json({error:'Choose a note under 4,000 characters to read aloud.'});

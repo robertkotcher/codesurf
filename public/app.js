@@ -1,3 +1,4 @@
+import {startVoiceChat} from './voice-chat.js';
 import {syncFilePanes,movePaneFile,bindPaneDragging} from './file-panes.js';
 import {attachSidebarResize} from './sidebar-resize.js';
 import {reviewBlocks} from './review-notes.js';
@@ -7,7 +8,7 @@ import {selectedFunction,functionParameters,functionData} from './data-shapes.js
 import {openDataCanvas} from './data-canvas.js';
 import {openCallCanvas} from './call-canvas.js';
 import {stateAt,validatePlan,manifestAt,stepFiles,notesAt} from './transformations.js';
-import {mountEditor,icon,fileIcon,setEditorWrapping,setEditorTheme} from './vendor/review-editor.js';
+import {mountEditor,icon,fileIcon,setEditorWrapping,setEditorTheme,commentLines} from './vendor/review-editor.js';
 import {layoutFlow} from './flow-layout.js';
 const $=id=>document.getElementById(id),esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const demo=new URLSearchParams(location.search).has('demo')&&['localhost','127.0.0.1'].includes(location.hostname);
@@ -28,7 +29,7 @@ function renderChatTabs(){
   $('chatTabs').innerHTML=chats.map(c=>`<div class="chat-tab ${c===activeChat?'is-active':''}"><button id="chat-tab-${c.id}" role="tab" aria-selected="${c===activeChat}" aria-controls="messages" tabindex="${c===activeChat?0:-1}" data-chat="${c.id}" title="${esc(c.title)}">${esc(c.title)}${c.abort?' · ●':''}</button><button type="button" data-delete-chat="${c.id}" aria-label="Delete chat ${esc(c.title)}" title="Delete chat">×</button></div>`).join('');
   if(activeChat)$('messages').setAttribute('aria-labelledby','chat-tab-'+activeChat.id);else $('messages').removeAttribute('aria-labelledby');
 }
-function deleteChat(id){
+function deleteChat(id){if(voiceChat?.id===id)stopVoice();
   const index=chats.findIndex(c=>c.id===id);if(index<0)return;
   const chat=chats[index];chat.abort?.abort();chats.splice(index,1);
   if(chat===activeChat){activeChat=null;turns=[];$('followQuestion').value='';if(chats.length)activateChat(chats[Math.min(index,chats.length-1)].id);else {renderChatTabs();renderTurns()}}
@@ -97,6 +98,7 @@ function askInline(question){
   newChat(context);ask(question);
 }
 function selectReviewLines(value,path=reviewPath,intermediate=true){
+  stopVoice();
   reviewSelection={...value,path,intermediate};selection=null;updateSampleAction(reviewSelection);
   $('popcontext').textContent=path+':'+value.start+'–'+value.end;
   const pop=$('askPopover');pop.classList.remove('hidden');
@@ -209,7 +211,40 @@ function renderEditors(){
 }
 function selectLine(el,shift=false){reviewSelection=null;const line=Number(el.dataset.line);if(!line){toast('Deleted code is visible for comparison. Select current code to ask a question.');return false}const path=el.dataset.path,column=Number(el.dataset.column);activeColumn=column;if(!shift||anchor?.path!==path||anchor.column!==column)anchor={path,column,line};selection={path,column,start:Math.min(line,anchor.line),end:Math.max(line,anchor.line)};document.querySelectorAll('.editor-line').forEach(x=>x.classList.toggle('selected',x.dataset.path===path&&Number(x.dataset.column)===column&&Number(x.dataset.line)>=selection.start&&Number(x.dataset.line)<=selection.end));return true}
 function openPopover(x,y){if(!selection)return;updateSampleAction({...selection,intermediate:false});$('popcontext').textContent=selection.path+' : '+selection.start+'–'+selection.end;const p=$('askPopover');p.classList.remove('hidden');p.style.left=Math.max(12,Math.min(x-50,innerWidth-420))+'px';p.style.top=Math.max(70,Math.min(y+10,innerHeight-230))+'px';$('inlineQuestion').focus()}
-function closePopover(){$('askPopover').classList.add('hidden')}
+let voiceConversation=null,voiceChat=null;
+function resetVoiceUI(){
+ $('voiceListening').hidden=true;$('inlineQuestion').hidden=false;$('inlineAsk').disabled=false;$('commentSelection').disabled=false;
+ $('voiceChatButton').innerHTML=icon('mic');$('voiceChatButton').setAttribute('aria-pressed','false');$('voiceChatButton').setAttribute('aria-label','Start voice conversation');$('voiceChatButton').title='Start voice conversation';
+}
+function stopVoice(){voiceConversation?.stop();voiceConversation=null;if(voiceChat){for(const turn of voiceChat.turns)turn.streaming=false;if(activeChat===voiceChat)renderTurns()}voiceChat=null;resetVoiceUI()}
+$('followCallsButton').innerHTML=icon('graph');$('followCallsButton').onclick=launchCallCanvas;
+$('voiceChatButton').innerHTML=icon('mic');$('endVoice').onclick=stopVoice;
+$('voiceChatButton').onclick=()=>{
+ if(voiceConversation?.active){stopVoice();return}
+ const selected=reviewSelection||selection;if(!selected||!pr)return toast('Select code first.');if(demo)return toast('Voice chat is available on connected pull requests.');
+ const context={...selected,intermediate:selected.intermediate!==false&&!!reviewPlan},current=pr,step=reviewCount;
+ $('inlineQuestion').hidden=true;$('voiceListening').hidden=false;$('voiceTranscript').textContent='';$('inlineAsk').disabled=true;$('commentSelection').disabled=true;
+ $('voiceChatButton').innerHTML=icon('stop');$('voiceChatButton').setAttribute('aria-pressed','true');$('voiceChatButton').setAttribute('aria-label','End voice conversation');$('voiceChatButton').title='End voice conversation';
+ const messages=new Map();let chat=null,lastTurn=null;
+ voiceConversation=startVoiceChat({
+  request:async(sdp,signal)=>{const response=await fetch('/api/voice',{method:'POST',headers:{'Content-Type':'application/json'},signal,body:JSON.stringify({url:current.url,head:current.head,selection:context,reviewId:context.intermediate?reviewSession:null,step,sdp})});if(!response.ok){const error=await response.json().catch(()=>({}));throw new Error(error.error||'Voice chat could not connect.')}return response.text()},
+  onState:state=>{if(state==='ended'){if(chat){for(const turn of chat.turns)turn.streaming=false;if(activeChat===chat)renderTurns()}resetVoiceUI();return}$('voiceStatus').textContent={connecting:'Connecting…',listening:'Listening…',thinking:'Thinking…',speaking:'Speaking…'}[state]||state;$('voiceListening').dataset.state=state},
+  onLevel:level=>$('voiceListening').style.setProperty('--voice-level',String(level)),
+  onReady:()=>{chat=newChat({...context,step});chat.title='Voice · '+context.path.split('/').pop();voiceChat=chat;renderChatTabs()},
+  onTranscript:message=>{
+   if(!chat||!message.text)return;$('voiceTranscript').textContent=message.text;
+   let turn=messages.get(message.id);
+   if(message.role==='user'){
+    if(!turn){turn=lastTurn&&!lastTurn.voiceQuestion?lastTurn:{q:'',a:'',origin:context,head:current.head};if(!chat.turns.includes(turn))chat.turns.push(turn);messages.set(message.id,turn)}turn.q=message.text;turn.voiceQuestion=true;lastTurn=turn;
+   }else {
+    if(!turn){turn=lastTurn&&!lastTurn.voiceAnswer?lastTurn:{q:'Voice question',a:'',origin:context,head:current.head};if(!chat.turns.includes(turn))chat.turns.push(turn);messages.set(message.id,turn);turn.voiceAnswer=true;lastTurn=turn}turn.a=message.done?message.text:turn.a+message.text;turn.streaming=!message.done;
+   }
+   if(activeChat===chat)renderTurns();
+  },onError:message=>toast(message)
+ });
+};
+window.addEventListener('pagehide',stopVoice);document.addEventListener('visibilitychange',()=>{if(document.hidden)stopVoice()});
+function closePopover(){stopVoice();$('askPopover').classList.add('hidden')}
 function dismissPopover(){
  closePopover();selection=null;reviewSelection=null;anchor=null;dragging=false;inputSelectionVersion++;
  for(const view of reviewViews)view.clearQuestionSelection?.();
@@ -292,9 +327,9 @@ $('refreshPulls').onclick=showHome;$('filterPulls').oninput=renderHomePulls;
 $('homePulls').onclick=event=>{const link=event.target.closest('a.home-pr');if(link&&!event.metaKey&&!event.ctrlKey&&!event.shiftKey){event.preventDefault();loadPR('https://github.com'+new URL(link.href).pathname.slice('/github'.length))}};
 window.addEventListener('popstate',()=>{const url=routePR();url?loadPR(url,false):showHome()});
 async function loadPR(url,navigate=true){streamAbort?.abort();const generation=++prGeneration;toast('Loading pull request…');try{const data=await api('/api/pr?'+new URLSearchParams({url}));if(generation!==prGeneration)return;if(navigate&&location.pathname!==prRoute(data.url))history.pushState({},'',prRoute(data.url));setPR(data);$('inbox').classList.add('hidden');if(pr.limited)toast('GitHub returned a partial file list. This walkthrough cannot cover the entire PR.')}catch(e){toast(e.message)}}
-function setPR(data){document.querySelectorAll('.call-canvas').forEach(el=>el.remove());document.body.classList.remove('home-view');$('prHome').hidden=true;chats.forEach(c=>c.abort?.abort());chats=[];activeChat=null;pr=data;activeFlow=null;$('flowHeader').classList.add('hidden');$('inlineThread').classList.add('hidden');setExplorerCollapsed(false);setConversationCollapsed(true);reviewComments=[];reviewSummary='';reviewPr=pr.head;$('reviewBody').value='';treeNodes=new Map();expandedFolders=new Set(['']);treeLoading=new Set();treeErrors=new Map();columns=[];activeColumn=0;turns=[];selection=null;focused.clear();cache.clear();$('repo').textContent=pr.repo;$('prTitle').textContent=pr.title+' #'+pr.number;$('prTitle').title=pr.title+' #'+pr.number;$('prMeta').textContent=`${pr.author} · ${pr.changedFiles} changed files · ${pr.head.slice(0,7)}`;$('url').value=pr.url;newChat(null,false);showReviewSetup();loadTreeFolder();if(pr.files.length)openFile(pr.files[0].path);else $('editors').innerHTML='<div class="editor-empty"><h2>No changed files.</h2></div>'}
+function setPR(data){stopVoice();document.querySelectorAll('.call-canvas').forEach(el=>el.remove());document.body.classList.remove('home-view');$('prHome').hidden=true;chats.forEach(c=>c.abort?.abort());chats=[];activeChat=null;pr=data;activeFlow=null;$('flowHeader').classList.add('hidden');$('inlineThread').classList.add('hidden');setExplorerCollapsed(false);setConversationCollapsed(true);reviewComments=[];reviewSummary='';reviewPr=pr.head;$('reviewBody').value='';treeNodes=new Map();expandedFolders=new Set(['']);treeLoading=new Set();treeErrors=new Map();columns=[];activeColumn=0;turns=[];selection=null;focused.clear();cache.clear();$('repo').textContent=pr.repo;$('prTitle').textContent=pr.title+' #'+pr.number;$('prTitle').title=pr.title+' #'+pr.number;$('prMeta').textContent=`${pr.author} · ${pr.changedFiles} changed files · ${pr.head.slice(0,7)}`;$('url').value=pr.url;newChat(null,false);showReviewSetup();loadTreeFolder();if(pr.files.length)openFile(pr.files[0].path);else $('editors').innerHTML='<div class="editor-empty"><h2>No changed files.</h2></div>'}
 async function inbox(relation='review'){$('inbox').classList.remove('hidden');document.querySelectorAll('[data-relation]').forEach(x=>x.classList.toggle('active',x.dataset.relation===relation));$('prs').textContent='Loading…';try{if(demo){$('prs').innerHTML='<button class="pr-item" data-pr="demo"><b>Add retry handling to webhook delivery</b><small>acme/platform · #248 · sample PR</small></button>';return}const data=await api('/api/prs?relation='+relation);$('prs').innerHTML=data.items.length?data.items.map(p=>`<button class="pr-item" data-pr="${esc(p.url)}"><b>${esc(p.title)}</b><small>${esc(p.repo)} · #${p.number}</small></button>`).join(''):'<p class="muted">No open PRs found in connected repositories.</p>'}catch(e){$('prs').textContent=e.message}}
-$('openForm').addEventListener('submit',e=>{e.preventDefault();if(demo)return toast('Demo mode uses the sample PR. Sign in on the main app to import GitHub PRs.');loadPR($('url').value.trim())});$('filetree').addEventListener('click',e=>{const folder=e.target.closest('[data-folder]'),retry=e.target.closest('[data-retry]');if(folder){const path=folder.dataset.folder;if(expandedFolders.has(path))expandedFolders.delete(path);else{expandedFolders.add(path);if(!treeNodes.has(path))loadTreeFolder(path,folder.dataset.sha)}tree();return}if(retry){loadTreeFolder(retry.dataset.retry,retry.dataset.sha);return}const f=e.target.closest('[data-file]');if(f)openFile(f.dataset.file)});$('inlineForm').addEventListener('submit',e=>{e.preventDefault();const q=$('inlineQuestion').value.trim();if(q){$('inlineQuestion').value='';askInline(q)}});$('followup').addEventListener('submit',e=>{e.preventDefault();const q=$('followQuestion').value.trim();if(q){$('followQuestion').value='';ask(q)}});for(const id of ['inlineQuestion','followQuestion'])$(id).addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();$(id==='inlineQuestion'?'inlineForm':'followup').requestSubmit()}});document.querySelectorAll('[data-ask]').forEach(b=>b.addEventListener('click',()=>b.textContent==='Follow the calls'?launchCallCanvas():askInline(b.dataset.ask)));$('closePopover').addEventListener('click',dismissPopover);document.addEventListener('keydown',e=>{if(e.key==='Escape'){dismissPopover();$('inbox').classList.add('hidden');$('reviewModal').classList.add('hidden')}});$('inboxButton').addEventListener('click',()=>showHome());$('closeInbox').addEventListener('click',()=>$('inbox').classList.add('hidden'));document.querySelectorAll('[data-relation]').forEach(x=>x.addEventListener('click',()=>inbox(x.dataset.relation)));$('prs').addEventListener('click',e=>{const p=e.target.closest('[data-pr]');if(p){$('inbox').classList.add('hidden');if(!demo)loadPR(p.dataset.pr)}});$('resetConversation').addEventListener('click',()=>{newChat();$('followQuestion').focus()});$('logout').addEventListener('click',async()=>{await api('/auth/logout',{method:'POST'});location.href='/'});
+$('openForm').addEventListener('submit',e=>{e.preventDefault();if(demo)return toast('Demo mode uses the sample PR. Sign in on the main app to import GitHub PRs.');loadPR($('url').value.trim())});$('filetree').addEventListener('click',e=>{const folder=e.target.closest('[data-folder]'),retry=e.target.closest('[data-retry]');if(folder){const path=folder.dataset.folder;if(expandedFolders.has(path))expandedFolders.delete(path);else{expandedFolders.add(path);if(!treeNodes.has(path))loadTreeFolder(path,folder.dataset.sha)}tree();return}if(retry){loadTreeFolder(retry.dataset.retry,retry.dataset.sha);return}const f=e.target.closest('[data-file]');if(f)openFile(f.dataset.file)});$('inlineForm').addEventListener('submit',e=>{e.preventDefault();const q=$('inlineQuestion').value.trim();if(q){$('inlineQuestion').value='';askInline(q)}});$('followup').addEventListener('submit',e=>{e.preventDefault();const q=$('followQuestion').value.trim();if(q){$('followQuestion').value='';ask(q)}});for(const id of ['inlineQuestion','followQuestion'])$(id).addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();$(id==='inlineQuestion'?'inlineForm':'followup').requestSubmit()}});document.querySelectorAll('[data-ask]').forEach(b=>b.addEventListener('click',()=>askInline(b.dataset.ask)));$('closePopover').addEventListener('click',dismissPopover);document.addEventListener('keydown',e=>{if(e.key==='Escape'){dismissPopover();$('inbox').classList.add('hidden');$('reviewModal').classList.add('hidden')}});$('inboxButton').addEventListener('click',()=>showHome());$('closeInbox').addEventListener('click',()=>$('inbox').classList.add('hidden'));document.querySelectorAll('[data-relation]').forEach(x=>x.addEventListener('click',()=>inbox(x.dataset.relation)));$('prs').addEventListener('click',e=>{const p=e.target.closest('[data-pr]');if(p){$('inbox').classList.add('hidden');if(!demo)loadPR(p.dataset.pr)}});$('resetConversation').addEventListener('click',()=>{newChat();$('followQuestion').focus()});$('logout').addEventListener('click',async()=>{await api('/auth/logout',{method:'POST'});location.href='/'});
 let previewTimer;function sourceEvent(e){if(e.target.closest('[data-open-review]')){if(e.type==='click')showReview();return}const r=e.target.closest('[data-source]');if(!r)return;clearTimeout(previewTimer);const action=()=>openFile(r.dataset.source,{start:+r.dataset.start,end:+r.dataset.end},true);if(e.type==='mouseover')previewTimer=setTimeout(action,450);else action()}
 $('messages').addEventListener('click',event=>{if(event.target.closest('[data-new-chat]')){newChat();$('followQuestion').focus();return}const prompt=event.target.closest('[data-chat-prompt]');if(!prompt)return;$('followQuestion').value=prompt.dataset.chatPrompt;$('followQuestion').focus();if(activeChat)activeChat.draft=prompt.dataset.chatPrompt});
 $('messages').addEventListener('click',sourceEvent);$('messages').addEventListener('mouseover',sourceEvent);$('messages').addEventListener('mouseout',()=>clearTimeout(previewTimer));$('messages').addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.closest('[data-source]'))sourceEvent(e)});
@@ -306,7 +341,12 @@ function renderReviewComments(){$('reviewComments').innerHTML=reviewComments.map
 $('closeReview').onclick=()=>$('reviewModal').classList.add('hidden');$('reviewBody').oninput=e=>{reviewSummary=e.target.value};
 $('reviewComments').addEventListener('input',e=>{if(e.target.dataset.editComment!==undefined)reviewComments[+e.target.dataset.editComment].body=e.target.value});
 $('reviewComments').onclick=e=>{const remove=e.target.closest('[data-remove-comment]');if(remove){reviewComments.splice(+remove.dataset.removeComment,1);renderReviewComments();return}const source=e.target.closest('[data-review-source]');if(source){const c=reviewComments[+source.dataset.reviewSource];$('reviewModal').classList.add('hidden');openFile(c.path,c.side==='LEFT'?null:{start:c.start_line||c.line,end:c.line},true)}};
-$('commentSelection').onclick=()=>{if(selection)addLineComment({path:selection.path,start_line:selection.start,line:selection.end,side:'RIGHT',body:''})};
+$('commentSelection').onclick=()=>{
+ const context=reviewSelection||selection;if(!context)return;
+ let range={start:context.start,end:context.end||context.start};
+ if(reviewSelection&&context.intermediate!==false&&reviewPlan){const file=reviewPlan.files.find(f=>f.path===context.path);const current=stateAt(reviewPlan,reviewCount)[context.path];if(!file||typeof current!=='string')return toast('This source is unavailable for an inline comment.');range=commentLines(current,file.after,range.start,range.end);if(!range)return toast('These lines change again later in the review. Open the final code before commenting.');}
+ addLineComment({path:context.path,...(range.start!==range.end?{start_line:range.start}:{}),line:range.end,side:'RIGHT',body:$('inlineQuestion').value.trim()});
+};
 $('publishReview').onclick=async()=>{
   if(!pr||reviewPr!==pr.head)return toast('Reopen the current pull request first.');
   if(demo){$('reviewError').textContent='This is a sample draft. Sign in on the production app to publish a real GitHub review.';return}

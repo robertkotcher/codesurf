@@ -195,3 +195,16 @@ test('OpenAI audio authentication failures do not ask users to sign into GitHub'
  const key=process.env.OPENAI_API_KEY;process.env.OPENAI_API_KEY='test-key';global.fetch=async()=>Response.json({error:{message:'Missing scopes: api.model.audio.request',code:'missing_scope',type:'invalid_request_error'}},{status:401});
  try{const response=await request(origin+'/api/note-audio',{method:'POST',headers:{...auth,Origin:process.env.APP_URL,'Content-Type':'application/json'},body:JSON.stringify({text:'Read this note.'})});assert.equal(response.status,502);assert.match((await response.json()).error,/audio generation permission/)}finally{global.fetch=request;if(key===undefined)delete process.env.OPENAI_API_KEY;else process.env.OPENAI_API_KEY=key}
 });
+
+test('voice requests enforce origin and pin selected source without exposing the API key',async()=>{
+ const key=process.env.OPENAI_API_KEY;process.env.OPENAI_API_KEY='voice-test-key';const calls=[];
+ global.fetch=async(url,options)=>{calls.push({url,options});if(url.includes('/pulls/'))return Response.json({html_url:'https://github.com/acme/project/pull/4',title:'New behavior',head:{sha:'head',repo:{full_name:'acme/project'}}});if(url.includes('/contents/'))return Response.json({type:'file',encoding:'base64',size:12,content:Buffer.from('const x = 1;').toString('base64')});return new Response('v=0\r\nanswer',{headers:{'Content-Type':'application/sdp'}})};
+ try{
+  const body={url:'https://github.com/acme/project/pull/4',head:'head',selection:{path:'src/a.ts',start:1,end:1,intermediate:false},sdp:'v=0\r\noffer'};
+  const headers={...auth,Origin:process.env.APP_URL,'Content-Type':'application/json'};
+  assert.equal((await request(origin+'/api/voice',{method:'POST',headers:{...headers,Origin:'https://evil.example'},body:JSON.stringify(body)})).status,403);assert.equal(calls.length,0);
+  const response=await request(origin+'/api/voice',{method:'POST',headers,body:JSON.stringify(body)});assert.equal(response.status,200);assert.equal(await response.text(),'v=0\r\nanswer');
+  const upstream=calls.find(c=>c.url.includes('api.openai.com'));assert.equal(upstream.options.headers.Authorization,'Bearer voice-test-key');const session=JSON.parse(upstream.options.body.get('session'));assert.match(session.instructions,/const x = 1/);assert.match(calls.find(c=>c.url.includes('/contents/')).url,/ref=head$/);
+  calls.length=0;body.head='old';assert.equal((await request(origin+'/api/voice',{method:'POST',headers,body:JSON.stringify(body)})).status,409);assert(!calls.some(c=>c.url.includes('api.openai.com')));
+ }finally{global.fetch=request;if(key===undefined)delete process.env.OPENAI_API_KEY;else process.env.OPENAI_API_KEY=key}
+});
