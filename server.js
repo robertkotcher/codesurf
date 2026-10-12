@@ -1,8 +1,9 @@
-import {voiceSelection,voiceSession} from './realtime-voice.js';
+import {functionPeeks} from './browser/function-peeks.js';
+import {voiceSelection,voiceSession,voiceReviewContext} from './realtime-voice.js';
 import {stateAt,manifestAt} from './public/transformations.js';
 import {openAIErrorMessage,reportOpenAIError} from './openai-errors.js';
 import {findReview,createReview,getReview,publicReview,nextStep,advanceReview,reviewPace,setReviewPace,stepBudget,ensureStepBlocks} from './review-sessions.js';
-import {buildCallIndex,indexedCalls,initCallParsers} from './browser/source-index.js';
+import {buildCallIndex,indexedCalls,initCallParsers,overlayCallIndex} from './browser/source-index.js';
 import {functionData} from './public/data-shapes.js';
 import {demoFiles} from './demo-plan.js';
 import {transformationPlan} from './transformations.js';
@@ -147,12 +148,44 @@ app.post('/api/review',wrap(async(req,res)=>{
   if(!result.ok){const code=result.status;return res.status(code===403?403:code===422?422:502).json({error:code===403?'Posting requires Pull requests: read and write permission. Update the CodeSurf installation on GitHub, then sign in again.':code===422?'GitHub could not accept this review. Check the selected diff lines and review action (authors cannot approve their own PR).':'GitHub could not confirm this review. Check the PR before retrying to avoid duplicates.'})}
   const review=await result.json();res.json({url:review.html_url,id:review.id});
 }));
+async function ownedVoiceReview(req,p){
+ const row=await getReview(req.auth.user.login,req.body.reviewId),count=req.body.step;
+ if(row.head!==p.pr.head.sha||row.pr_url!==p.pr.html_url||!Number.isInteger(count)||count<0||count>row.cursor)throw Object.assign(new Error('Reopen this review before continuing voice chat.'),{status:409});
+ return row;
+}
+async function voiceContext(req,p){
+ const selection=req.body.selection;let review=null,text,snapshot='PR head';
+ if(req.body.reviewId){const row=await ownedVoiceReview(req,p);review=voiceReviewContext(row.plan,req.body.step,publicReview(row).done);if(selection?.intermediate!==false){
+  snapshot='Review step '+req.body.step;
+  if(selection){if(!manifestAt(row.plan,req.body.step).some(file=>file.key===selection.path&&file.exists))throw Object.assign(new Error('The selected file is unavailable at this review step.'),{status:400});text=stateAt(row.plan,req.body.step)[selection.path]}
+ }}
+ if(selection&&text===undefined)text=(await content(req.auth.token,p,selection.path)).text;
+ return {title:p.pr.title,description:(p.pr.body||'').slice(0,6000),head:p.pr.head.sha,snapshot,review,selection:selection?voiceSelection(selection,text):null};
+}
+async function voiceCallSnapshot(req,p,args){
+ if(args.snapshot!=='review'||!req.body.reviewId){const index=await repositoryIndex(req.auth.token,p.pr);await initCallParsers();return {index,graph:buildCallIndex(index.files),snapshot:'PR head'}}
+ const row=await ownedVoiceReview(req,p),count=req.body.step;
+ const comparison=await github(req.auth.token,`${p.prefix}/compare/${p.pr.base.sha}...${p.pr.head.sha}`),sha=comparison.merge_base_commit?.sha;
+ if(!sha)throw new Error('Cannot determine the review merge-base.');
+ const base=await repositoryIndex(req.auth.token,{...p.pr,head:{...p.pr.base,sha}}),overrides=new Map(),state=stateAt(row.plan,count),manifest=manifestAt(row.plan,count);
+ for(const file of row.plan.files){if(file.unavailable)continue;overrides.set(file.path,null);if(file.previousPath)overrides.set(file.previousPath,null);const entry=manifest.find(item=>item.key===file.path);if(entry?.exists)overrides.set(entry.path,state[file.path])}
+ const selected=manifest.find(item=>item.key===args.path);if(selected)args.path=selected.path;
+ await initCallParsers();const files=new Map(base.files);for(const [path,text]of overrides){if(text===null)files.delete(path);else files.set(path,text)}
+ return {index:{...base,files},graph:overlayCallIndex(buildCallIndex(base.files),overrides),snapshot:'Review step '+count};
+}
+app.post('/api/voice/context',wrap(async(req,res)=>{const p=await pull(req.auth.token,req.body.url,req.body.head);res.json(await voiceContext(req,p))}));
 const speechRequests=new Map();
 const voiceRequests=new Map();
 app.post('/api/voice/tool',wrap(async(req,res)=>{
  const {name,args,head}=req.body;
- if(!['search_repository','read_code','show_code'].includes(name)||!args||typeof args!=='object'||typeof head!=='string'||!head)return res.status(400).json({error:'Invalid repository tool request.'});
+ if(!['search_repository','read_code','show_code','explore_calls'].includes(name)||!args||typeof args!=='object'||typeof head!=='string'||!head)return res.status(400).json({error:'Invalid repository tool request.'});
  const p=await pull(req.auth.token,req.body.url,head);
+ if(name==='explore_calls'){
+  cleanPath(args.path);
+  const {index,graph,snapshot}=await voiceCallSnapshot(req,p,args),result=functionPeeks(graph,args);
+  const source=block=>({...block,text:index.files.get(block.path)?.split('\n').slice(block.start-1,block.end).join('\n'),snapshot});
+  return res.json({...result,root:source(result.root),blocks:result.blocks.map(source),head});
+ }
  const index=await repositoryIndex(req.auth.token,p.pr);
  if(name==='search_repository'){
   if(typeof args.query!=='string'||args.query.length<2||args.query.length>300)return res.status(400).json({error:'Use a short source search query.'});
@@ -173,17 +206,8 @@ app.post('/api/voice',wrap(async(req,res)=>{
  const owner=req.auth.user.login,now=Date.now(),recent=(voiceRequests.get(owner)||[]).filter(t=>t>now-60000);
  if(recent.length>=5)return res.status(429).json({error:'Please wait a minute before starting another voice chat.'});
  voiceRequests.set(owner,[...recent,now]);if(voiceRequests.size>10000)for(const [key,times]of voiceRequests)if(times.at(-1)<now-60000)voiceRequests.delete(key);
- const selection=req.body.selection;if(!selection||typeof selection.path!=='string')return res.status(400).json({error:'Select code before starting voice chat.'});cleanPath(selection.path);
  const p=await pull(req.auth.token,req.body.url,req.body.head);
- let text,snapshot='PR head';
- if(selection?.intermediate!==false&&req.body.reviewId){
-  const row=await getReview(owner,req.body.reviewId),count=req.body.step;
-  if(row.head!==p.pr.head.sha||row.pr_url!==p.pr.html_url||!Number.isInteger(count)||count<0||count>row.cursor)return res.status(409).json({error:'Reopen this review before starting voice chat.'});
-  if(!manifestAt(row.plan,count).some(f=>f.key===selection.path&&f.exists))return res.status(400).json({error:'This file is not available at this review step.'});
-  text=stateAt(row.plan,count)[selection.path];snapshot='Review step '+count;
- }else if(selection?.path)text=(await content(req.auth.token,p,selection.path)).text;
- if(typeof text!=='string')return res.status(400).json({error:'Select available source code for voice chat.'});
- const context={title:p.pr.title,description:(p.pr.body||'').slice(0,6000),head:p.pr.head.sha,snapshot,selection:voiceSelection(selection,text)};
+ const context=await voiceContext(req,p);
  const form=new FormData();form.set('sdp',req.body.sdp);form.set('session',JSON.stringify(voiceSession(context)));
  const response=await fetch('https://api.openai.com/v1/realtime/calls',{method:'POST',headers:{Authorization:'Bearer '+env.OPENAI_API_KEY,'OpenAI-Safety-Identifier':crypto.createHash('sha256').update(owner).digest('hex')},body:form,signal:AbortSignal.timeout(35000)});
  if(!response.ok){const body=await response.json().catch(()=>({}));const error={status:response.status,...body.error};reportOpenAIError(error);return res.status(response.status===429?429:502).json({error:openAIErrorMessage(error)})}
@@ -208,7 +232,8 @@ app.post('/api/ask',wrap(async(req,res)=>{
   if(attempts.length>=10)return res.status(429).json({error:'Please wait a minute before asking another question.'});
   recent.set(id,[...attempts,now]);if(recent.size>10000)for(const [k,v]of recent)if(v.at(-1)<now-60000)recent.delete(k);
   const p=await pull(req.auth.token,url,req.body.head),changed=await changedFiles(req.auth.token,p);
-  await answer({req,res,p,changed,question,selection,history,token:req.auth.token});
+  const snapshot=selection?.intermediate&&req.body.reviewId?await voiceCallSnapshot(req,p,{path:selection.path,snapshot:'review'}):null;
+  await answer({req,res,p,changed,question,selection,history,token:req.auth.token,sourceIndex:snapshot?.index,snapshot:snapshot?.snapshot||'PR head'});
 }));
 app.use(express.static(path.join(root,'public')));
 app.get('/github/:owner/:repo/pull/:number',(req,res,next)=>{if(!/^[1-9]\d*$/.test(req.params.number))return next();res.sendFile(path.join(root,'public/index.html'))});

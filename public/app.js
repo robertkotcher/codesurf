@@ -1,14 +1,14 @@
+import {createCodePeeks} from './code-peeks.js';
 import {startVoiceChat} from './voice-chat.js';
 import {syncFilePanes,movePaneFile,bindPaneDragging} from './file-panes.js';
 import {attachSidebarResize} from './sidebar-resize.js';
 import {reviewBlocks} from './review-notes.js';
 import {groupPullRequests} from './pull-list.js';
-import {buildCallIndex,indexedCalls,overlayCallIndex,initCallParsers} from './source-index.js';
+import {buildCallIndex,initCallParsers,functionPeeks} from './source-index.js';
 import {selectedFunction,functionParameters,functionData} from './data-shapes.js';
 import {openDataCanvas} from './data-canvas.js';
-import {openCallCanvas} from './call-canvas.js';
 import {stateAt,validatePlan,manifestAt,stepFiles,notesAt} from './transformations.js';
-import {mountEditor,icon,fileIcon,setEditorWrapping,setEditorTheme,commentLines} from './vendor/review-editor.js';
+import {mountEditor,icon,fileIcon,setEditorWrapping,setEditorTheme,commentLines,stopNoteSpeech} from './vendor/review-editor.js';
 import {layoutFlow} from './flow-layout.js';
 const $=id=>document.getElementById(id),esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const demo=new URLSearchParams(location.search).has('demo')&&['localhost','127.0.0.1'].includes(location.hostname);
@@ -66,30 +66,18 @@ $('sampleInputButton').onclick=async()=>{
  load:async(path,line)=>files?functionData(files,{path,line}):api('/api/function-data?'+new URLSearchParams({url:pr.url,head:pr.head,path,line})),
  onSelect:value=>selectReviewLines(value,value.path,false)});
 };
-const callIndexes=new Map();
-function preloadCallIndex(snapshot='head',scope={}){
- if(!pr)return null;const current=pr,key=current.repo+':'+current.head+':'+snapshot+':'+JSON.stringify(scope);
- if(callIndexes.has(key))return callIndexes.get(key);
- const promise=(demo?api('/api/demo-plan').then(async plan=>{await initCallParsers();return buildCallIndex(new Map(plan.files.map(f=>[snapshot==='base'?f.previousPath||f.path:f.path,snapshot==='base'?f.before:f.after])))}):api('/api/call-index?'+new URLSearchParams({url:current.url,head:current.head,snapshot,...scope}))).catch(error=>{callIndexes.delete(key);throw error});
- callIndexes.set(key,promise);if(callIndexes.size>8)callIndexes.delete(callIndexes.keys().next().value);promise.catch(()=>{});return promise;
+async function exploreCode(context,direction='callers',signal){
+ if(!pr||!context?.path)throw new Error('Select a function or call first.');
+ const current=pr,count=reviewCount;
+ let result;
+ if(demo){await initCallParsers();const plan=reviewPlan||await api('/api/demo-plan'),state=context.intermediate!==false?stateAt(plan,count):null,files=new Map(plan.files.map(file=>[file.path,state?state[file.path]??file.after:file.after]));result=functionPeeks(buildCallIndex(files),{path:context.path,line:context.start,direction});result.blocks=result.blocks.map(block=>({...block,snapshot:state?'Review step '+count:'PR head'}));}
+ else result=await api('/api/voice/tool',{method:'POST',headers:{'Content-Type':'application/json'},signal,body:JSON.stringify({url:current.url,head:current.head,reviewId:reviewSession,step:count,name:'explore_calls',args:{path:context.path,line:context.start,direction,snapshot:context.intermediate!==false&&reviewPlan?'review':'head'}})});
+ if(signal?.aborted||pr!==current||reviewCount!==count)return {error:'The selected review step changed.'};
+ showCodePeeks(result,context);return result;
 }
-
-async function launchCallCanvas(){
- const context=reviewSelection||selection||{path:reviewPath,start:1,intermediate:true};if(!pr||!context.path)return;
- closePopover();const current=pr,plan=reviewPlan,count=reviewCount,intermediate=context.intermediate!==false&&!!plan;
- const snapshot=intermediate?'base':'head',label=intermediate?'Review step '+count:'PR head',overrides=new Map();
- if(intermediate){const state=stateAt(plan,count),manifest=manifestAt(plan,count);for(const file of plan.files){if(file.unavailable)continue;overrides.set(file.path,null);if(file.previousPath)overrides.set(file.previousPath,null);const entry=manifest.find(m=>m.key===file.path);if(entry?.exists)overrides.set(entry.path,state[file.path]);}}
- try{
- await initCallParsers();const files=await selectionSources(context),local=buildCallIndex(files),root=indexedCalls(local,{path:context.path,line:context.start}).blocks[0];
- root.snapshot=label;
- openCallCanvas({host:document.querySelector('.code-stage'),path:context.path,line:context.start,root,
- load:async(path,line,direction,symbol,node)=>{
- const base=await preloadCallIndex(snapshot,{path,line,direction,symbol:symbol||''});const graph=intermediate?overlayCallIndex(base,overrides):base;if(pr!==current)throw new Error('The pull request changed.');
- const result=indexedCalls(graph,{path,line,direction,symbol});
- const blocks=await Promise.all(result.blocks.map(async block=>{if(block.text)return {...block,snapshot:label};const text=overrides.get(block.path)??(await getFile(block.path,snapshot)).text;return {...block,text:text.split('\n').slice(block.start-1,block.end).join('\n'),snapshot:label};}));
- return {...result,blocks};
- },onSelect:value=>selectReviewLines(value,value.path,value.snapshot?.startsWith('Review step'))});
- }catch(error){toast(error.message)}
+async function launchCalls(direction='callers'){
+ const context=reviewSelection||selection||defaultVoiceSelection();if(!context)return toast('Select a function first.');hideQuestionPopover();
+ try{codePeeks.collapse();await exploreCode(context,direction)}catch(error){toast(error.message)}
 }
 
 function askInline(question){
@@ -98,8 +86,9 @@ function askInline(question){
   newChat(context);ask(question);
 }
 function selectReviewLines(value,path=reviewPath,intermediate=true){
-  stopVoice();
+  if(!voiceConversation?.active)stopVoice();
   reviewSelection={...value,path,intermediate};selection=null;updateSampleAction(reviewSelection);
+  if(voiceConversation?.active){voiceConversation.updateContext(localVoiceContext());$('reviewVoiceTranscript').textContent='Selected '+path+':'+value.start+'–'+value.end;return}
   $('popcontext').textContent=path+':'+value.start+'–'+value.end;
   const pop=$('askPopover');pop.classList.remove('hidden');
   pop.style.left=Math.max(12,Math.min(value.x||innerWidth/2,innerWidth-420))+'px';
@@ -211,71 +200,102 @@ function renderEditors(){
 }
 function selectLine(el,shift=false){reviewSelection=null;const line=Number(el.dataset.line);if(!line){toast('Deleted code is visible for comparison. Select current code to ask a question.');return false}const path=el.dataset.path,column=Number(el.dataset.column);activeColumn=column;if(!shift||anchor?.path!==path||anchor.column!==column)anchor={path,column,line};selection={path,column,start:Math.min(line,anchor.line),end:Math.max(line,anchor.line)};document.querySelectorAll('.editor-line').forEach(x=>x.classList.toggle('selected',x.dataset.path===path&&Number(x.dataset.column)===column&&Number(x.dataset.line)>=selection.start&&Number(x.dataset.line)<=selection.end));return true}
 function openPopover(x,y){if(!selection)return;updateSampleAction({...selection,intermediate:false});$('popcontext').textContent=selection.path+' : '+selection.start+'–'+selection.end;const p=$('askPopover');p.classList.remove('hidden');p.style.left=Math.max(12,Math.min(x-50,innerWidth-420))+'px';p.style.top=Math.max(70,Math.min(y+10,innerHeight-230))+'px';$('inlineQuestion').focus()}
-let voiceConversation=null,voiceChat=null,voiceReference=null;
+let voiceConversation=null,voiceChat=null,voiceStarting=false;
+const codePeeks=createCodePeeks({host:document.querySelector('.code-stage'),mountEditor,icon,
+ locate:anchor=>{
+  for(const view of reviewViews){if(view.sourcePath===anchor.path&&view.sourceIntermediate!==(anchor.intermediate===false)){const range=view.sourceRange(anchor.start,anchor.end);if(range)return range}}
+  const lines=[...$('editors').querySelectorAll('.editor-line')].filter(el=>el.dataset.path===anchor.path&&+el.dataset.line>=anchor.start&&+el.dataset.line<=(anchor.end||anchor.start));
+  if(!lines.length)return null;const first=lines[0].getBoundingClientRect(),last=lines.at(-1).getBoundingClientRect(),bounds=lines[0].closest('.editor-lines').getBoundingClientRect();if(first.top>bounds.bottom||last.bottom<bounds.top)return null;return {left:bounds.left+3,right:bounds.right-3,top:Math.max(first.top,bounds.top),bottom:Math.min(last.bottom,bounds.bottom)};
+ },onSelect:value=>selectReviewLines(value,value.path,value.intermediate),onExpand:(context,direction)=>exploreCode(context,direction),onError:toast});
+function showCodePeeks(result,context){
+ if(result.error)return;let anchor={...context,path:context.path||result.root.path,start:result.direction==='callers'?result.root.start:context.start,end:result.direction==='callers'?result.root.end:context.end||context.start};
+ if(context.path!==result.root.path){const root=codePeeks.add({block:result.root,anchor:context,direction:'body',step:reviewCount});anchor={path:result.root.path,start:result.root.start,end:result.root.end,peekId:root.id,intermediate:result.root.snapshot?.startsWith('Review step')}}
+ for(const [index,block]of result.blocks.entries())codePeeks.add({block,anchor:result.direction==='callees'?{...anchor,start:block.callLine,end:block.callLine}:anchor,direction:result.direction,step:reviewCount,expanded:index<3});
+ if(!result.blocks.length)toast('No resolved '+result.direction+' found in this source snapshot.');
+}
+function defaultVoiceSelection(){
+ if(!pr)return null;
+ if(reviewPlan){const step=reviewPlan.steps[reviewCount-1],path=reviewPath||reviewPlan.files[0]?.path;if(!path)return null;const text=stateAt(reviewPlan,reviewCount)[path];if(typeof text!=='string'||!text.length)return null;
+  const ids=new Set(reviewPlan.steps.slice(0,reviewCount).flatMap(step=>step.ids));let offset=0,line=1;
+  for(const op of reviewPlan.operations.filter(op=>op.path===path&&!op.metadata&&ids.has(op.id)).sort((a,b)=>a.from-b.from||a.order-b.order)){if(step?.ids.includes(op.id)){line=text.slice(0,Math.min(text.length,op.from+offset)).split('\n').length;break}offset+=op.insert.length-op.deleted.length}
+  return {path,start:line,end:Math.min(text.split('\n').length,line+12),intermediate:true};
+ }
+ const path=columns[activeColumn]?.active;return path?{path,start:1,end:1,intermediate:false}:null;
+}
+function localVoiceContext(){
+ const selected=reviewSelection||selection||defaultVoiceSelection(),step=reviewPlan?.steps[reviewCount-1];
+ return {step:reviewCount,head:pr?.head,canPrevious:!!reviewPlan&&reviewCount>1,canNext:!!reviewPlan&&(reviewCount<reviewPlan.steps.length||!reviewDone),title:step?.title,summary:step?.summary,selection:selected?{path:selected.path,start:selected.start,end:selected.end,intermediate:selected.intermediate!==false,source:selected.text?.slice(0,5000)}:null};
+}
+async function currentVoiceContext(signal){
+ const context=localVoiceContext();if(demo)return context;
+ return api('/api/voice/context',{method:'POST',headers:{'Content-Type':'application/json'},signal,body:JSON.stringify({url:pr.url,head:pr.head,reviewId:reviewSession,step:reviewCount,selection:context.selection})});
+}
 function resetVoiceUI(){
  $('voiceListening').hidden=true;$('inlineQuestion').hidden=false;$('inlineAsk').disabled=false;$('commentSelection').disabled=false;
- $('voiceChatButton').innerHTML=icon('mic');$('voiceChatButton').setAttribute('aria-pressed','false');$('voiceChatButton').setAttribute('aria-label','Start voice conversation');$('voiceChatButton').title='Start voice conversation';
+ for(const [id,label]of [['voiceChatButton','Start voice conversation'],['reviewMicrophone','Start voice review']]){const button=$(id);button.innerHTML=icon('mic');button.setAttribute('aria-pressed','false');button.setAttribute('aria-label',label);button.title=label}
+ $('reviewVoiceStatus').textContent='Review by voice';$('reviewVoiceTranscript').textContent='Ask about this change, or say “next.”';$('reviewVoiceWave').hidden=true;$('voicePanel').dataset.state='idle';
 }
-async function showVoiceCode(reference,origin,current){
- if(pr?.head!==current.head||pr?.url!==current.url)return;
- const generation=prGeneration;await getFile(reference.path);
- if(generation!==prGeneration)return;
- voiceReference=reference;
- if(reviewPlan){await renderWalkthrough();}
- else {
-  if(!columns.length)columns=[{tabs:[origin.path],active:origin.path,mode:'full'}];
-  let index=columns.findIndex(c=>c.active===reference.path);
-  if(index<0){index=columns.length>1?1:columns.length;if(index===columns.length)columns.push({tabs:[],active:reference.path,mode:'full'});}
-  const column=columns[index];if(!column.tabs.includes(reference.path))column.tabs.push(reference.path);column.active=reference.path;column.mode='full';focused.set(reference.path,reference);renderEditors();tree();
-  const pane=document.querySelector(`.editor-col[data-column="${index}"]`);
-  const lines=[...(pane?.querySelectorAll('.editor-line')||[])].filter(el=>+el.dataset.line>=reference.start&&+el.dataset.line<=reference.end);
-  scrollCodeLine(lines[0]);for(const line of lines){line.classList.remove('voice-code-flash');void line.offsetWidth;line.classList.add('voice-code-flash')}
- }
-}
-function stopVoice(){voiceConversation?.stop();voiceConversation=null;if(voiceChat){for(const turn of voiceChat.turns)turn.streaming=false;if(activeChat===voiceChat)renderTurns()}voiceChat=null;resetVoiceUI()}
-$('followCallsButton').innerHTML=icon('graph');$('followCallsButton').onclick=launchCallCanvas;
-$('voiceChatButton').innerHTML=icon('mic');$('endVoice').onclick=stopVoice;
-$('voiceChatButton').onclick=()=>{
- if(voiceConversation?.active){stopVoice();return}
- const selected=reviewSelection||selection;if(!selected||!pr)return toast('Select code first.');if(demo)return toast('Voice chat is available on connected pull requests.');
- const context={...selected,intermediate:selected.intermediate!==false&&!!reviewPlan},current=pr,step=reviewCount;
- $('inlineQuestion').hidden=true;$('voiceListening').hidden=false;$('voiceTranscript').textContent='';$('inlineAsk').disabled=true;$('commentSelection').disabled=true;
- $('voiceChatButton').innerHTML=icon('stop');$('voiceChatButton').setAttribute('aria-pressed','true');$('voiceChatButton').setAttribute('aria-label','End voice conversation');$('voiceChatButton').title='End voice conversation';
+function hideQuestionPopover(){$('askPopover').classList.add('hidden')}
+function stopVoice(){voiceConversation?.stop();voiceConversation=null;voiceStarting=false;if(voiceChat){for(const turn of voiceChat.turns)turn.streaming=false;if(activeChat===voiceChat)renderTurns()}voiceChat=null;resetVoiceUI()}
+$('followCallsButton').innerHTML=icon('graph');$('followCallsButton').onclick=()=>{
+ let menu=$('callsMenu');if(menu){menu.remove();return}menu=document.createElement('div');menu.id='callsMenu';menu.className='calls-menu';
+ for(const [direction,label]of [['callers','Show callers'],['callees','Show callees'],['body','Show function body']]){const button=document.createElement('button');button.type='button';button.textContent=label;button.onclick=()=>{menu.remove();launchCalls(direction)};menu.append(button)}$('inlineForm').querySelector('.line-actions').after(menu);
+};
+$('voiceChatButton').innerHTML=icon('mic');$('reviewMicrophone').innerHTML=icon('mic');$('endVoice').onclick=stopVoice;
+async function toggleReviewVoice(){
+ if(voiceConversation?.active||voiceStarting){stopVoice();return}if(!pr)return toast('Open a pull request first.');if(demo)return toast('Voice chat is available on connected pull requests.');
+ const context=reviewSelection||selection||defaultVoiceSelection(),current=pr,startingStep=reviewCount,startingReview=reviewSession;voiceStarting=true;
+ stopNoteSpeech();hideQuestionPopover();$('reviewVoiceTranscript').textContent='';$('reviewVoiceWave').hidden=false;
+ for(const id of ['voiceChatButton','reviewMicrophone']){$(id).innerHTML=icon('stop');$(id).setAttribute('aria-pressed','true');$(id).setAttribute('aria-label','End voice review');$(id).title='End voice review'}
  const messages=new Map();let chat=null,lastTurn=null;
  voiceConversation=startVoiceChat({
-  request:async(sdp,signal)=>{const response=await fetch('/api/voice',{method:'POST',headers:{'Content-Type':'application/json'},signal,body:JSON.stringify({url:current.url,head:current.head,selection:context,reviewId:context.intermediate?reviewSession:null,step,sdp})});if(!response.ok){const error=await response.json().catch(()=>({}));throw new Error(error.error||'Voice chat could not connect.')}return response.text()},
+  request:async(sdp,signal)=>{const response=await fetch('/api/voice',{method:'POST',headers:{'Content-Type':'application/json'},signal,body:JSON.stringify({url:current.url,head:current.head,selection:context,reviewId:startingReview,step:startingStep,sdp})});if(!response.ok){const error=await response.json().catch(()=>({}));throw new Error(error.error||'Voice chat could not connect.')}return response.text()},
+  onTurn:()=>{codePeeks.collapse();return localVoiceContext()},
   onTool:async(name,args,signal)=>{
-   const result=await api('/api/voice/tool',{method:'POST',headers:{'Content-Type':'application/json'},signal,body:JSON.stringify({url:current.url,head:current.head,name,args})});
-   if(result.reference)await showVoiceCode(result.reference,context,current);
-   return result;
+   if(current!==pr||signal.aborted)return {error:'The review changed.'};
+   if(name==='get_review_context')return currentVoiceContext(signal);
+   if(name==='navigate_review'){
+    if(!['next','previous'].includes(args.direction))return {error:'Choose next or previous.'};
+    if(args.direction==='next'&&reviewPlan&&reviewCount>=reviewPlan.steps.length&&!reviewDone)await prepareNext();
+    if(signal.aborted)return {error:'Navigation interrupted.'};
+    const moved=await reviewAdvance(args.direction==='next'?1:-1,{fromVoice:true});
+    return {...await currentVoiceContext(signal),moved:!!moved,message:moved?'Now showing the new review step.':args.direction==='previous'?'Already at the beginning.':'No next step available yet.'};
+   }
+   const step=reviewCount,origin=reviewSelection||selection||defaultVoiceSelection();
+   const result=await api('/api/voice/tool',{method:'POST',headers:{'Content-Type':'application/json'},signal,body:JSON.stringify({url:current.url,head:current.head,reviewId:reviewSession,step,name,args})});
+   if(signal.aborted||current!==pr||step!==reviewCount)return {error:'The displayed step changed.'};
+   if(name==='explore_calls')showCodePeeks(result,origin||{path:result.root?.path,start:result.root?.start,end:result.root?.end,intermediate:args.snapshot==='review'});
+   if(result.reference){const file=await getFile(result.reference.path);if(!signal.aborted&&step===reviewCount)codePeeks.add({block:{...result.reference,text:file.text.split('\n').slice(result.reference.start-1,result.reference.end).join('\n'),snapshot:'PR head'},anchor:origin||result.reference,direction:'body',step})}
+   if(result.blocks)return {...result,root:{...result.root,text:result.root?.text?.slice(0,3000)},blocks:result.blocks.map(block=>({...block,text:block.text?.slice(0,2500)}))};return result;
   },
-  onState:state=>{if(state==='ended'){if(chat){for(const turn of chat.turns)turn.streaming=false;if(activeChat===chat)renderTurns()}resetVoiceUI();return}$('voiceStatus').textContent={connecting:'Connecting…',listening:'Listening…',thinking:'Thinking…',speaking:'Speaking…'}[state]||state;$('voiceListening').dataset.state=state},
-  onLevel:level=>$('voiceListening').style.setProperty('--voice-level',String(level)),
-  onReady:()=>{chat=newChat({...context,step});chat.title='Voice · '+context.path.split('/').pop();voiceChat=chat;renderChatTabs()},
+  onState:state=>{if(state==='ended'){voiceStarting=false;if(chat){for(const turn of chat.turns)turn.streaming=false;if(activeChat===chat)renderTurns()}resetVoiceUI();return}const label={connecting:'Connecting…',listening:'Listening…',thinking:'Thinking…',speaking:'Speaking…'}[state]||state;$('voiceStatus').textContent=label;$('reviewVoiceStatus').textContent=label;$('voiceListening').dataset.state=state;$('voicePanel').dataset.state=state},
+  onLevel:level=>{for(const id of ['voiceListening','reviewVoiceWave'])$(id).style.setProperty('--voice-level',String(level))},
+  onReady:()=>{voiceStarting=false;chat=newChat(context,false);chat.title='Voice review';voiceChat=chat;renderChatTabs();voiceConversation.updateContext(localVoiceContext());voiceConversation.speak('Briefly explain the current displayed review change in simple language, then listen for my questions. Do not navigate yet.');},
   onTranscript:message=>{
-   if(!chat||!message.text)return;$('voiceTranscript').textContent=message.text;
+   if(!chat||!message.text)return;$('voiceTranscript').textContent=message.text;$('reviewVoiceTranscript').textContent=message.text;
    let turn=messages.get(message.id);
    if(message.role==='user'){
-    if(!turn){turn=lastTurn&&!lastTurn.voiceQuestion?lastTurn:{q:'',a:'',origin:context,head:current.head};if(!chat.turns.includes(turn))chat.turns.push(turn);messages.set(message.id,turn)}turn.q=message.text;turn.voiceQuestion=true;lastTurn=turn;
+    if(!turn){turn=lastTurn&&!lastTurn.voiceQuestion?lastTurn:{q:'',a:'',origin:reviewSelection||selection||defaultVoiceSelection(),head:current.head};if(!chat.turns.includes(turn))chat.turns.push(turn);messages.set(message.id,turn)}turn.q=message.text;turn.voiceQuestion=true;lastTurn=turn;
    }else {
-    if(!turn){turn=lastTurn&&!lastTurn.voiceAnswer?lastTurn:{q:'Voice question',a:'',origin:context,head:current.head};if(!chat.turns.includes(turn))chat.turns.push(turn);messages.set(message.id,turn);turn.voiceAnswer=true;lastTurn=turn}turn.a=message.done?message.text:turn.a+message.text;turn.streaming=!message.done;
-   }
-   if(activeChat===chat)renderTurns();
+    if(!turn){turn=lastTurn&&!lastTurn.voiceAnswer?lastTurn:{q:'Voice review',a:'',origin:reviewSelection||selection||defaultVoiceSelection(),head:current.head};if(!chat.turns.includes(turn))chat.turns.push(turn);messages.set(message.id,turn);turn.voiceAnswer=true;lastTurn=turn}turn.a=message.done?message.text:turn.a+message.text;turn.streaming=!message.done;
+   }if(activeChat===chat)renderTurns();
   },onError:message=>toast(message)
  });
-};
+}
+$('voiceChatButton').onclick=toggleReviewVoice;$('reviewMicrophone').onclick=toggleReviewVoice;
 window.addEventListener('pagehide',stopVoice);document.addEventListener('visibilitychange',()=>{if(document.hidden)stopVoice()});
-function closePopover(){stopVoice();$('askPopover').classList.add('hidden')}
+function closePopover(){hideQuestionPopover()}
 function dismissPopover(){
  closePopover();selection=null;reviewSelection=null;anchor=null;dragging=false;inputSelectionVersion++;
  for(const view of reviewViews)view.clearQuestionSelection?.();
- document.querySelectorAll('.call-canvas').forEach(canvas=>canvas.dispatchEvent(new Event('clear-question-selection')));
+ codePeeks.clearSelection();
  document.querySelectorAll('.editor-line.selected').forEach(line=>line.classList.remove('selected'));
 }
 let dismissingPopoverGesture=false;
 const stopPopoverGesture=event=>{event.preventDefault();event.stopImmediatePropagation()};
 document.addEventListener('pointerdown',event=>{
  dismissingPopoverGesture=false;
+ if(event.target.closest('#reviewMicrophone,#reviewBack,#reviewNext,.code-peek,.code-peek-marker')){hideQuestionPopover();return}
  if(!$('askPopover').classList.contains('hidden')&&!event.target.closest('#askPopover')){dismissingPopoverGesture=true;dismissPopover();stopPopoverGesture(event)}
 },true);
 for(const type of ['mousedown','pointerup','mouseup'])document.addEventListener(type,event=>{if(dismissingPopoverGesture)stopPopoverGesture(event)},true);
@@ -302,6 +322,7 @@ async function focusCitations(text){
 }
 async function ask(question){
   if(!pr)return toast('Open a pull request first.');
+  codePeeks.collapse();
   setConversationCollapsed(false);const chat=activeChat||newChat();if(chat.abort)return toast('This chat is still answering. Open another tab to ask in parallel.');
   const generation=prGeneration, context=chat.context, prior=chat.turns.filter(t=>!t.error).flatMap(t=>[{role:'user',content:t.q},{role:'assistant',content:t.a}]);
   const turn={q:question,a:'',streaming:true,activity:'Finding relevant source…',origin:context,head:pr.head};chat.turns.push(turn);
@@ -312,10 +333,10 @@ async function ask(question){
     if(demo){const text='A failed delivery queues a retry. The delay doubles each attempt; the fifth attempt stops the chain.';for(let i=0;i<text.length;i+=12){if(abort.signal.aborted)throw new DOMException('Stopped','AbortError');turn.a+=text.slice(i,i+12);render();await new Promise(r=>setTimeout(r,40))}}
     else{
       const questionContext=context?.intermediate?'\nSelected intermediate transformation '+context.step+' in '+context.path+' (these are not head coordinates):\n'+context.text.slice(0,2800):'';
-      const response=await fetch('/api/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:pr.url,head:pr.head,question:question+questionContext,selection:context&&!context.intermediate?{path:context.path,start:context.start,end:context.end}:null,history:prior}),signal:abort.signal});
+      const response=await fetch('/api/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:pr.url,head:pr.head,question:question+questionContext,selection:context?{path:context.path,start:context.start,end:context.end,intermediate:context.intermediate}:null,reviewId:context?.intermediate?reviewSession:null,step:context?.step??reviewCount,history:prior}),signal:abort.signal});
       if(!response.ok){const body=await response.json();throw new Error(body.error||'Could not start answer')}
       const reader=response.body.getReader(),decoder=new TextDecoder();let pending='';
-      while(true){const {value,done}=await reader.read();if(done)break;pending+=decoder.decode(value,{stream:true});const events=pending.split('\n\n');pending=events.pop();for(const raw of events){const event=raw.match(/^event: (.+)$/m)?.[1],data=raw.match(/^data: (.+)$/m)?.[1];if(!data)continue;const body=JSON.parse(data);if(generation!==prGeneration)return;if(event==='delta')turn.a+=body.text;if(event==='activity')turn.activity=body.text;if(event==='scope')turn.activity='Exploring '+body.indexedFiles+' repository files';if(event==='flow')turn.flow=body;if(event==='draft'){mergeDraft(body);turn.drafted=true}if(event==='error')throw new Error(body.message);render()}}
+      while(true){const {value,done}=await reader.read();if(done)break;pending+=decoder.decode(value,{stream:true});const events=pending.split('\n\n');pending=events.pop();for(const raw of events){const event=raw.match(/^event: (.+)$/m)?.[1],data=raw.match(/^data: (.+)$/m)?.[1];if(!data)continue;const body=JSON.parse(data);if(generation!==prGeneration)return;if(event==='delta')turn.a+=body.text;if(event==='activity')turn.activity=body.text;if(event==='scope')turn.activity='Exploring '+body.indexedFiles+' repository files';if(event==='flow')turn.flow=body;if(event==='peeks'){turn.peeks=body;showCodePeeks(body,context||defaultVoiceSelection()||{path:body.root.path,start:body.root.start,end:body.root.end,intermediate:false})};if(event==='draft'){mergeDraft(body);turn.drafted=true}if(event==='error')throw new Error(body.message);render()}}
     }
   }catch(error){turn.error=error.name==='AbortError'?'Answer stopped.':error.message}
   finally{turn.streaming=false;turn.activity='';chat.abort=null;render();renderChatTabs()}
@@ -348,7 +369,7 @@ $('refreshPulls').onclick=showHome;$('filterPulls').oninput=renderHomePulls;
 $('homePulls').onclick=event=>{const link=event.target.closest('a.home-pr');if(link&&!event.metaKey&&!event.ctrlKey&&!event.shiftKey){event.preventDefault();loadPR('https://github.com'+new URL(link.href).pathname.slice('/github'.length))}};
 window.addEventListener('popstate',()=>{const url=routePR();url?loadPR(url,false):showHome()});
 async function loadPR(url,navigate=true){streamAbort?.abort();const generation=++prGeneration;toast('Loading pull request…');try{const data=await api('/api/pr?'+new URLSearchParams({url}));if(generation!==prGeneration)return;if(navigate&&location.pathname!==prRoute(data.url))history.pushState({},'',prRoute(data.url));setPR(data);$('inbox').classList.add('hidden');if(pr.limited)toast('GitHub returned a partial file list. This walkthrough cannot cover the entire PR.')}catch(e){toast(e.message)}}
-function setPR(data){stopVoice();voiceReference=null;document.querySelectorAll('.call-canvas').forEach(el=>el.remove());document.body.classList.remove('home-view');$('prHome').hidden=true;chats.forEach(c=>c.abort?.abort());chats=[];activeChat=null;pr=data;activeFlow=null;$('flowHeader').classList.add('hidden');$('inlineThread').classList.add('hidden');setExplorerCollapsed(false);setConversationCollapsed(true);reviewComments=[];reviewSummary='';reviewPr=pr.head;$('reviewBody').value='';treeNodes=new Map();expandedFolders=new Set(['']);treeLoading=new Set();treeErrors=new Map();columns=[];activeColumn=0;turns=[];selection=null;focused.clear();cache.clear();$('repo').textContent=pr.repo;$('prTitle').textContent=pr.title+' #'+pr.number;$('prTitle').title=pr.title+' #'+pr.number;$('prMeta').textContent=`${pr.author} · ${pr.changedFiles} changed files · ${pr.head.slice(0,7)}`;$('url').value=pr.url;newChat(null,false);showReviewSetup();loadTreeFolder();if(pr.files.length)openFile(pr.files[0].path);else $('editors').innerHTML='<div class="editor-empty"><h2>No changed files.</h2></div>'}
+function setPR(data){stopVoice();codePeeks.clear();document.querySelectorAll('.call-canvas').forEach(el=>el.remove());document.body.classList.remove('home-view');$('prHome').hidden=true;chats.forEach(c=>c.abort?.abort());chats=[];activeChat=null;pr=data;activeFlow=null;$('flowHeader').classList.add('hidden');$('inlineThread').classList.add('hidden');setExplorerCollapsed(false);setConversationCollapsed(true);reviewComments=[];reviewSummary='';reviewPr=pr.head;$('reviewBody').value='';treeNodes=new Map();expandedFolders=new Set(['']);treeLoading=new Set();treeErrors=new Map();columns=[];activeColumn=0;turns=[];selection=null;focused.clear();cache.clear();$('repo').textContent=pr.repo;$('prTitle').textContent=pr.title+' #'+pr.number;$('prTitle').title=pr.title+' #'+pr.number;$('prMeta').textContent=`${pr.author} · ${pr.changedFiles} changed files · ${pr.head.slice(0,7)}`;$('url').value=pr.url;newChat(null,false);showReviewSetup();loadTreeFolder();if(pr.files.length)openFile(pr.files[0].path);else $('editors').innerHTML='<div class="editor-empty"><h2>No changed files.</h2></div>'}
 async function inbox(relation='review'){$('inbox').classList.remove('hidden');document.querySelectorAll('[data-relation]').forEach(x=>x.classList.toggle('active',x.dataset.relation===relation));$('prs').textContent='Loading…';try{if(demo){$('prs').innerHTML='<button class="pr-item" data-pr="demo"><b>Add retry handling to webhook delivery</b><small>acme/platform · #248 · sample PR</small></button>';return}const data=await api('/api/prs?relation='+relation);$('prs').innerHTML=data.items.length?data.items.map(p=>`<button class="pr-item" data-pr="${esc(p.url)}"><b>${esc(p.title)}</b><small>${esc(p.repo)} · #${p.number}</small></button>`).join(''):'<p class="muted">No open PRs found in connected repositories.</p>'}catch(e){$('prs').textContent=e.message}}
 $('openForm').addEventListener('submit',e=>{e.preventDefault();if(demo)return toast('Demo mode uses the sample PR. Sign in on the main app to import GitHub PRs.');loadPR($('url').value.trim())});$('filetree').addEventListener('click',e=>{const folder=e.target.closest('[data-folder]'),retry=e.target.closest('[data-retry]');if(folder){const path=folder.dataset.folder;if(expandedFolders.has(path))expandedFolders.delete(path);else{expandedFolders.add(path);if(!treeNodes.has(path))loadTreeFolder(path,folder.dataset.sha)}tree();return}if(retry){loadTreeFolder(retry.dataset.retry,retry.dataset.sha);return}const f=e.target.closest('[data-file]');if(f)openFile(f.dataset.file)});$('inlineForm').addEventListener('submit',e=>{e.preventDefault();const q=$('inlineQuestion').value.trim();if(q){$('inlineQuestion').value='';askInline(q)}});$('followup').addEventListener('submit',e=>{e.preventDefault();const q=$('followQuestion').value.trim();if(q){$('followQuestion').value='';ask(q)}});for(const id of ['inlineQuestion','followQuestion'])$(id).addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();$(id==='inlineQuestion'?'inlineForm':'followup').requestSubmit()}});document.querySelectorAll('[data-ask]').forEach(b=>b.addEventListener('click',()=>askInline(b.dataset.ask)));$('closePopover').addEventListener('click',dismissPopover);document.addEventListener('keydown',e=>{if(e.key==='Escape'){dismissPopover();$('inbox').classList.add('hidden');$('reviewModal').classList.add('hidden')}});$('inboxButton').addEventListener('click',()=>showHome());$('closeInbox').addEventListener('click',()=>$('inbox').classList.add('hidden'));document.querySelectorAll('[data-relation]').forEach(x=>x.addEventListener('click',()=>inbox(x.dataset.relation)));$('prs').addEventListener('click',e=>{const p=e.target.closest('[data-pr]');if(p){$('inbox').classList.add('hidden');if(!demo)loadPR(p.dataset.pr)}});$('resetConversation').addEventListener('click',()=>{newChat();$('followQuestion').focus()});$('logout').addEventListener('click',async()=>{await api('/auth/logout',{method:'POST'});location.href='/'});
 let previewTimer;function sourceEvent(e){if(e.target.closest('[data-open-review]')){if(e.type==='click')showReview();return}const r=e.target.closest('[data-source]');if(!r)return;clearTimeout(previewTimer);const action=()=>openFile(r.dataset.source,{start:+r.dataset.start,end:+r.dataset.end},true);if(e.type==='mouseover')previewTimer=setTimeout(action,450);else action()}
@@ -444,6 +465,7 @@ function destroyReviewViews(){for(const view of reviewViews)view.destroy();revie
 function dockWalkthrough(){if(!reviewPlan)return;reviewExploring=true;setExplorerCollapsed(false);renderWalkthrough()}
 function returnToWalkthrough(){reviewExploring=false;renderWalkthrough()}
 function showReviewSetup(){
+ for(const id of ['reviewBack','reviewNext','reviewProgress','voicePanel'])$(id).hidden=true;nextPreparation=null;reviewMoving=false;codePeeks.clear();
  reviewPanes=[];
  reviewPlan=null;reviewSession=null;reviewCount=0;walkthroughReady=false;reviewExploring=false;reviewSelection=null;destroyReviewViews();$('startReview').disabled=true;
  $('workspace').classList.add('review-mode');$('walkthrough').classList.remove('hidden');
@@ -470,10 +492,12 @@ function updateNextControl(){
  const button=$('reviewNext');if(!button)return;
  const ready=reviewCount<reviewPlan.steps.length;
  button.disabled=!ready&&!nextError;
- button.textContent=ready?(reviewCount?'Next →':'Start Review'):nextError?'Retry next step':nextPending?'Preparing next…':'Review complete';
+ button.title=ready?'Next change':nextError?'Retry next step':nextPending?'Preparing next…':'Review complete';button.setAttribute('aria-label',button.title);
  $('startReview').disabled=!ready;
 }
-async function prepareNext(generation=prGeneration,autoStart=false){
+let nextPreparation=null;
+function prepareNext(...args){if(nextPreparation)return nextPreparation;const generation=prGeneration,id=reviewSession,pending=prepareNextWork(...args);nextPreparation=pending;pending.finally(()=>{if(nextPreparation===pending){nextPreparation=null;if(generation===prGeneration&&id===reviewSession&&reviewPlan&&reviewCount>0&&!reviewDone&&!nextError&&reviewPlan.steps.length<=reviewCount)queueMicrotask(()=>prepareNext())}});return pending}
+async function prepareNextWork(generation=prGeneration,autoStart=false){
  if(!reviewSession||nextPending||reviewDone||reviewPlan.steps.length>reviewCount){updateNextControl();return}
  const id=reviewSession,index=reviewPlan.steps.length;nextPending=true;nextError='';updateNextControl();
  try{
@@ -484,14 +508,20 @@ async function prepareNext(generation=prGeneration,autoStart=false){
   updateNextControl();
  }catch(error){if(generation!==prGeneration||id!==reviewSession)return;nextPending=false;nextError=error.message;updateNextControl();toast(error.message)}
 }
-async function reviewAdvance(delta){
- if(!reviewPlan)return;
+let reviewMoving=false;
+async function reviewAdvance(delta,{fromVoice=false}={}){
+ if(!reviewPlan||reviewMoving)return false;
+ if(delta<0&&reviewCount<=1)return false;
  if(delta>0&&reviewCount>=reviewPlan.steps.length){if(nextError)prepareNext();return}
  const generation=prGeneration,id=reviewSession,target=Math.max(0,Math.min(reviewPlan.steps.length,reviewCount+delta));
- if(id&&delta>0){try{await api('/api/reviews/'+id+'/progress',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cursor:target})})}catch(error){toast(error.message);return}if(generation!==prGeneration||id!==reviewSession)return}
+ reviewMoving=true;
+ if(id&&delta>0){try{await api('/api/reviews/'+id+'/progress',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cursor:target})})}catch(error){reviewMoving=false;toast(error.message);return false}if(generation!==prGeneration||id!==reviewSession){reviewMoving=false;return false}}
+ codePeeks.collapse();
  reviewCount=target;walkthroughIndex=reviewCount-1;reviewExploring=false;reviewSelection=null;
  const first=reviewPlan.operations.find(o=>reviewPlan.steps[reviewCount-1]?.ids.includes(o.id));if(first)reviewPath=first.path;
- renderWalkthrough();tree();if(id)prepareNext();
+ await renderWalkthrough();tree();reviewMoving=false;if(id)prepareNext();
+ if(!fromVoice&&voiceConversation?.active){const voice=voiceConversation,context=await currentVoiceContext().catch(()=>localVoiceContext());if(voice===voiceConversation&&voice.active){voice.updateContext(context);voice.speak('Explain the newly displayed review change briefly. Do not navigate.')}}
+ return true;
 }
 async function verifyReviewHashes(){
   const final=stateAt(reviewPlan,reviewPlan.steps.length);
@@ -511,7 +541,12 @@ async function renderWalkthrough(){
   const stepPaths=[...new Set(plan.operations.filter(o=>step?.ids.includes(o.id)).map(o=>o.path))];const tabs=[...new Set([...stepPaths,reviewPath].filter(Boolean))];
   const unavailable=plan.files.filter(f=>f.unavailable),complete=(reviewSession?reviewDone:true)&&reviewCount===total;
   const weight=o=>(o.insert.match(/[^\n]*\n|[^\n]+$/g)||[]).length+(o.deleted.match(/[^\n]*\n|[^\n]+$/g)||[]).length;const selected=new Set(plan.steps.slice(0,reviewCount).flatMap(s=>s.ids));const totalLines=plan.operations.reduce((sum,o)=>sum+weight(o),0),reviewedLines=plan.operations.filter(o=>selected.has(o.id)).reduce((sum,o)=>sum+weight(o),0);const progress=totalLines?Math.floor(100*reviewedLines/totalLines):complete?100:0;const manifest=manifestAt(plan,reviewCount);
-  $('walkthrough').innerHTML=`<div class="review-body"><div class="review-code"><div class="review-source-layout"><nav class="step-explorer" aria-label="Files at this transformation">${renderStepTree(plan,reviewCount)}</nav><div class="review-document"><div id="reviewCode" class="review-editor-host"></div></div></div></div><footer class="review-explanation"><button id="reviewBack" aria-label="Previous transformation" ${!reviewCount?'disabled':''}>← Previous</button><div class="footer-copy"><h3>${esc(step?.title||'Ready to review')}</h3>${reviewExploring?'<button id="backToStep">Return to transformation</button>':''}${unavailable.length||plan.limited?`<details class="unavailable-files"><summary>${unavailable.length?unavailable.length+' unavailable '+(unavailable.length===1?'file':'files'):'Partial file list'} ⓘ</summary><div class="unavailable-tooltip">${unavailable.map(file=>`<div><code>${esc(file.path)}</code><span>${esc((file.reason||'Source unavailable.').replace(/\s*Inspect this file on GitHub\.?/g,''))}</span></div>`).join('')}${plan.limited?'<div><span>GitHub returned a partial file list.</span></div>':''}</div></details>`:''}</div><details class="review-line-progress"><summary aria-label="Review progress: ${progress}%"><span class="line-progress-track" role="progressbar" aria-label="Changed lines reviewed" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progress}"><span style="width:${progress}%"></span></span><span aria-hidden="true">ⓘ</span></summary><div class="line-progress-tooltip">You’ve reviewed ${reviewedLines} of ${totalLines} available changed lines (about ${progress}%).${unavailable.length||plan.limited?' Unavailable changes are excluded.':''}<span id="reconstructionStatus">${reviewVerified?'Reconstruction verified ✓':complete?'Checking reconstruction…':'Review in progress'}</span></div></details><button id="reviewNext" class="primary" ${complete?'disabled':''}>${reviewCount?'Next →':'Start Review'}</button></footer></div>`;
+  $('walkthrough').innerHTML=`<div class="review-body"><div class="review-code"><div class="review-source-layout"><nav class="step-explorer" aria-label="Files at this transformation">${renderStepTree(plan,reviewCount)}</nav><div class="review-document"><div id="reviewCode" class="review-editor-host"></div></div></div></div></div>`;
+  for(const id of ['reviewBack','reviewNext','reviewProgress','voicePanel'])$(id).hidden=false;
+  $('reviewMicrophone').disabled=false;$('reviewBack').disabled=reviewCount<=1;
+  $('reviewProgress').innerHTML=`<details class="review-line-progress"><summary aria-label="Review progress: ${progress}%"><span class="line-progress-track" role="progressbar" aria-label="Changed lines reviewed" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progress}"><span style="width:${progress}%"></span></span><span aria-hidden="true">ⓘ</span></summary><div class="line-progress-tooltip">You’ve reviewed ${reviewedLines} of ${totalLines} available changed lines (about ${progress}%).${unavailable.length||plan.limited?' Unavailable changes are excluded.':''}<span id="reconstructionStatus">${reviewVerified?'Reconstruction verified ✓':complete?'Checking reconstruction…':'Review in progress'}</span></div></details>`;
+  $('voiceWarnings').innerHTML=unavailable.length||plan.limited?`<details class="unavailable-files"><summary>${unavailable.length?unavailable.length+' unavailable '+(unavailable.length===1?'file':'files'):'Partial file list'} ⓘ</summary><div class="unavailable-tooltip">${unavailable.map(file=>`<div><code>${esc(file.path)}</code><span>${esc(file.reason||'Source unavailable.')}</span></div>`).join('')}</div></details>`:'';
+  if(!reviewSession){$('reviewNext').disabled=complete;$('reviewNext').title=complete?'Review complete':'Next change'}
   attachSidebarResize($('walkthrough').querySelector('.step-explorer'));
   $('walkthrough').querySelectorAll('[data-step-file]').forEach(button=>button.onclick=()=>{reviewPath=button.dataset.stepFile;reviewExploring=false;reviewSelection=null;renderWalkthrough()});
   $('reviewBack').onclick=()=>reviewAdvance(-1);$('reviewNext').onclick=()=>reviewAdvance(1);if(reviewSession)updateNextControl();
@@ -531,7 +566,7 @@ async function renderWalkthrough(){
       column.innerHTML=`<div class="review-tabs review-file-heading" role="tablist" aria-label="Files in pane">${visible.map(file=>`<button type="button" role="tab" aria-selected="${file===path}" draggable="true" data-pane-file="${esc(file)}" data-pane-tab="${esc(file)}" class="review-file-tab ${file===path?'active':''}" title="${esc(manifest.find(f=>f.key===file)?.path||file)} · Drag to another pane to group files">${fileIcon(file)}<span>${esc((manifest.find(f=>f.key===file)?.path||file).split('/').pop())}</span>${manifest.find(f=>f.key===file)?.exists===false?'<small>Deleted</small>':''}</button>`).join('')}${visible.length>1?'<button type="button" class="split-file-pane" aria-label="Move active file to a new pane" title="Move active file to a new pane">◫</button>':''}</div><div class="review-file-mount"></div>`;host.append(column);const pane=column.lastElementChild;
       column.querySelectorAll('[data-pane-tab]').forEach(tab=>tab.onclick=()=>{group.active=tab.dataset.paneTab;reviewPath=group.active;reviewSelection=null;renderWalkthrough();tree()});
       const splitButton=column.querySelector('.split-file-pane');if(splitButton)splitButton.onclick=()=>{reviewPanes=movePaneFile(reviewPanes,path,paneIndex);reviewPath=path;renderWalkthrough()};
-      const mount=text=>reviewViews.push(mountEditor(pane,{before:previous[path]||'',after:text,path,diff:reviewCount>0&&inStep,blockExplanations:reviewBlocks(plan,reviewCount,path),onExplain:note=>{selectReviewLines(note,path);$('popcontext').textContent='Change note · '+path;$('inlineQuestion').value='Explain this change in more detail. Note: '+note.explanation},onSelect:s=>selectReviewLines(s,path)}));
+      const mount=text=>{const view=mountEditor(pane,{before:previous[path]||'',after:text,path,diff:reviewCount>0&&inStep,blockExplanations:reviewBlocks(plan,reviewCount,path),onExplain:note=>{selectReviewLines(note,path);$('popcontext').textContent='Change note · '+path;$('inlineQuestion').value='Explain this change in more detail. Note: '+note.explanation},onSelect:s=>selectReviewLines(s,path)});view.sourceIntermediate=true;reviewViews.push(view)};
       if(source?.unavailable)pane.innerHTML=`<p class="walk-warning">${esc(source.reason||'Source unavailable.')}</p>`;
       else if(source&&entry?.exists===false&&!inStep)pane.innerHTML='<div class="editor-loading">This file does not exist at this step.</div>';
       else if(source)mount(current[path]||'');
@@ -539,20 +574,14 @@ async function renderWalkthrough(){
     }
   }
 
-  if(voiceReference){
-   const reference=voiceReference,data=cache.get(pr.head+':head:'+reference.path);
-   if(data){
-    const pane=document.createElement('section');pane.className='review-file-column voice-reference-pane';
-    pane.innerHTML=`<div class="review-file-heading">${fileIcon(reference.path)}<span title="${esc(reference.path)}">${esc(reference.path)}</span><small>PR head</small><button type="button" aria-label="Close referenced code">×</button></div><div class="review-file-mount"></div>`;host.append(pane);
-    pane.querySelector('button').onclick=()=>{voiceReference=null;renderWalkthrough()};
-    const view=mountEditor(pane.lastElementChild,{after:data.text,path:reference.path,diff:false,line:reference.start,onSelect:s=>selectReviewLines(s,reference.path,false)});reviewViews.push(view);view.flashRange(reference.start,reference.end);
-   }
-  }
+  codePeeks.setStep(reviewCount);codePeeks.refresh();
 
   bindPaneDragging(host,{move:(path,source,target)=>{reviewPanes=movePaneFile(reviewPanes,path,source,target);reviewPath=path;reviewSelection=null;renderWalkthrough()},split:(path,source)=>{reviewPanes=movePaneFile(reviewPanes,path,source);reviewPath=path;reviewSelection=null;renderWalkthrough()}});
 
   if(complete){try{reviewVerified=validatePlan(plan);await verifyReviewHashes();if($('reconstructionStatus'))$('reconstructionStatus').textContent=reviewVerified?'Reconstruction verified ✓':'Available files verified';const finish=$('walkthrough').querySelector('.review-finish');if(finish)finish.textContent=reviewVerified?'Verified: the reconstructed files exactly match the PR head.':'Available text files match. Unavailable files still need review.'}catch(error){reviewVerified=false;$('reconstructionStatus').textContent=error.message}}
 }
+$('reviewBack').innerHTML=icon('left');$('reviewNext').innerHTML=icon('right');
+$('reviewBack').onclick=()=>reviewAdvance(-1);$('reviewNext').onclick=()=>reviewAdvance(1);
 $('startReview').onclick=()=>reviewAdvance(1);
 attachSidebarResize($('explorer'));
 newChat(null,false);setConversationCollapsed(true);

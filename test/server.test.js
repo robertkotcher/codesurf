@@ -210,7 +210,7 @@ test('voice requests enforce origin and pin selected source without exposing the
 });
 test('voice source tools search unchanged files and validate highlighted ranges at the pinned head',async()=>{
  const {default:tar}=await import('tar-stream');const {gzipSync}=await import('node:zlib');
- const pack=tar.pack();pack.entry({name:'snapshot/app/models/stash_transaction.rb'},'class StashTransaction\n  def disputed?\n    disputes.any?\n  end\nend');pack.finalize();const chunks=[];for await(const chunk of pack)chunks.push(chunk);const archive=gzipSync(Buffer.concat(chunks));
+ const pack=tar.pack();pack.entry({name:'snapshot/app/models/stash_transaction.rb'},'class StashTransaction\n  def disputed?\n    disputes.any?\n  end\nend');pack.entry({name:'snapshot/app/services/stash_check.rb'},'def check_stash\n StashTransaction.new.disputed?\nend');pack.finalize();const chunks=[];for await(const chunk of pack)chunks.push(chunk);const archive=gzipSync(Buffer.concat(chunks));
  global.fetch=async url=>{if(String(url).includes('/pulls/79'))return Response.json({head:{sha:'voice-head',repo:{full_name:'acme/voice-tools'}}});if(String(url).includes('/tarball/voice-head'))return new Response(archive);throw new Error('Unexpected upstream request');};
  const invoke=(name,args,head='voice-head')=>request(origin+'/api/voice/tool',{method:'POST',headers:{...auth,Origin:process.env.APP_URL,'Content-Type':'application/json'},body:JSON.stringify({url:'https://github.com/acme/voice-tools/pull/79',head,name,args})});
  try{
@@ -220,5 +220,9 @@ test('voice source tools search unchanged files and validate highlighted ranges 
   assert.equal((await invoke('show_code',{path:'app/models/stash_transaction.rb',start:2,end:400})).status,400);
   assert.equal((await invoke('show_code',{path:'app/models/stash_transaction.rb',start:2,end:4},'stale-head')).status,409);
   assert.equal((await invoke('unknown',{})).status,400);
+  response=await invoke('explore_calls',{path:'app/models/stash_transaction.rb',line:3,direction:'body',snapshot:'head'});assert.equal(response.status,200);const body=await response.json();assert.equal(body.root.symbol,'disputed?');assert.equal(body.blocks[0].snapshot,'PR head');assert.match(body.blocks[0].text,/def disputed/);
+  response=await invoke('explore_calls',{path:'app/models/stash_transaction.rb',line:3,direction:'callers',snapshot:'head'});const callers=await response.json();assert.equal(callers.blocks[0].symbol,'check_stash');assert.equal(callers.blocks[0].callLine,2);
+  response=await request(origin+'/api/voice/context',{method:'POST',headers:{...auth,Origin:process.env.APP_URL,'Content-Type':'application/json'},body:JSON.stringify({url:'https://github.com/acme/voice-tools/pull/79',head:'voice-head'})});assert.equal(response.status,200);assert.equal((await response.json()).selection,null);
+
  }finally{global.fetch=request}
 });

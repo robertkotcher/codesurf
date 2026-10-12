@@ -4,13 +4,13 @@ import {tags} from '@lezer/highlight';
 import {contextField,collapseContext} from './diff-context.js';
 import {readNote,stopNoteSpeech} from './note-speech.js';
 import {EditorView,basicSetup} from 'codemirror';
-import {Decoration,WidgetType} from '@codemirror/view';
+import {Decoration,WidgetType,lineNumbers} from '@codemirror/view';
 import {RangeSet} from '@codemirror/state';
 import {EditorState,StateField,StateEffect,Compartment} from '@codemirror/state';
 import {unifiedMergeView,getChunks} from '@codemirror/merge';
 import {languageForPath} from './languages.js';
-import {createElement,File,FileCode,FileJson,FileText,Folder,FolderOpen,ChevronRight,ChevronDown,MessageCircle,MessagesSquare,GitPullRequest,WrapText,Volume2,Sun,Moon,GitGraph,Mic,Square} from 'lucide';
-export function icon(name){return createElement(({file:File,code:FileCode,json:FileJson,text:FileText,folder:Folder,open:FolderOpen,right:ChevronRight,down:ChevronDown,comment:MessageCircle,chat:MessagesSquare,pulls:GitPullRequest,wrap:WrapText,speaker:Volume2,sun:Sun,moon:Moon,graph:GitGraph,mic:Mic,stop:Square})[name]||File,{'aria-hidden':'true',width:15,height:15,'stroke-width':1.6}).outerHTML}
+import {createElement,File,FileCode,FileJson,FileText,Folder,FolderOpen,ChevronRight,ChevronDown,MessageCircle,MessagesSquare,GitPullRequest,WrapText,Volume2,Sun,Moon,GitGraph,Mic,Square,ChevronLeft} from 'lucide';
+export function icon(name){return createElement(({file:File,code:FileCode,json:FileJson,text:FileText,folder:Folder,open:FolderOpen,left:ChevronLeft,right:ChevronRight,down:ChevronDown,comment:MessageCircle,chat:MessagesSquare,pulls:GitPullRequest,wrap:WrapText,speaker:Volume2,sun:Sun,moon:Moon,graph:GitGraph,mic:Mic,stop:Square})[name]||File,{'aria-hidden':'true',width:15,height:15,'stroke-width':1.6}).outerHTML}
 export function fileIcon(path){return icon(/\.json$/.test(path)?'json':/\.(md|txt|rst)$/.test(path)?'text':/\.(ts|tsx|js|jsx|py|go|rs|java|css|html|sql|yml|yaml)$/.test(path)?'code':'file')}
 const darkHighlight=syntaxHighlighting(HighlightStyle.define([{tag:tags.keyword,color:'#c4a7e7'},{tag:[tags.string,tags.special(tags.string)],color:'#a3d5b0'},{tag:tags.comment,color:'#919baa',fontStyle:'italic'},{tag:[tags.number,tags.bool,tags.atom],color:'#e3b38b'},{tag:[tags.typeName,tags.className],color:'#e1c391'},{tag:[tags.function(tags.variableName),tags.definition(tags.variableName)],color:'#9cbff0'},{tag:[tags.propertyName,tags.attributeName],color:'#a8c3df'},{tag:tags.variableName,color:'#d9dfe8'}]));
 const darkTheme=EditorView.theme({'&':{backgroundColor:'#20242c',color:'#d9dfe8'},'.cm-content':{caretColor:'#d9dfe8'}},{dark:true});
@@ -18,7 +18,7 @@ let editorDark=false;
 export function setEditorTheme(dark){editorDark=dark;for(const view of mountedEditors)view.setTheme(dark)}
 let wrapEnabled=true;const mountedEditors=new Set();
 export function setEditorWrapping(enabled){wrapEnabled=enabled;for(const view of mountedEditors)view.setWrapping(enabled)}
-export function mountEditor(parent,{before='',after='',path='',onSelect=()=>{},diff=true,line=1,notes=[],onComment=()=>{},explanation='',blockExplanations=[],onExplain=()=>{}}){
+export function mountEditor(parent,{before='',after='',path='',onSelect=()=>{},diff=true,line=1,notes=[],onComment=()=>{},explanation='',blockExplanations=[],onExplain=()=>{},firstLine=1}){
   const language=languageForPath(path)||[];
   const highlight=StateEffect.define();
   const marks=StateField.define({create:()=>Decoration.none,update(value,tr){for(const effect of tr.effects)if(effect.is(highlight))return Decoration.set(effect.value);return value.map(tr.changes)},provide:field=>EditorView.decorations.from(field)});
@@ -45,7 +45,7 @@ export function mountEditor(parent,{before='',after='',path='',onSelect=()=>{},d
     mousemove(event,view){if(anchor!==null){const n=lineAt(view,event);if(n)select(view,n)}},
   });
   const wrapping=new Compartment(),theme=new Compartment();
-  const view=new EditorView({parent,state:EditorState.create({doc:after,extensions:[basicSetup,theme.of(editorDark?[darkTheme,darkHighlight]:[]),wrapping.of(wrapEnabled?EditorView.lineWrapping:[]),marks,annotations,contextField,pointer,language,EditorView.contentAttributes.of({'aria-label':path+' source editor'}),EditorState.readOnly.of(true),EditorView.editable.of(false),...(diff?[unifiedMergeView({original:before,mergeControls:false,highlightChanges:true,gutter:true,allowInlineDiffs:false,syntaxHighlightDeletions:true})]:[]),EditorView.theme({'&':{height:'100%',fontSize:'12px'},'.cm-scroller':{fontFamily:'ui-monospace, SFMono-Regular, Menlo, monospace',lineHeight:'20px',overflow:'auto'},'.cm-content':{padding:'12px 0'},'.cm-gutters':{background:'#fafaf9',color:'#aaa4b1',borderRight:'1px solid #f0edf3'},'.cm-line':{padding:'0 12px'},'.cm-changedLine':{background:'#f1f8f3'},'.cm-deletedChunk':{background:'#fcf2f1'},'.cm-deletedText':{textDecoration:'none'},'.cm-insertedLine':{textDecoration:'none'},'.cm-insertedText':{textDecoration:'none'},'&.cm-merge-b .cm-changedText':{background:'transparent'},'.cm-line:hover':{backgroundColor:'rgba(151,123,187,.035)'},'.cm-question-line':{backgroundColor:'rgba(151,123,187,.10) !important'},'.cm-selectionBackground':{background:'rgba(151,123,187,.10) !important'},'&.cm-focused':{outline:'none'}})]})});
+  const view=new EditorView({parent,state:EditorState.create({doc:after,extensions:[basicSetup,...(firstLine>1?[lineNumbers({formatNumber:n=>String(n+firstLine-1)})]:[]),theme.of(editorDark?[darkTheme,darkHighlight]:[]),wrapping.of(wrapEnabled?EditorView.lineWrapping:[]),marks,annotations,contextField,pointer,language,EditorView.contentAttributes.of({'aria-label':path+' source editor'}),EditorState.readOnly.of(true),EditorView.editable.of(false),...(diff?[unifiedMergeView({original:before,mergeControls:false,highlightChanges:true,gutter:true,allowInlineDiffs:false,syntaxHighlightDeletions:true})]:[]),EditorView.theme({'&':{height:'100%',fontSize:'12px'},'.cm-scroller':{fontFamily:'ui-monospace, SFMono-Regular, Menlo, monospace',lineHeight:'20px',overflow:'auto'},'.cm-content':{padding:'12px 0'},'.cm-gutters':{background:'#fafaf9',color:'#aaa4b1',borderRight:'1px solid #f0edf3'},'.cm-line':{padding:'0 12px'},'.cm-changedLine':{background:'#f1f8f3'},'.cm-deletedChunk':{background:'#fcf2f1'},'.cm-deletedText':{textDecoration:'none'},'.cm-insertedLine':{textDecoration:'none'},'.cm-insertedText':{textDecoration:'none'},'&.cm-merge-b .cm-changedText':{background:'transparent'},'.cm-line:hover':{backgroundColor:'rgba(151,123,187,.035)'},'.cm-question-line':{backgroundColor:'rgba(151,123,187,.10) !important'},'.cm-selectionBackground':{background:'rgba(151,123,187,.10) !important'},'&.cm-focused':{outline:'none'}})]})});
   if((explanation||blockExplanations.length)&&diff){const chunks=getChunks(view.state)?.chunks||[];const positions=new Set();const widgets=[];for(const chunk of chunks){const pos=Math.min(chunk.fromB,view.state.doc.length);const start=view.state.doc.lineAt(pos).number,end=view.state.doc.lineAt(Math.min(Math.max(pos,chunk.toB-1),view.state.doc.length)).number;const from=view.state.doc.line(start).from;if(positions.has(from))continue;positions.add(from);const notes=blockExplanations.filter(n=>n.from<Math.max(chunk.toB,chunk.fromB+1)&&n.to>=chunk.fromB);const text=notes.length?[...new Set(notes.map(n=>n.text))].join(' '):explanation;if(!text)continue;widgets.push(Decoration.widget({widget:new Explanation(start,end,text,notes.length&&notes.every(n=>n.label==='Change note')?'Change note':'AI note'),block:true,side:-1}).range(from))}view.dispatch({effects:annotate.of(Decoration.set(widgets,true))})}
   if(diff)collapseContext(view,getChunks(view.state)?.chunks);
   view.setTheme=dark=>view.dispatch({effects:theme.reconfigure(dark?[darkTheme,darkHighlight]:[])});
@@ -53,10 +53,19 @@ export function mountEditor(parent,{before='',after='',path='',onSelect=()=>{},d
   const measureNotes=()=>view.requestMeasure({read:()=>Math.max(80,view.scrollDOM.clientWidth-(view.dom.querySelector('.cm-gutters')?.getBoundingClientRect().width||0)),write:width=>{if(view.dom.style.getPropertyValue('--review-note-width')!==width+'px'){view.dom.style.setProperty('--review-note-width',width+'px');view.requestMeasure()}}});
   const noteObserver=new ResizeObserver(measureNotes);noteObserver.observe(view.dom);measureNotes();
   const finish=event=>{if(anchor===null)return;anchor=null;const start=view.state.doc.line(range.start).from,end=view.state.doc.line(range.end).to;onSelect({...range,text:view.state.sliceDoc(start,end),x:event.clientX,y:event.clientY})};
+  view.sourcePath=path;
+  view.sourceRange=(start,end=start)=>{
+   const first=start-firstLine+1,last=end-firstLine+1;if(first<1||first>view.state.doc.lines)return null;
+   const a=view.coordsAtPos(view.state.doc.line(first).from),b=view.coordsAtPos(view.state.doc.line(Math.min(last,view.state.doc.lines)).from);if(!a)return null;
+   const bounds=view.scrollDOM.getBoundingClientRect();if(a.top>bounds.bottom||(b||a).bottom<bounds.top)return null;
+   return {left:bounds.left+3,right:bounds.right-3,top:Math.max(bounds.top,a.top),bottom:Math.min(bounds.bottom,(b||a).bottom)};
+  };
   let flashTimer;
   view.flashRange=(start,end)=>{clearTimeout(flashTimer);const decorations=[];for(let n=Math.max(1,start);n<=Math.min(end,view.state.doc.lines);n++)decorations.push(Decoration.line({class:'voice-code-flash'}).range(view.state.doc.line(n).from));view.dispatch({effects:highlight.of(decorations)});flashTimer=setTimeout(()=>{if(!view.destroyed)view.dispatch({effects:highlight.of([])})},2200)};
   view.clearQuestionSelection=()=>{anchor=null;range=null;view.dispatch({effects:highlight.of([])})};
   document.addEventListener('mouseup',finish);
-  const destroy=view.destroy.bind(view);view.destroy=()=>{stopNoteSpeech(view.dom);noteObserver.disconnect();mountedEditors.delete(view);document.removeEventListener('mouseup',finish);destroy()};
+  const destroy=view.destroy.bind(view);view.destroy=()=>{clearTimeout(flashTimer);stopNoteSpeech(view.dom);noteObserver.disconnect();mountedEditors.delete(view);document.removeEventListener('mouseup',finish);destroy()};
   requestAnimationFrame(()=>{const changes=diff?getChunks(view.state)?.chunks:[];const pos=changes?.[0]?.fromB??view.state.doc.line(Math.min(line,view.state.doc.lines)).from;view.dispatch({effects:EditorView.scrollIntoView(Math.min(pos,view.state.doc.length),{y:'start',yMargin:60})})});return view;
 }
+
+export {stopNoteSpeech} from './note-speech.js';

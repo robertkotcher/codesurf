@@ -76,3 +76,5 @@ export function indexedCalls(index,{path,line,direction='root',symbol}){
  else throw new Error('Unknown expansion direction.');
  const unique=[...new Map(results.map(b=>[b.path+':'+b.start,b])).values()];return {blocks:unique,total:unique.length};
 }
+
+export {functionPeeks} from './function-peeks.js';
