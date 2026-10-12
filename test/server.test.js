@@ -169,3 +169,24 @@ test('note audio authenticates, validates input, and returns OpenAI MP3 audio',a
   assert.equal(payload.model,'gpt-4o-mini-tts');assert.equal(payload.voice,'marin');assert.equal(payload.input,'This adds a refund check.');assert.equal(payload.response_format,'mp3');
  }finally{global.fetch=request;if(previousKey===undefined)delete process.env.OPENAI_API_KEY;else process.env.OPENAI_API_KEY=previousKey}
 });
+
+test('My PRs includes requested reviews and assignments once, with recent and older filters',async()=>{
+ const since='2026-09-28T12:00:00Z';
+ const pr=(number,updated,assignees=[],requested_reviewers=[])=>({number,title:'Change '+number,html_url:`https://github.com/solosuitinc/solosuit/pull/${number}`,updated_at:updated,assignees:assignees.map(login=>({login})),requested_reviewers:requested_reviewers.map(login=>({login})),user:{login:'other'}});
+ global.fetch=async url=>{
+  const path=new URL(url).pathname;
+  if(path==='/user/installations')return Response.json({installations:[{id:7}]});
+  if(path==='/user/installations/7/repositories')return Response.json({repositories:[{full_name:'solosuitinc/solosuit'}]});
+  if(path==='/repos/solosuitinc/solosuit/pulls')return Response.json([
+   pr(4326,'2026-10-07T21:17:35Z',['m-musaz'],['TeStEr']),
+   pr(4327,'2026-10-06T12:00:00Z',['tester'],['tester']),
+   pr(4328,'2026-10-05T12:00:00Z',['other'],['other']),
+   pr(4329,'2026-09-20T12:00:00Z',[],['tester'])
+  ]);
+  throw new Error('Unexpected request '+url);
+ };
+ try{
+  const load=async older=>{const response=await request(origin+'/api/prs?'+new URLSearchParams({relation:'assigned',since,...older?{older:'1'}:{}}),{headers:auth});assert.equal(response.status,200);return (await response.json()).items.map(p=>p.number)};
+  assert.deepEqual(await load(false),[4326,4327]);assert.deepEqual(await load(true),[4329]);
+ }finally{global.fetch=request}
+});
