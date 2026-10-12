@@ -15,3 +15,14 @@ test('splitting and changing review steps preserve remembered file groups',()=>{
  panes=movePaneFile(panes,'b',0);assert.deepEqual(panes.map(p=>p.tabs),[['a'],['c'],['b']]);
  assert.equal(movePaneFile(panes,'invented',0,1),panes);assert.equal(movePaneFile(panes,'a',0,0),panes);
 });
+
+test('closing files selects another tab, removes empty panes, and never mutates the input',async()=>{
+ const {closePaneFile,openPaneFile}=await import('../public/file-panes.js');
+ const initial=[{tabs:['a','b'],active:'a',mode:'full'},{tabs:['c'],active:'c'}];
+ const next=closePaneFile(initial,'a',0);assert.equal(next[0].active,'b');assert.deepEqual(initial[0].tabs,['a','b']);
+ assert.deepEqual(closePaneFile(next,'b',0),[{tabs:['c'],active:'c'}]);
+ assert.deepEqual(closePaneFile([{tabs:['a'],active:'a'}],'a',0),[]);
+ assert.deepEqual(openPaneFile([],'new',''),[{tabs:['new'],active:'new'}]);
+ const opened=openPaneFile(initial,'new','c');assert.deepEqual(opened[1].tabs,['c','new']);assert.equal(opened[1].active,'new');
+ assert.equal(openPaneFile(opened,'new','a')[1].tabs.length,2);
+});

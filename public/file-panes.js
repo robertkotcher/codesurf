@@ -20,3 +20,12 @@ export function bindPaneDragging(root,{move,split}){
  root.ondrop=event=>{if(!dragged)return;const target=destination(event);event.preventDefault();const file=dragged;dragged=null;clear();if(!target)return;if(target.split)split(file.path,file.source);else move(file.path,file.source,target.index)};
  root.ondragend=()=>{dragged=null;clear()};
 }
+export function closePaneFile(panes,path,index){
+ return panes.map((pane,i)=>i!==index?pane:{...pane,tabs:pane.tabs.filter(t=>t!==path),active:pane.active===path?pane.tabs.find(t=>t!==path):pane.active}).filter(p=>p.tabs.length);
+}
+export function openPaneFile(panes,path,activePath){
+ if(panes.some(p=>p.tabs.includes(path)))return panes.map(p=>p.tabs.includes(path)?{...p,active:path}:p);
+ const index=Math.max(0,panes.findIndex(p=>p.tabs.includes(activePath)));
+ if(!panes.length)return [{tabs:[path],active:path}];
+ return panes.map((p,i)=>i===index?{...p,tabs:[...p.tabs,path],active:path}:p);
+}
