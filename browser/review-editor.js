@@ -5,19 +5,14 @@ import {Decoration,WidgetType} from '@codemirror/view';
 import {RangeSet} from '@codemirror/state';
 import {EditorState,StateField,StateEffect,Compartment} from '@codemirror/state';
 import {unifiedMergeView,getChunks} from '@codemirror/merge';
-import {javascript} from '@codemirror/lang-javascript';
-import {python} from '@codemirror/lang-python';
-import {json} from '@codemirror/lang-json';
-import {html} from '@codemirror/lang-html';
-import {css} from '@codemirror/lang-css';
-import {sql} from '@codemirror/lang-sql';
+import {languageForPath} from './languages.js';
 import {createElement,File,FileCode,FileJson,FileText,Folder,FolderOpen,ChevronRight,ChevronDown,MessageCircle,MessagesSquare,GitPullRequest,WrapText,Volume2} from 'lucide';
 export function icon(name){return createElement(({file:File,code:FileCode,json:FileJson,text:FileText,folder:Folder,open:FolderOpen,right:ChevronRight,down:ChevronDown,comment:MessageCircle,chat:MessagesSquare,pulls:GitPullRequest,wrap:WrapText,speaker:Volume2})[name]||File,{'aria-hidden':'true',width:15,height:15,'stroke-width':1.6}).outerHTML}
 export function fileIcon(path){return icon(/\.json$/.test(path)?'json':/\.(md|txt|rst)$/.test(path)?'text':/\.(ts|tsx|js|jsx|py|go|rs|java|css|html|sql|yml|yaml)$/.test(path)?'code':'file')}
 let wrapEnabled=true;const mountedEditors=new Set();
 export function setEditorWrapping(enabled){wrapEnabled=enabled;for(const view of mountedEditors)view.setWrapping(enabled)}
 export function mountEditor(parent,{before='',after='',path='',onSelect=()=>{},diff=true,line=1,notes=[],onComment=()=>{},explanation='',blockExplanations=[],onExplain=()=>{}}){
-  const language=/\.[cm]?[jt]sx?$/.test(path)?javascript({typescript:/tsx?$/.test(path),jsx:/[jt]sx$/.test(path)}):/\.py$/.test(path)?python():/\.json$/.test(path)?json():/\.html?$/.test(path)?html():/\.css$/.test(path)?css():/\.sql$/.test(path)?sql():[];
+  const language=languageForPath(path)||[];
   const highlight=StateEffect.define();
   const marks=StateField.define({create:()=>Decoration.none,update(value,tr){for(const effect of tr.effects)if(effect.is(highlight))return Decoration.set(effect.value);return value.map(tr.changes)},provide:field=>EditorView.decorations.from(field)});
   const annotate=StateEffect.define();
