@@ -1,3 +1,4 @@
+import {savedURL,listSavedPulls,savePull,refreshSavedPull,removeSavedPull} from './saved-pulls.js';
 import {futureCallers} from './browser/future-callers.js';
 import {functionPeeks} from './browser/function-peeks.js';
 import {voiceSelection,voiceSession,voiceReviewContext} from './realtime-voice.js';
@@ -59,6 +60,25 @@ app.get('/api/repositories',wrap(async(req,res)=>{
     items.push({account:installation.account.login,manageUrl:`https://github.com/settings/installations/${installation.id}`,repositories});
   }
   res.json({items});
+}));
+app.get('/api/saved-prs',wrap(async(req,res)=>res.json({items:await listSavedPulls(req.auth.user.login)})));
+app.post('/api/saved-prs',wrap(async(req,res)=>{
+ if(typeof req.body.saved!=='boolean')return res.status(400).json({error:'Choose save or remove.'});
+ const url=savedURL(req.body.url),owner=req.auth.user.login;
+ if(!req.body.saved){await removeSavedPull(owner,url);return res.json({saved:false,url})}
+ const p=await pull(req.auth.token,url);
+ res.json({saved:true,item:await savePull(owner,p.pr)});
+}));
+app.post('/api/saved-prs/refresh',wrap(async(req,res)=>{
+ if(!Array.isArray(req.body.urls)||req.body.urls.length>20)return res.status(400).json({error:'Refresh up to 20 saved pull requests at a time.'});
+ const urls=new Set(req.body.urls.map(savedURL)),owner=req.auth.user.login;
+ const saved=(await listSavedPulls(owner)).filter(item=>urls.has(item.url)),items=[];
+ for(let i=0;i<saved.length;i+=5)await Promise.all(saved.slice(i,i+5).map(async item=>{
+  let pr;
+  try{pr=(await pull(req.auth.token,item.url)).pr}catch{items.push({...item,statusUnavailable:true});return}
+  const updated=await refreshSavedPull(owner,item.url,pr);if(updated)items.push(updated);
+ }));
+ res.json({items});
 }));
 app.get('/api/prs',wrap(async(req,res)=>{
   if(req.query.relation==='all'||req.query.relation==='assigned'){

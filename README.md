@@ -99,3 +99,10 @@ On PR load, `/api/call-index` preloads function metadata and call edges for the 
 Production uses the Neon `codesurf-reviews` Postgres database. Run `npm run db:migrate` against the target DATABASE_URL before deployment; migrations are idempotent and additive. `review_sessions` stores private before/after source, immutable edit IDs, generated steps, and the furthest reviewed cursor. Records expire after seven days of inactivity and are purged when creating reviews. Access is scoped to the signed-in GitHub login; every review request rechecks PR access and the head commit. New commits create a fresh review. Tokens are never stored in this table.
 
 `POST /api/reviews` creates or resumes a snapshot without AI work. `POST /api/reviews/:id/next` chooses a single next chunk, validates its IDs, and saves it with a compare-and-swap update so concurrent requests cannot append duplicate steps. `POST /api/reviews/:id/progress` records advancement before another chunk can be generated. The browser automatically displays the first chunk, prefetches one ahead, supports Back, and checks full reconstruction at completion. Source import limits remain unchanged.
+
+
+## Saved pull requests
+
+The editor header bookmark saves a PR to the signed-in account. The third activity-rail button opens Saved pull requests; chat, My pull requests, and Saved are mutually exclusive panels. Icons use the installed Lucide library.
+
+`003_saved_pull_requests.sql` adds persistent, account-scoped bookmarks with cached GitHub metadata. `GET /api/saved-prs` returns saved items immediately. Opening the panel refreshes live GitHub status in batches of 20 through `POST /api/saved-prs/refresh`; open and closed-unmerged PRs precede merged PRs. Unavailable repositories retain their last known status and are labeled accordingly. `POST /api/saved-prs` saves or removes a bookmark, with same-origin protection and server-side owner scoping. Saves do not expire with review sessions and contain metadata rather than source or tokens.
