@@ -1,6 +1,7 @@
 export {commentLines} from './comment-lines.js';
-import {HighlightStyle,syntaxHighlighting} from '@codemirror/language';
+import {foldService,foldEffect,unfoldEffect,foldedRanges,HighlightStyle,syntaxHighlighting} from '@codemirror/language';
 import {tags} from '@lezer/highlight';
+import {defaultFunctionFolds} from './function-folds.js';
 import {contextField,collapseContext} from './diff-context.js';
 import {readNote,stopNoteSpeech} from './note-speech.js';
 import {EditorView,basicSetup} from 'codemirror';
@@ -41,7 +42,7 @@ export function mountEditor(parent,{before='',after='',path='',onSelect=()=>{},d
   const lineAt=(view,event)=>{const pos=view.posAtCoords({x:event.clientX,y:event.clientY});return pos===null?null:view.state.doc.lineAt(pos).number};
   const select=(view,end)=>{range={start:Math.min(anchor,end),end:Math.max(anchor,end)};const decorations=[];for(let n=range.start;n<=range.end;n++)decorations.push(Decoration.line({class:'cm-question-line'}).range(view.state.doc.line(n).from));view.dispatch({effects:highlight.of(decorations)})};
   const pointer=EditorView.domEventHandlers({
-    mousedown(event,view){if(event.button!==0||event.target.closest('.cm-deletedChunk,.ai-code-note-block,.diff-context-gap'))return false;const n=lineAt(view,event);if(!n)return false;anchor=n;select(view,n);event.preventDefault();return true},
+    mousedown(event,view){if(event.button!==0||event.target.closest('.cm-deletedChunk,.ai-code-note-block,.diff-context-gap,.cm-foldPlaceholder,.cm-foldGutter'))return false;const n=lineAt(view,event);if(!n)return false;anchor=n;select(view,n);event.preventDefault();return true},
     mousemove(event,view){if(anchor!==null){const n=lineAt(view,event);if(n)select(view,n)}},
   });
   const wrapping=new Compartment(),theme=new Compartment();
@@ -61,10 +62,12 @@ export function mountEditor(parent,{before='',after='',path='',onSelect=()=>{},d
    return {left:bounds.left+3,right:bounds.right-3,top:Math.max(bounds.top,a.top),bottom:Math.min(bounds.bottom,(b||a).bottom)};
   };
   let flashTimer;
-  view.flashRange=(start,end)=>{clearTimeout(flashTimer);const decorations=[];for(let n=Math.max(1,start);n<=Math.min(end,view.state.doc.lines);n++)decorations.push(Decoration.line({class:'voice-code-flash'}).range(view.state.doc.line(n).from));view.dispatch({effects:highlight.of(decorations)});flashTimer=setTimeout(()=>{if(!view.destroyed)view.dispatch({effects:highlight.of([])})},2200)};
+  const revealRange=(start,end)=>{const effects=[];foldedRanges(view.state).between(0,view.state.doc.length,(from,to)=>{if(from<=view.state.doc.line(Math.min(end,view.state.doc.lines)).to&&to>=view.state.doc.line(Math.max(1,start)).from)effects.push(unfoldEffect.of({from,to}))});if(effects.length)view.dispatch({effects})};
+  view.flashRange=(start,end)=>{revealRange(start,end);clearTimeout(flashTimer);const decorations=[];for(let n=Math.max(1,start);n<=Math.min(end,view.state.doc.lines);n++)decorations.push(Decoration.line({class:'voice-code-flash'}).range(view.state.doc.line(n).from));view.dispatch({effects:highlight.of(decorations)});flashTimer=setTimeout(()=>{if(!view.destroyed)view.dispatch({effects:highlight.of([])})},2200)};
   view.clearQuestionSelection=()=>{anchor=null;range=null;view.dispatch({effects:highlight.of([])})};
   document.addEventListener('mouseup',finish);
   const destroy=view.destroy.bind(view);view.destroy=()=>{clearTimeout(flashTimer);stopNoteSpeech(view.dom);noteObserver.disconnect();mountedEditors.delete(view);document.removeEventListener('mouseup',finish);destroy()};
+  if(diff)import(/* @vite-ignore */ new URL('/source-index.js',location.href).href).then(async({initCallParsers,buildCallIndex})=>{await initCallParsers();if(view.destroyed)return;const blocks=buildCallIndex(new Map([[path,after]])).blocks;view.dispatch({effects:StateEffect.appendConfig.of(foldService.of((state,start)=>{const n=state.doc.lineAt(start).number,block=blocks.filter(b=>b.start===n&&b.end>b.start+1).sort((a,b)=>a.end-b.end)[0];return block?{from:state.doc.line(n).to,to:state.doc.line(Math.min(block.end-1,state.doc.lines)).to}:null}))});const ranges=defaultFunctionFolds(view.state.doc,blocks,getChunks(view.state)?.chunks||[]);if(ranges.length){collapseContext(view,getChunks(view.state)?.chunks,ranges);view.dispatch({effects:ranges.map(r=>foldEffect.of(r))})}}).catch(()=>{});
   requestAnimationFrame(()=>{const changes=diff?getChunks(view.state)?.chunks:[];const pos=changes?.[0]?.fromB??view.state.doc.line(Math.min(line,view.state.doc.lines)).from;view.dispatch({effects:EditorView.scrollIntoView(Math.min(pos,view.state.doc.length),{y:'start',yMargin:60})})});return view;
 }
 

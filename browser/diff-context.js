@@ -39,4 +39,4 @@ export const contextField=StateField.define({
  }return value},
  provide:field=>EditorView.decorations.from(field,value=>value.decorations)
 });
-export function collapseContext(view,chunks){if(chunks?.length)view.dispatch({effects:setRanges.of(hiddenContext(view.state.doc,chunks))})}
+export function collapseContext(view,chunks,folds=[]){if(chunks?.length)view.dispatch({effects:setRanges.of(hiddenContext(view.state.doc,chunks).filter(r=>!folds.some(f=>view.state.doc.line(r.start).from<=f.to&&view.state.doc.line(r.end).to>=f.from)))})}

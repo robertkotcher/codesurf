@@ -1,0 +1,11 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {Text} from '@codemirror/state';
+import {defaultFunctionFolds} from '../browser/function-folds.js';
+const doc=Text.of(Array.from({length:120},(_,i)=>'line '+i));
+const blocks=[{start:1,end:20},{start:25,end:45},{start:50,end:70}];
+const chunk=(start,end)=>({fromB:doc.line(start).from,toB:doc.line(end).to});
+test('small single-function changes remain expanded',()=>assert.deepEqual(defaultFunctionFolds(doc,blocks,[chunk(3,5)]),[]));
+test('three changed functions collapse but unrelated functions stay expanded',()=>{const folds=defaultFunctionFolds(doc,blocks,[chunk(3,4),chunk(28,29),chunk(55,56)]);assert.equal(folds.length,3);assert.equal(folds[0].from,doc.line(1).to);assert.equal(folds[0].to,doc.line(19).to)});
+test('two functions collapse only for large changes',()=>{assert.equal(defaultFunctionFolds(doc,blocks,[chunk(1,20),chunk(25,45)]).length,2);assert.equal(defaultFunctionFolds(doc,blocks,[chunk(3,4),chunk(28,29)]).length,0)});
+test('nested functions do not inflate the number of changed functions',()=>assert.deepEqual(defaultFunctionFolds(doc,[blocks[0],{start:3,end:8},{start:10,end:17}],[chunk(1,20)]),[]));
