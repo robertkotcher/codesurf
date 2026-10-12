@@ -1,3 +1,4 @@
+import {groupPullRequests} from './pull-list.js';
 import {buildCallIndex,indexedCalls,overlayCallIndex} from './source-index.js';
 import {selectedFunction,functionParameters,functionData} from './data-shapes.js';
 import {openDataCanvas} from './data-canvas.js';
@@ -261,14 +262,28 @@ async function ask(question){
 }
 function prRoute(url){return new URL(url).pathname}
 function routePR(){return /^\/[^/]+\/[^/]+\/pull\/[1-9]\d*\/?$/.test(location.pathname)?'https://github.com'+location.pathname:null}
-let homeItems=[];
-function renderHomePulls(){const query=$('filterPulls').value.toLowerCase();const items=homeItems.filter(p=>(p.title+' '+p.repo).toLowerCase().includes(query));$('homePulls').innerHTML=items.length?items.map(p=>`<a class="home-pr" href="${esc(prRoute(p.url))}"><b>${esc(p.title)}</b><small>${esc(p.repo)} · #${p.number}${p.author?' · '+esc(p.author):''}</small><span>Open →</span></a>`).join(''):'<div class="home-empty">No open pull requests found. Connect repositories or adjust your filter.</div>'}
+let homeItems=[],homeCutoff='',homeShowOlder=false,homeOlderLoaded=false;
+function renderHomePulls(){
+ const groups=groupPullRequests(homeItems,{query:$('filterPulls').value,cutoff:Date.parse(homeCutoff),includeOlder:homeShowOlder});
+ $('homeRange').textContent=homeShowOlder?'Assigned to you · All dates.':'Assigned to you · Updated in the last two weeks.';
+ $('homePulls').innerHTML=groups.length?groups.map(group=>`<section class="home-repository"><h2>${icon('folder')}<span>${esc(group.repo)}</span><small>${group.items.length}</small></h2><div>${group.items.map(p=>`<a class="home-pr" href="${esc(prRoute(p.url))}"><span class="home-pr-number">#${p.number}</span><b title="${esc(p.title)}">${esc(p.title)}</b><span class="home-pr-author">${esc(p.author||'')}</span><time datetime="${esc(p.updated)}" title="Updated ${esc(new Date(p.updated).toLocaleString())}">${esc(new Date(p.updated).toLocaleDateString(undefined,{month:'short',day:'numeric'}))}</time></a>`).join('')}</div></section>`).join(''):`<div class="home-empty">${$('filterPulls').value.trim()?'No pull requests match your filter.':homeShowOlder?'No assigned open pull requests in your connected repositories.':'No assigned pull requests updated in the last two weeks.'}</div>`;
+ $('showMorePulls').textContent=homeShowOlder?'Show fewer pull requests':'Show more pull requests';$('showMorePulls').setAttribute('aria-expanded',String(homeShowOlder));
+}
 async function showHome(){
   chats.forEach(c=>c.abort?.abort());prGeneration++;pr=null;reviewPlan=null;destroyReviewViews();
-  $('prHome').hidden=false;document.body.classList.add('home-view');$('inbox').classList.add('hidden');$('startReview').disabled=true;$('homePulls').textContent='Loading pull requests…';
+  homeItems=[];homeShowOlder=false;homeOlderLoaded=false;homeCutoff=new Date(Date.now()-14*864e5).toISOString();
+  $('prHome').hidden=false;document.body.classList.add('home-view');$('inbox').classList.add('hidden');$('startReview').disabled=true;$('homePulls').textContent='Loading pull requests…';$('showMorePulls').hidden=true;$('refreshPulls').disabled=true;
+  $('homeRange').textContent='Assigned to you · Updated in the last two weeks.';
   const generation=prGeneration;
-  try{const result=await api('/api/prs?relation=all');if(generation!==prGeneration)return;homeItems=result.items;renderHomePulls()}catch(error){if(generation===prGeneration)$('homePulls').textContent=error.message}
+  try{const result=await api('/api/prs?'+new URLSearchParams({relation:'assigned',since:homeCutoff}));if(generation!==prGeneration)return;homeItems=result.items;renderHomePulls();$('showMorePulls').hidden=false;$('showMorePulls').disabled=false}catch(error){if(generation===prGeneration)$('homePulls').textContent=error.message}finally{if(generation===prGeneration)$('refreshPulls').disabled=false}
 }
+$('showMorePulls').onclick=async()=>{
+ if(homeOlderLoaded){homeShowOlder=!homeShowOlder;renderHomePulls();return}
+ const generation=prGeneration;$('showMorePulls').disabled=true;$('showMorePulls').textContent='Loading older pull requests…';
+ try{const result=await api('/api/prs?'+new URLSearchParams({relation:'assigned',since:homeCutoff,older:'1'}));if(generation!==prGeneration)return;
+  homeItems=[...new Map([...homeItems,...result.items].map(item=>[item.url,item])).values()];homeOlderLoaded=true;homeShowOlder=true;renderHomePulls();
+ }catch(error){if(generation===prGeneration){$('showMorePulls').textContent='Retry loading older pull requests';toast(error.message)}}finally{if(generation===prGeneration)$('showMorePulls').disabled=false}
+};
 $('refreshPulls').onclick=showHome;$('filterPulls').oninput=renderHomePulls;
 $('homePulls').onclick=event=>{const link=event.target.closest('a.home-pr');if(link&&!event.metaKey&&!event.ctrlKey&&!event.shiftKey){event.preventDefault();loadPR('https://github.com'+new URL(link.href).pathname)}};
 window.addEventListener('popstate',()=>{const url=routePR();url?loadPR(url,false):showHome()});

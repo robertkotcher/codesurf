@@ -51,13 +51,16 @@ app.get('/api/repositories',wrap(async(req,res)=>{
   res.json({items});
 }));
 app.get('/api/prs',wrap(async(req,res)=>{
-  if(req.query.relation==='all'){
+  if(req.query.relation==='all'||req.query.relation==='assigned'){
+    const assigned=req.query.relation==='assigned',older=req.query.older==='1';
+    const cutoff=Date.parse(req.query.since||new Date(Date.now()-14*864e5).toISOString());
+    if(assigned&&!Number.isFinite(cutoff))return res.status(400).json({error:'Invalid date filter.'});
     const items=[];let installations=[];
     for(let page=1;;page++){const batch=await github(req.auth.token,`/user/installations?per_page=100&page=${page}`);installations.push(...batch.installations);if(batch.installations.length<100)break}
     const repos=new Map();
     for(const installation of installations){for(let page=1;;page++){const batch=await github(req.auth.token,`/user/installations/${installation.id}/repositories?per_page=100&page=${page}`);for(const repo of batch.repositories)repos.set(repo.full_name,repo);if(batch.repositories.length<100)break}}
     const names=[...repos.keys()];
-    for(let offset=0;offset<names.length;offset+=5){await Promise.all(names.slice(offset,offset+5).map(async repo=>{for(let page=1;;page++){const batch=await github(req.auth.token,`/repos/${repo}/pulls?state=open&sort=updated&direction=desc&per_page=100&page=${page}`);for(const pr of batch)items.push({title:pr.title,url:pr.html_url,number:pr.number,repo,updated:pr.updated_at,author:pr.user?.login});if(batch.length<100)break}}))}
+    for(let offset=0;offset<names.length;offset+=5){await Promise.all(names.slice(offset,offset+5).map(async repo=>{for(let page=1;;page++){const batch=await github(req.auth.token,`/repos/${repo}/pulls?state=open&sort=updated&direction=desc&per_page=100&page=${page}`);for(const pr of batch){if(assigned&&(!(pr.assignees||[]).some(person=>person.login.toLowerCase()===req.auth.user.login.toLowerCase())||(older?Date.parse(pr.updated_at)>=cutoff:Date.parse(pr.updated_at)<cutoff)))continue;items.push({title:pr.title,url:pr.html_url,number:pr.number,repo,updated:pr.updated_at,author:pr.user?.login})}if(batch.length<100||(assigned&&!older&&batch.some(pr=>Date.parse(pr.updated_at)<cutoff)))break}}))}
     items.sort((a,b)=>String(b.updated).localeCompare(String(a.updated)));
     return res.json({items,total:items.length,repositories:repos.size});
   }

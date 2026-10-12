@@ -129,3 +129,24 @@ test('repository settings list installation access using the signed-in user',asy
   assert(calls.every(c=>c.options.headers.Authorization==='Bearer test-user-token'));
  }finally{global.fetch=request}
 });
+
+test('assigned PR inbox filters recent updates, paginates older PRs, and ignores unassigned authorship',async()=>{
+ const calls=[],since='2026-09-28T12:00:00Z';
+ const make=(number,updated,assigned=true)=>({title:'Change '+number,html_url:`https://github.com/tester/demo/pull/${number}`,number,updated_at:updated,user:{login:'tester'},assignees:assigned?[{login:'Tester'}]:[]});
+ global.fetch=async(url,options)=>{
+  calls.push({url,options});const u=new URL(url);
+  if(u.pathname==='/user/installations')return Response.json({installations:[{id:7}]});
+  if(u.pathname==='/user/installations/7/repositories')return Response.json({repositories:[{full_name:'tester/demo'}]});
+  if(u.pathname==='/repos/tester/demo/pulls'){
+   const page=Number(u.searchParams.get('page'));
+   if(page===1)return Response.json(Array.from({length:100},(_,i)=>make(i+1,'2026-10-12T12:00:00Z',i===0)));
+   if(page===2)return Response.json(Array.from({length:100},(_,i)=>make(i+101,i===0?since:'2026-09-20T12:00:00Z',i<2)));
+   if(page===3)return Response.json([make(201,'2026-09-01T12:00:00Z')]);
+  }throw new Error('Unexpected GitHub request');
+ };
+ try{
+  const recent=await request(origin+'/api/prs?'+new URLSearchParams({relation:'assigned',since}),{headers:auth});assert.equal(recent.status,200);assert.deepEqual((await recent.json()).items.map(p=>p.number),[1,101]);assert(!calls.some(c=>c.url.includes('page=3')));
+  calls.length=0;const older=await request(origin+'/api/prs?'+new URLSearchParams({relation:'assigned',since,older:'1'}),{headers:auth});assert.equal(older.status,200);assert.deepEqual((await older.json()).items.map(p=>p.number),[102,201]);assert(calls.some(c=>c.url.includes('page=3')));assert(calls.every(c=>c.options.headers.Authorization==='Bearer test-user-token'));
+  calls.length=0;assert.equal((await request(origin+'/api/prs?relation=assigned&since=invalid',{headers:auth})).status,400);assert.equal(calls.length,0);
+ }finally{global.fetch=request}
+});

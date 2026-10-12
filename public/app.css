@@ -189,3 +189,18 @@ body{flex-direction:column}.app-header{width:100%;flex:0 0 auto;min-height:62px}
 .chat-empty-new:hover{background:white;border-color:#b89acb}
 .chat-empty-new:focus-visible{outline:2px solid #9d80b7;outline-offset:3px}
 @media(max-width:700px){.chat-reopen{flex:0 0 auto;width:100%;justify-content:flex-start;padding:4px 12px;border-right:0;border-bottom:1px solid var(--ai-border)}.chat-reopen button{flex-direction:row;gap:8px;padding:7px;font-size:11px}.chat-empty-new{grid-column:1/-1;margin-top:8px;padding:9px 16px}}
+/* Dense repository groups for a large assigned-PR inbox. */
+.pr-home{padding:28px 32px;max-width:1200px}
+.home-heading{margin-bottom:20px}.home-heading h1{font-size:24px;margin:8px 0}.home-heading p{font-size:12px;margin:0}
+.home-filter{margin-bottom:20px}.home-filter input{margin-top:6px;font-size:12px;padding:8px 10px}
+.home-repository{margin:0 0 22px;border:1px solid #e7e1ed;border-radius:8px;overflow:hidden;background:#fff}
+.home-repository h2{display:flex;align-items:center;gap:8px;margin:0;padding:11px 14px;background:#f8f5fb;border-bottom:1px solid #e7e1ed;color:#786388;font-size:12px;font-weight:550}
+.home-repository h2>span{min-width:0;overflow-wrap:anywhere}.home-repository h2>small{margin-left:auto;font-size:10px;color:#a08bad}
+.home-repository .home-pr{display:grid;grid-template-columns:58px minmax(0,1fr) 110px 52px;align-items:center;gap:12px;padding:11px 14px;margin:0;border:0;border-bottom:1px solid #f0ebf4;border-radius:0;background:#fff;color:#705d7f}
+.home-repository .home-pr:last-child{border-bottom:0}.home-repository .home-pr:hover{background:#fcf9ff}
+.home-repository .home-pr b{font-size:12px;line-height:1.45;font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.home-repository .home-pr>span{position:static;font-size:10px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.home-pr-number{color:#a08bad;font-variant-numeric:tabular-nums}.home-pr-author{color:#a08bad}.home-pr time{font-size:10px;color:#a08bad;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.show-more-pulls{display:block;margin:8px 0 24px;padding:4px 0;border:0;border-radius:0;background:transparent;color:#9070a7;font-size:12px;cursor:pointer}
+.show-more-pulls:hover{text-decoration:underline;background:transparent}.show-more-pulls[hidden]{display:none}.show-more-pulls:focus-visible{outline:2px solid #b399c7;outline-offset:4px}
+@media(max-width:700px){.pr-home{padding:20px 16px}.home-repository .home-pr{grid-template-columns:45px minmax(0,1fr) 45px;gap:8px;padding:10px}.home-repository .home-pr .home-pr-author{display:none}.home-repository .home-pr b{white-space:normal}.home-heading h1{font-size:22px}}
