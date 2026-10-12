@@ -1,4 +1,4 @@
-import {findReview,createReview,getReview,publicReview,nextStep,advanceReview,reviewPace,setReviewPace,stepBudget} from './review-sessions.js';
+import {findReview,createReview,getReview,publicReview,nextStep,advanceReview,reviewPace,setReviewPace,stepBudget,ensureStepBlocks} from './review-sessions.js';
 import {buildCallIndex,indexedCalls} from './browser/source-index.js';
 import {functionData} from './public/data-shapes.js';
 import {demoFiles} from './demo-plan.js';
@@ -92,7 +92,7 @@ app.post('/api/reviews',wrap(async(req,res)=>{
  const pace=reviewPace(req.body.pace);const p=await pull(req.auth.token,req.body.url,req.body.head);
  const owner=req.auth.user.login;let row=await findReview(owner,p.pr.html_url,p.pr.head.sha);
  if(!row)row=await createReview(owner,p.pr.html_url,p.pr.head.sha,await snapshot(req,p));
- row=await setReviewPace(row,pace);res.json(publicReview(row));
+ row=await setReviewPace(row,pace);row=await ensureStepBlocks(row);res.json(publicReview(row));
 }));
 app.post('/api/reviews/:id/next',wrap(async(req,res)=>{const row=await getReview(req.auth.user.login,req.params.id);await pull(req.auth.token,row.pr_url,row.head);res.json(await nextStep(row,req.body.index))}));
 app.post('/api/reviews/:id/progress',wrap(async(req,res)=>{const row=await getReview(req.auth.user.login,req.params.id);await pull(req.auth.token,row.pr_url,row.head);res.json(await advanceReview(row,req.body.cursor))}));

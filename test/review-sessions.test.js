@@ -29,3 +29,8 @@ test('pace validation and mode-specific edit count bounds reject invalid selecti
  assert.throws(()=>checkedStep({ids:['0']},remaining,budget));
  assert.equal(checkedStep({ids:remaining.slice(0,10).map(o=>o.id)},remaining,budget).ids.length,10);
 });
+
+test('block explanations only attach to selected edit IDs',()=>{
+ const step=checkedStep({ids:['a','b'],blocks:[{id:'a',text:'Add refund totals.'},{id:'other',text:'Wrong file.'},{id:'b',text:''}]},[{id:'a'},{id:'b'}]);
+ assert.deepEqual(step.blocks,[{id:'a',text:'Add refund totals.'}]);
+});
