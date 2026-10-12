@@ -1,6 +1,8 @@
 import pg from 'pg';
-// Local profile persistence is optional; production remains functional without DATABASE_URL.
-export const pool=process.env.DATABASE_URL?new pg.Pool({connectionString:process.env.DATABASE_URL,max:5,connectionTimeoutMillis:5000}):null;
+// Keep the driver's current certificate verification explicit for hosted Postgres.
+const databaseUrl=process.env.DATABASE_URL?new URL(process.env.DATABASE_URL):null;
+if(databaseUrl&&['require','prefer','verify-ca'].includes(databaseUrl.searchParams.get('sslmode')))databaseUrl.searchParams.set('sslmode','verify-full');
+export const pool=databaseUrl?new pg.Pool({connectionString:databaseUrl.toString(),max:5,connectionTimeoutMillis:5000,idleTimeoutMillis:10000}):null;
 export async function saveGitHubProfile(user){
   if(!pool)return;
   await pool.query(`INSERT INTO github_users (github_id, login, name, avatar_url)
