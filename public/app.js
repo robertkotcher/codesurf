@@ -5,7 +5,7 @@ import {selectedFunction,functionParameters,functionData} from './data-shapes.js
 import {openDataCanvas} from './data-canvas.js';
 import {openCallCanvas} from './call-canvas.js';
 import {stateAt,validatePlan,manifestAt,stepFiles,notesAt} from './transformations.js';
-import {mountEditor,icon,fileIcon,setEditorWrapping} from './vendor/review-editor.js';
+import {mountEditor,icon,fileIcon,setEditorWrapping,setEditorTheme} from './vendor/review-editor.js';
 import {layoutFlow} from './flow-layout.js';
 const $=id=>document.getElementById(id),esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const demo=new URLSearchParams(location.search).has('demo')&&['localhost','127.0.0.1'].includes(location.hostname);
@@ -473,3 +473,7 @@ newChat(null,false);setConversationCollapsed(true);
 init();
 
 document.addEventListener('note-audio-error',event=>toast(event.detail));
+
+let darkEditor=false;try{darkEditor=localStorage.getItem('codesurf-editor-theme')==='dark'}catch{}
+function applyEditorTheme(dark){darkEditor=dark;document.body.classList.toggle('editor-dark',dark);setEditorTheme(dark);$('editorLight').setAttribute('aria-pressed',String(!dark));$('editorDark').setAttribute('aria-pressed',String(dark));try{localStorage.setItem('codesurf-editor-theme',dark?'dark':'light')}catch{}}
+$('editorLight').innerHTML=icon('sun');$('editorDark').innerHTML=icon('moon');$('editorLight').onclick=()=>applyEditorTheme(false);$('editorDark').onclick=()=>applyEditorTheme(true);applyEditorTheme(darkEditor);
