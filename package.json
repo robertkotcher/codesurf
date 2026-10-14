@@ -7,7 +7,7 @@
     "dev": "node --env-file-if-exists=.env.local server.js",
     "start": "node --env-file-if-exists=.env.local server.js",
     "test": "node --test",
-    "build": "esbuild browser/review-editor.js --bundle --format=esm --minify --outfile=public/vendor/review-editor.js && esbuild browser/source-index.js --external:web-tree-sitter --external:node:* --bundle --format=esm --minify --outfile=public/source-index.js && esbuild browser/code-highlighting.js --bundle --format=esm --minify --outfile=public/code-highlighting.js && node scripts/copy-parsers.js",
+    "build": "esbuild browser/review-editor.js --bundle --format=esm --minify --outfile=public/vendor/review-editor.js && esbuild browser/source-index.js --external:web-tree-sitter --external:node:* --bundle --format=esm --minify --outfile=public/source-index.js && esbuild browser/code-highlighting.js --bundle --format=esm --minify --outfile=public/code-highlighting.js && esbuild canvas-model.js --bundle --format=esm --minify --outfile=public/canvas-model.js && esbuild browser/canvas-icons.js --bundle --format=esm --minify --outfile=public/canvas-icons.js && node scripts/copy-parsers.js",
     "db:migrate": "node --env-file-if-exists=.env.local scripts/migrate.js"
   },
   "dependencies": {

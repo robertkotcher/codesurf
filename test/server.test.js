@@ -16,7 +16,7 @@ const auth={Cookie:'codesurf_session='+session};
 test.after(()=>server.close());
 test('repository and question routes reject unauthenticated requests',async()=>{
   for(const p of ['/api/pr?url=https://github.com/a/b/pull/1','/api/file?url=x&path=a','/api/prs','/api/search?q=retry&url=https://github.com/a/b/pull/1'])assert.equal((await request(origin+p)).status,401);
-  for(const route of ['/api/reviews','/api/reviews/00000000-0000-0000-0000-000000000000/next','/api/reviews/00000000-0000-0000-0000-000000000000/progress'])assert.equal((await request(origin+route,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).status,401);
+  for(const route of ['/api/reviews','/api/reviews/00000000-0000-0000-0000-000000000000/next','/api/reviews/00000000-0000-0000-0000-000000000000/progress','/api/reviews/00000000-0000-0000-0000-000000000000/canvas'])assert.equal((await request(origin+route,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).status,401);
   assert.equal((await request(origin+'/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).status,401);
   assert.equal((await request(origin+'/api/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).status,401);
 });
@@ -109,7 +109,7 @@ test('all PRs includes authored and unassigned changes from connected repositori
 
 test('direct PR URLs serve the app with absolute asset paths',async()=>{
   const response=await request(origin+'/github/tester/demo/pull/2');
-  assert.equal(response.status,200);const html=await response.text();assert(html.includes('src="/app.js"'));assert(html.includes('id="prHome"'));assert(html.includes('class="modal-backdrop hidden" id="signin"'));
+  assert.equal(response.status,200);const html=await response.text();assert(html.includes('src="/canvas-app.js"'));assert(html.includes('id="canvasWorld"'));assert(html.includes('id="settingsDialog"'));assert(!html.includes('id="explorer"'));assert(!html.includes('id="conversation"'));
 });
 test('legacy PR links redirect into the GitHub namespace',async()=>{
  const response=await request(origin+'/tester/demo/pull/2?view=code',{redirect:'manual'});

@@ -1,6 +1,14 @@
 # CodeSurf.io
 
-A GitHub pull request browser with contextual, streamed OpenAI answers.
+A visual GitHub pull request review canvas.
+
+## Canvas review
+
+Paste a PR URL to start immediately. The app displays a preparation spinner while it imports the change and creates logical review chunks; no editor/sidebar/voice workspace or pace setup appears. The central card shows one chunk, with additions/removals, exact source lines, and one-sentence overviews over blurred multi-line edits. Eye buttons reveal and re-mask code. Adjacent Previous/Next header buttons move through chunks while the next chunk is prefetched.
+
+Parser-resolved callers appear on the left and callees on the right, connected to the changed block or visible call site. Unchanged context cards are muted; related code changed in the same chunk is explicitly labeled. Deleted methods use the preceding snapshot. Ambiguous/heuristic relationships use dashed connectors. Context is paginated in groups of 24; long functions show a source excerpt until the full function is requested. `POST /api/reviews/:id/canvas` rechecks the user, repository, head, and applied cursor before exposing source.
+
+The dotted canvas supports background drag, native scrolling, zoom, and fit. Account-menu dialogs retain My PRs, Saved PRs, connected repositories, and final GitHub review submission. The older editor/chat modules remain available in source for reference; the default page loads only the new canvas UI.
 
 ## Run locally
 
@@ -11,7 +19,7 @@ npm run dev
 
 Open http://localhost:5179. Local server secrets live in the ignored `.env.local` file (mode 600); use `.env.example` for the required variable names. Never put GitHub secrets, session keys, or OpenAI keys into frontend code.
 
-The local-only `/?demo=1` route previews the editor with sample files and explicitly simulated streaming. Production has no demo sign-in bypass.
+The legacy demo-plan API is local-only. The current canvas uses the connected GitHub account; production has no demo sign-in bypass.
 
 ## GitHub connection
 
@@ -103,6 +111,6 @@ Production uses the Neon `codesurf-reviews` Postgres database. Run `npm run db:m
 
 ## Saved pull requests
 
-The editor header bookmark saves a PR to the signed-in account. The third activity-rail button opens Saved pull requests; chat, My pull requests, and Saved are mutually exclusive panels. Icons use the installed Lucide library.
+The editor header bookmark saves a PR to the signed-in account. The account menu opens Saved pull requests in a dialog. Icons use the installed Lucide library.
 
 `003_saved_pull_requests.sql` adds persistent, account-scoped bookmarks with cached GitHub metadata. `GET /api/saved-prs` returns saved items immediately. Opening the panel refreshes live GitHub status in batches of 20 through `POST /api/saved-prs/refresh`; open and closed-unmerged PRs precede merged PRs. Unavailable repositories retain their last known status and are labeled accordingly. `POST /api/saved-prs` saves or removes a bookmark, with same-origin protection and server-side owner scoping. Saves do not expire with review sessions and contain metadata rather than source or tokens.
