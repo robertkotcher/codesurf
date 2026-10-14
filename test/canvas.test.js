@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {transformationPlan} from '../transformations.js';
 import {canvasChanges} from '../canvas-model.js';
 import {canvasRelations} from '../canvas-relations.js';
+import {relationshipSummary} from '../public/canvas-relationships.js';
 import {stateAt} from '../public/transformations.js';
 import {buildCallIndex,initCallParsers} from '../browser/source-index.js';
 const snapshot=files=>({index:{files},graph:buildCallIndex(files)});
@@ -31,4 +32,15 @@ test('deleted methods connect their original callers and Ruby methods remain cla
 });
 test('related code changed in the same chunk is labeled as changed, and absent files stay explicit',async()=>{
  const plan=await transformationPlan([{path:'a.ts',status:'modified',before:'function run() {\n return helper();\n}\n',after:'function run() {\n const n=helper();\n return n;\n}\n'},{path:'b.ts',status:'modified',before:'function helper() { return 1; }',after:'function helper() { return 2; }'},{path:'large.bin',unavailable:true,reason:'Binary'}],{explain:false});plan.steps=[{ids:plan.operations.map(o=>o.id),title:'One behavior'}];const change=canvasChanges(plan,1),files=new Map(Object.entries(stateAt(plan,1)));assert.equal(change.blocks.length,2);const result=canvasRelations(change,snapshot(files));assert.equal(result.relations.find(r=>r.symbol==='helper').changed,true);assert.equal(result.relations.find(r=>r.symbol==='run').changed,true);
+});
+
+test('canvas labels calls elsewhere in an edited function separately from calls in the edit',async()=>{
+ await initCallParsers();const before="class PaymentActionsController\n def payment_success\n  unless ['old'].include?(payment_type)\n   reject\n  end\n  finish\n  DashboardCacheService.clear_for_user(user)\n  DashboardCacheService.clear_for_user(current_user)\n end\nend\n",after=before.replace("['old']",'Guard::PAYMENT_TYPES');
+ const plan=await transformationPlan([{path:'controller.rb',status:'modified',before,after}],{explain:false}),files=new Map([['controller.rb',after],['cache.rb',"class DashboardCacheService\n def self.clear_for_user(user)\n  reset(user)\n end\nend\n"]]);
+ const result=canvasRelations(canvasChanges(plan,1),snapshot(files)),node=result.relations.find(node=>node.symbol==='clear_for_user');assert(node);assert.deepEqual(node.edges.map(edge=>edge.scope),['function','function']);assert.deepEqual(node.edges.map(edge=>edge.callLine),[7,8]);assert.equal(relationshipSummary(node),'Elsewhere in payment_success, lines 7 and 8 call clear_for_user.');assert(!relationshipSummary(node).includes('changed code'));
+ const direct=canvasRelations({blocks:[{id:'direct',path:'controller.rb',start:7,end:7}]},snapshot(files)).relations.find(node=>node.symbol==='clear_for_user');assert.equal(direct.edges[0].scope,'change');assert.match(relationshipSummary(direct),/^This edited block calls clear_for_user at line 7/);
+});
+test('canvas summaries describe uncertain relationships and the actual enclosing function',()=>{
+ assert.equal(relationshipSummary({direction:'callees',symbol:'clear_for_user',ambiguous:true,edges:[{scope:'function',sourceSymbol:'payment_success',callLine:388}]}),'Elsewhere in payment_success, line 388 may call clear_for_user.');
+ assert.equal(relationshipSummary({direction:'callers',symbol:'submit',edges:[{targetSymbol:'payment_success',callLine:12}]}),'submit calls payment_success at line 12.');
 });

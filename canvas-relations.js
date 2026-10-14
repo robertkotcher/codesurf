@@ -7,17 +7,17 @@ export function canvasRelations(change,current,previous=null){
   const path=source.index.files.has(block.path)?block.path:block.previousPath||block.key;
   const candidates=source.graph.blocks.filter(fn=>fn.path===path&&fn.start>=start&&fn.start<=end);
   try{const root=indexedCalls(source.graph,{path,line:start,direction:'root'}).blocks[0];if(!candidates.some(fn=>fn.start===root.start))candidates.push(root)}catch{}
-  const add=(target,direction,callLine,targetLine=target.start)=>{
+  const add=(target,direction,callLine,targetLine=target.start,detail={})=>{
    const key=direction+':'+target.path+':'+target.start+':'+snapshot;
    if(!records.has(key)){const text=source.index.files.get(target.path)?.split('\n').slice(target.start-1,target.end).join('\n');if(text===undefined)return;records.set(key,{id:key,direction,path:target.path,start:target.start,end:target.end,symbol:target.symbol,text,snapshot,ambiguous:!!target.ambiguous,precision:target.precision,changed:snapshot==='At this change'&&change.blocks.some(b=>!b.deleted&&b.path===target.path&&b.start<=target.end&&b.end>=target.start),edges:[]})}
    const record=records.get(key);record.ambiguous||=!!target.ambiguous;
-   if(!record.edges.some(edge=>edge.blockId===block.id&&edge.callLine===callLine&&edge.targetLine===targetLine))record.edges.push({blockId:block.id,callLine,targetLine});
+   if(!record.edges.some(edge=>edge.blockId===block.id&&edge.callLine===callLine&&edge.targetLine===targetLine))record.edges.push({blockId:block.id,callLine,targetLine,...detail});
   };
   for(const root of candidates){const rootKey=block.id+':'+root.path+':'+root.start;if(roots.has(rootKey))continue;roots.add(rootKey);
-   for(const caller of indexedCalls(source.graph,{path,line:root.start,direction:'callers'}).blocks)add(caller,'callers',caller.callLine,root.start);
+   for(const caller of indexedCalls(source.graph,{path,line:root.start,direction:'callers'}).blocks)add(caller,'callers',caller.callLine,root.start,{targetSymbol:root.symbol});
   }
   const calls=source.graph.calls.filter(call=>call.path===path&&(candidates.some(root=>call.callerStart===root.start||call.callerStart==null&&call.line>=root.start&&call.line<=root.end)||call.line>=start&&call.line<=end));
-  const sites=new Set();for(const call of calls){if(sites.has(call.line))continue;sites.add(call.line);const targets=indexedCalls(source.graph,{path,line:call.line,direction:'callees'}).blocks;if(!targets.length)unresolvedSites.add(path+':'+call.line);for(const target of targets)add(target,'callees',call.line)}
+  const sites=new Set();for(const call of calls){if(sites.has(call.line))continue;sites.add(call.line);const targets=indexedCalls(source.graph,{path,line:call.line,direction:'callees'}).blocks;if(!targets.length)unresolvedSites.add(path+':'+call.line);for(const target of targets){const enclosing=source.graph.blocks.find(fn=>fn.path===path&&fn.start===call.callerStart);add(target,'callees',call.line,target.start,{scope:call.line>=start&&call.line<=end?'change':'function',sourceSymbol:enclosing?.symbol||null})}}
  }
  return {relations:[...records.values()],unresolved:unresolvedSites.size};
 }
