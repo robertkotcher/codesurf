@@ -1,3 +1,5 @@
+import {createCanvasChats} from './canvas-chat.js';
+import {readChatStream} from './chat-stream.js';
 import {icon} from './canvas-icons.js';
 import {reviewAffordances} from './canvas-affordances.js';
 import {canvasChanges} from './canvas-model.js';
@@ -5,7 +7,9 @@ import {createReviewCanvas,escapeHTML as esc} from './review-canvas.js';
 import {sortSavedPulls} from './saved-pulls.js';
 const $=id=>document.getElementById(id),post=body=>({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 let pr=null,session=null,plan=null,count=0,done=false,generation=0,pending=null,nextError='',moving=false,saved=[],user=null,library=[],libraryKind='my',older=false,libraryGeneration=0,status={},abort=new AbortController(),contextData={relations:[]},saveBusy=false,saveRevision=0;
-const graph=createReviewCanvas({viewport:$('canvas'),stage:$('canvasStage'),world:$('canvasWorld'),onExpand:confirmExpansion});
+let chats;
+const graph=createReviewCanvas({viewport:$('canvas'),stage:$('canvasStage'),world:$('canvasWorld'),onExpand:confirmExpansion,onChat:openCanvasChat,onLayout:()=>chats?.layout()});
+chats=createCanvasChats({viewport:$('canvas'),stage:$('canvasStage'),geometry:graph.geometry,request:streamCanvasChat});
 const stepContexts=new Map();let pendingSelection=null;
 async function api(path,options={}){const response=await fetch(path,options);const body=await response.json().catch(()=>({}));if(!response.ok)throw Object.assign(new Error(body.error||'The request could not be completed.'),{status:response.status});return body}
 let toastTimer;function toast(message){clearTimeout(toastTimer);$('toast').textContent=message;$('toast').hidden=false;toastTimer=setTimeout(()=>$('toast').hidden=true,5000)}
@@ -16,7 +20,7 @@ function directPR(){const match=location.pathname.match(/^\/github(\/[^/]+\/[^/]
 function controls(){const ready=!!plan&&count<plan.steps.length;$('previous').disabled=moving||count<=1;$('next').disabled=moving||!plan||!ready&&done&&!nextError;$('next').textContent=nextError?'Retry':!ready&&pending?'Preparing…':'Next';$('next').title=done&&!ready?'All available changes reviewed':nextError||'Next logical change';$('savePR').disabled=!pr||!user||saveBusy;$('completeReview').disabled=!pr}
 function savedState(){const exists=pr&&saved.some(item=>item.url.toLowerCase()===pr.url.toLowerCase());$('savePR').innerHTML=icon(exists?'saved':'bookmark');$('savePR').setAttribute('aria-pressed',String(!!exists));$('savePR').title=exists?'Remove saved pull request':'Save pull request';$('savePR').setAttribute('aria-label',$('savePR').title)}
 async function openPR(url,navigate=true){
- abort.abort();abort=new AbortController();const signal=abort.signal,g=++generation;pr=null;session=null;plan=null;count=0;pending=null;moving=false;done=false;nextError='';stepContexts.clear();pendingSelection=null;$('connectionDialog').close();$('reviewDialog').close();$('reviewBody').value='';$('postedReview').hidden=true;controls();$('prHeading').hidden=true;showState('Breaking this change into logical chunks…','Fetching the pull request and finding connected changes.',true);
+ abort.abort();abort=new AbortController();const signal=abort.signal,g=++generation;pr=null;session=null;plan=null;count=0;pending=null;moving=false;done=false;nextError='';stepContexts.clear();chats.clear();pendingSelection=null;$('connectionDialog').close();$('reviewDialog').close();$('reviewBody').value='';$('postedReview').hidden=true;controls();$('prHeading').hidden=true;showState('Breaking this change into logical chunks…','Fetching the pull request and finding connected changes.',true);
  try{
   pr=await api('/api/pr?'+new URLSearchParams({url}),{signal});if(g!==generation)return;
   $('url').value=pr.url;$('repo').textContent=pr.repo;$('prTitle').textContent=pr.title+' #'+pr.number;$('prTitle').title=pr.title;$('prHeading').hidden=false;if(navigate&&location.pathname!==route(pr.url))history.pushState({},'',route(pr.url));savedState();controls();
@@ -40,9 +44,11 @@ async function advance(delta){
  }catch(error){if(error.name!=='AbortError')toast(error.message)}finally{if(g===generation){moving=false;controls()}}
 }
 function showChange(){
- const change=canvasChanges(plan,count);change.counter=done?`${count} / ${plan.steps.length}`:`Change ${count}`;change.complete=done&&count===plan.steps.length;change.unavailable=plan.files.filter(file=>file.unavailable);pendingSelection=null;$('connectionDialog').close();$('canvasState').hidden=true;$('canvasStage').hidden=false;graph.show(change);contextData=stepContexts.get(count)||{relations:[],requests:[]};stepContexts.set(count,contextData);if(contextData.relations.length||contextData.requests.length)graph.context(contextData);controls();
+ const change=canvasChanges(plan,count);change.counter=done?`${count} / ${plan.steps.length}`:`Change ${count}`;change.complete=done&&count===plan.steps.length;change.unavailable=plan.files.filter(file=>file.unavailable);pendingSelection=null;$('connectionDialog').close();$('canvasState').hidden=true;$('canvasStage').hidden=false;graph.show(change);chats.showStep(count);contextData=stepContexts.get(count)||{relations:[],requests:[]};stepContexts.set(count,contextData);if(contextData.relations.length||contextData.requests.length)graph.context(contextData);controls();
  const g=generation,c=count;reviewAffordances(plan,c).then(data=>{if(g===generation&&c===count)graph.affordances(data)}).catch(error=>{if(g===generation&&c===count)toast('Code connection controls could not be prepared. '+error.message)});
 }
+function openCanvasChat(selection){if(pr&&session)chats.open({...selection,step:count,url:pr.url,head:pr.head,reviewId:session})}
+async function streamCanvasChat({context,question,history,signal,onEvent}){const response=await fetch('/api/ask',{...post({surface:'canvas',url:context.url,head:context.head,reviewId:context.reviewId,step:context.step,anchor:{path:context.path,line:context.line,snapshot:context.snapshot},question,history}),signal});await readChatStream(response,onEvent)}
 function confirmExpansion(selection){
  if(!pr||!session)return;pendingSelection={selection,step:count,generation};$('connectionTitle').textContent=`Show ${selection.direction}?`;$('connectionTarget').textContent=`${selection.symbol} · ${selection.path}:${selection.line}`;$('confirmConnection').textContent=`Show ${selection.direction}`;openDialog('connectionDialog');
 }

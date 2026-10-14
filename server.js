@@ -298,6 +298,15 @@ app.post('/api/ask',wrap(async(req,res)=>{
   if(attempts.length>=10)return res.status(429).json({error:'Please wait a minute before asking another question.'});
   recent.set(id,[...attempts,now]);if(recent.size>10000)for(const [k,v]of recent)if(v.at(-1)<now-60000)recent.delete(k);
   const p=await pull(req.auth.token,url,req.body.head),changed=await changedFiles(req.auth.token,p);
+  if(req.body.surface==='canvas'){
+    const anchor=req.body.anchor;
+    if(!req.body.reviewId||!anchor||typeof anchor.path!=='string'||!Number.isInteger(anchor.line)||anchor.line<1||!['before','after'].includes(anchor.snapshot)||!Number.isInteger(req.body.step)||req.body.step<1)return res.status(400).json({error:'Choose a review line to start this chat.'});
+    cleanPath(anchor.path);const row=await ownedVoiceReview(req,p),step=req.body.step-(anchor.snapshot==='before'?1:0),scoped={...req,body:{...req.body,step}};
+    const source=await voiceCallSnapshot(scoped,p,{snapshot:'review'}),text=source.index.files.get(anchor.path);
+    if(typeof text!=='string')return res.status(400).json({error:'This file is unavailable in the selected review snapshot.'});
+    const selected={path:anchor.path,start:anchor.line,end:anchor.line,intermediate:true},context={title:p.pr.title,head:p.pr.head.sha,snapshot:source.snapshot,anchor:{reviewStep:req.body.step,snapshot:anchor.snapshot},selection:voiceSelection(selected,text),review:voiceReviewContext(row.plan,step,publicReview(row).done)};
+    return answer({req,res,p,changed,question,selection:selected,history,token:req.auth.token,sourceIndex:source.index,snapshot:source.snapshot,reviewContext:context,surface:'canvas',finalSourceIndex:()=>repositoryIndex(req.auth.token,p.pr),exploreCalls:args=>reviewCallPeeks(scoped,p,{...args,snapshot:args.snapshot||'review'})});
+  }
   const snapshot=selection?.intermediate&&req.body.reviewId?await voiceCallSnapshot(req,p,{path:selection.path,snapshot:'review'}):null;
   const context=req.body.reviewId?await voiceContext(req,p):null;
   await answer({draftReview:args=>reviewDraft(req,p,args,changed),req,res,p,changed,question,selection,history,token:req.auth.token,sourceIndex:snapshot?.index,snapshot:snapshot?.snapshot||'PR head',reviewContext:context,finalSourceIndex:()=>repositoryIndex(req.auth.token,p.pr),exploreCalls:args=>reviewCallPeeks(req,p,{...args,snapshot:args.snapshot||(selection?.intermediate===false?'head':req.body.reviewId?'review':'head')})});
