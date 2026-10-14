@@ -66,3 +66,9 @@ test('Ruby inherited methods resolve to their defining class, overridden methods
  assert.deepEqual(indexedCalls(index,{path:'a.rb',line:3,direction:'callers'}).blocks.map(b=>b.owner),['A::Child']);
  assert.deepEqual(indexedCalls(index,{path:'a.rb',line:12,direction:'callers'}).blocks.map(b=>b.owner),['A::Other']);
 });
+
+test('multiline calls point at the method name rather than the receiver above it',async()=>{
+ const {initCallParsers}=await import('../browser/source-index.js');await initCallParsers();
+ const index=buildCallIndex(new Map([['call.ts','function run(client: Client) {\n const result = client\n  .update();\n return result;\n}\n'],['call.rb','def run(client)\n result = client\n  .update\n result\nend\n']]));
+ for(const path of ['call.ts','call.rb']){assert.deepEqual(index.calls.filter(call=>call.path===path&&call.symbol==='update').map(call=>call.line),[3]);assert.equal(index.calls.some(call=>call.path===path&&call.line===2),false)}
+});

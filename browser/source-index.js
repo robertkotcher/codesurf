@@ -23,8 +23,8 @@ function fileIndex(path,text){
  enclosing={path,start,end,symbol,from:node.from,to:node.to,precision:'syntax',text:text.slice(starts[start-1],node.to)};blocks.push(enclosing);
  }
  if(node.name==='CallExpression'){
- const callee=node.firstChild,expression=callee?text.slice(callee.from,callee.to):'',symbol=expression.match(/([\w$]+)\s*$/)?.[1];
- if(symbol)calls.push({path,line:lineAt(node.from),symbol,expression:expression.slice(0,200),callerStart:enclosing?.start??null,precision:'syntax'});
+ const callee=node.firstChild,expression=callee?text.slice(callee.from,callee.to):'',name=expression.match(/([\w$]+)\s*$/),symbol=name?.[1];
+ if(symbol)calls.push({path,line:lineAt(callee.from+name.index),symbol,expression:expression.slice(0,200),callerStart:enclosing?.start??null,precision:'syntax'});
  }
  for(let child=node.firstChild;child;child=child.nextSibling)visit(child,enclosing);
  }

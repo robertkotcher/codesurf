@@ -1,5 +1,5 @@
 import {canvasChanges} from './canvas-model.js';
-import {canvasRelations,canvasSelection,validateCanvasSelection} from './canvas-relations.js';
+import {canvasSelection,validateCanvasSelection,validateChangedSelection} from './canvas-relations.js';
 import {savedURL,listSavedPulls,savePull,refreshSavedPull,removeSavedPull} from './saved-pulls.js';
 import {futureCallers} from './browser/future-callers.js';
 import {functionPeeks} from './browser/function-peeks.js';
@@ -32,8 +32,9 @@ const session=req=>unseal(cookies(req).codesurf_session,env.SESSION_SECRET);
 function setSession(res,s){res.cookie('codesurf_session',seal(s,env.SESSION_SECRET),{...opts,maxAge:7*864e5})}
 const wrap=fn=>(req,res,next)=>Promise.resolve(fn(req,res,next)).catch(next);
 app.get('/api/status',(_req,res)=>res.json({github:!!(env.GITHUB_CLIENT_ID&&env.GITHUB_CLIENT_SECRET&&env.SESSION_SECRET),openai:!!env.OPENAI_API_KEY,reviewSessions:!!pool,installUrl:env.GITHUB_APP_SLUG?`https://github.com/apps/${env.GITHUB_APP_SLUG}/installations/new`:null}));
-app.get('/auth/github',wrap(async(req,res)=>{if(!env.GITHUB_CLIENT_ID||!env.GITHUB_CLIENT_SECRET||!env.SESSION_SECRET)return res.status(503).send('GitHub App setup is not complete yet.');const state=crypto.randomBytes(32).toString('base64url'),verifier=crypto.randomBytes(48).toString('base64url');res.cookie('codesurf_oauth',seal({state,verifier,origin:base(req),exp:Date.now()+600000},env.SESSION_SECRET),{...opts,maxAge:600000});const p=new URLSearchParams({client_id:env.GITHUB_CLIENT_ID,redirect_uri:base(req)+'/auth/github/callback',state,code_challenge:crypto.createHash('sha256').update(verifier).digest('base64url'),code_challenge_method:'S256'});res.redirect('https://github.com/login/oauth/authorize?'+p)}));
-app.get('/auth/github/callback',wrap(async(req,res)=>{const saved=unseal(cookies(req).codesurf_oauth,env.SESSION_SECRET);res.clearCookie('codesurf_oauth',opts);if(!saved||saved.origin!==base(req)||typeof req.query.state!=='string'||saved.state!==req.query.state||typeof req.query.code!=='string')return res.status(400).send('Sign-in expired or could not be verified. Return to CodeSurf and sign in again.');const r=await fetch('https://github.com/login/oauth/access_token',{method:'POST',headers:{Accept:'application/json','Content-Type':'application/json'},body:JSON.stringify({client_id:env.GITHUB_CLIENT_ID,client_secret:env.GITHUB_CLIENT_SECRET,code:req.query.code,redirect_uri:base(req)+'/auth/github/callback',code_verifier:saved.verifier})});const t=await r.json();if(!t.access_token)throw new Error('GitHub did not authorize sign-in. Try again.');const user=await github(t.access_token,'/user');const allow=(env.ALLOWED_GITHUB_USERS||'').split(',').map(x=>x.trim()).filter(Boolean);if(allow.length&&!allow.includes(user.login))return res.status(403).send('CodeSurf is currently in a private beta.');await saveGitHubProfile(user);setSession(res,{token:t.access_token,refresh:t.refresh_token,tokenExp:Date.now()+(t.expires_in||28800)*1000,exp:Date.now()+7*864e5,user:{login:user.login,name:user.name,avatar:user.avatar_url}});res.redirect('/')}));
+function fileBrowserReturn(value,origin){try{if(typeof value!=='string'||!value.startsWith('/')||value.startsWith('//'))return '/';const url=new URL(value,origin);return url.origin===origin&&/^\/files\/github\/[\w.-]+\/[\w.-]+\/pull\/[1-9]\d*$/.test(url.pathname)?url.pathname+url.search+url.hash:'/'}catch{return '/'}}
+app.get('/auth/github',wrap(async(req,res)=>{if(!env.GITHUB_CLIENT_ID||!env.GITHUB_CLIENT_SECRET||!env.SESSION_SECRET)return res.status(503).send('GitHub App setup is not complete yet.');const state=crypto.randomBytes(32).toString('base64url'),verifier=crypto.randomBytes(48).toString('base64url');res.cookie('codesurf_oauth',seal({state,verifier,origin:base(req),returnTo:fileBrowserReturn(req.query.returnTo,base(req)),exp:Date.now()+600000},env.SESSION_SECRET),{...opts,maxAge:600000});const p=new URLSearchParams({client_id:env.GITHUB_CLIENT_ID,redirect_uri:base(req)+'/auth/github/callback',state,code_challenge:crypto.createHash('sha256').update(verifier).digest('base64url'),code_challenge_method:'S256'});res.redirect('https://github.com/login/oauth/authorize?'+p)}));
+app.get('/auth/github/callback',wrap(async(req,res)=>{const saved=unseal(cookies(req).codesurf_oauth,env.SESSION_SECRET);res.clearCookie('codesurf_oauth',opts);if(!saved||saved.origin!==base(req)||typeof req.query.state!=='string'||saved.state!==req.query.state||typeof req.query.code!=='string')return res.status(400).send('Sign-in expired or could not be verified. Return to CodeSurf and sign in again.');const r=await fetch('https://github.com/login/oauth/access_token',{method:'POST',headers:{Accept:'application/json','Content-Type':'application/json'},body:JSON.stringify({client_id:env.GITHUB_CLIENT_ID,client_secret:env.GITHUB_CLIENT_SECRET,code:req.query.code,redirect_uri:base(req)+'/auth/github/callback',code_verifier:saved.verifier})});const t=await r.json();if(!t.access_token)throw new Error('GitHub did not authorize sign-in. Try again.');const user=await github(t.access_token,'/user');const allow=(env.ALLOWED_GITHUB_USERS||'').split(',').map(x=>x.trim()).filter(Boolean);if(allow.length&&!allow.includes(user.login))return res.status(403).send('CodeSurf is currently in a private beta.');await saveGitHubProfile(user);setSession(res,{token:t.access_token,refresh:t.refresh_token,tokenExp:Date.now()+(t.expires_in||28800)*1000,exp:Date.now()+7*864e5,user:{login:user.login,name:user.name,avatar:user.avatar_url}});res.redirect(fileBrowserReturn(saved.returnTo,base(req)))}));
 app.post('/auth/logout',(req,res)=>{if(req.headers.origin!==base(req))return res.sendStatus(403);res.clearCookie('codesurf_session',opts);res.json({ok:true})});
 async function github(token,url){const r=await fetch('https://api.github.com'+url,{headers:{Authorization:`Bearer ${token}`,Accept:'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'},signal:AbortSignal.timeout(20000)});if(!r.ok){const e=new Error(r.status===401?'GitHub session expired. Sign in again.':r.status===404?'PR or file unavailable. Check the app’s repository access.':r.status===403?'GitHub access denied or API limit reached.':'GitHub request failed ('+r.status+')');e.status=r.status===401?401:r.status===404?404:502;throw e}return r.json()}
 app.get('/api/demo-plan',wrap(async(req,res)=>{
@@ -130,15 +131,19 @@ app.post('/api/reviews',wrap(async(req,res)=>{
 app.post('/api/reviews/:id/next',wrap(async(req,res)=>{const row=await getReview(req.auth.user.login,req.params.id);await pull(req.auth.token,row.pr_url,row.head);res.json(await nextStep(row,req.body.index))}));
 app.post('/api/reviews/:id/progress',wrap(async(req,res)=>{const row=await getReview(req.auth.user.login,req.params.id);await pull(req.auth.token,row.pr_url,row.head);res.json(await advanceReview(row,req.body.cursor))}));
 app.get('/api/tree',wrap(async(req,res)=>{
-  const p=await pull(req.auth.token,req.query.url,req.query.head);
-  const tree=String(req.query.tree||p.pr.head.sha);
+  let p=await pull(req.auth.token,req.query.url,req.query.head);
+  const side=req.query.side==='base'?'base':'head';
+  if(side==='base')p=await atMergeBase(req.auth.token,p);
+  const source=p.pr[side];
+  const tree=String(req.query.tree||source.sha);
   if(!/^[a-f0-9]{40}$/i.test(tree))return res.status(400).json({error:'Invalid tree reference.'});
-  const repo=p.pr.head.repo?.full_name;if(!repo)throw new Error('Source repository unavailable.');
+  const repo=source.repo?.full_name;if(!repo)throw new Error('Source repository unavailable.');
   const data=await github(req.auth.token,`/repos/${repo}/git/trees/${tree}`);
   if(data.truncated)throw new Error('This directory is too large to list completely.');
-  res.json({head:p.pr.head.sha,entries:data.tree.filter(x=>x.type==='tree'||x.type==='blob').map(x=>({name:x.path,type:x.type,sha:x.sha}))});
+  res.json({head:p.pr.head.sha,sha:source.sha,pr:{url:p.pr.html_url,title:p.pr.title,repo:`${p.owner}/${p.repo}`,number:p.number},entries:data.tree.filter(x=>x.type==='tree'||x.type==='blob').map(x=>({name:x.path,type:x.type,sha:x.sha}))});
 }));
-app.get('/api/file',wrap(async(req,res)=>{let p=await pull(req.auth.token,req.query.url,req.query.head);if(req.query.side==='base'){const comparison=await github(req.auth.token,`${p.prefix}/compare/${p.pr.base.sha}...${p.pr.head.sha}`);const sha=comparison.merge_base_commit?.sha;if(!sha)throw new Error('Cannot determine the PR merge-base.');p={...p,pr:{...p.pr,base:{...p.pr.base,sha}}};}res.json(await content(req.auth.token,p,req.query.path,req.query.side==='base'?'base':'head'))}));
+async function atMergeBase(token,p){const comparison=await github(token,`${p.prefix}/compare/${p.pr.base.sha}...${p.pr.head.sha}`);const sha=comparison.merge_base_commit?.sha;if(!sha)throw new Error('Cannot determine the PR merge-base.');return {...p,pr:{...p.pr,base:{...p.pr.base,sha}}}}
+app.get('/api/file',wrap(async(req,res)=>{let p=await pull(req.auth.token,req.query.url,req.query.head);if(req.query.side==='base')p=await atMergeBase(req.auth.token,p);res.json(await content(req.auth.token,p,req.query.path,req.query.side==='base'?'base':'head'))}));
 
 const recent=new Map();
 app.get('/api/search',wrap(async(req,res)=>{
@@ -219,17 +224,18 @@ async function reviewCallPeeks(req,p,args){
 const canvasContexts=new Map();
 app.post('/api/reviews/:id/canvas',wrap(async(req,res)=>{
  const page=req.body.page??0;if(!Number.isInteger(page)||page<0||page>10000)return res.status(400).json({error:'Invalid context page.'});
- const selection=req.body.selection===undefined?null:validateCanvasSelection(req.body.selection);
+ const selection=validateCanvasSelection(req.body.selection);
  const p=await pull(req.auth.token,req.body.url,req.body.head),scoped={auth:req.auth,body:{...req.body,reviewId:req.params.id}};
  const row=await ownedVoiceReview(scoped,p),count=req.body.step;if(count<1)return res.status(400).json({error:'Open a review change first.'});
- const key=crypto.createHash('sha256').update(req.auth.token).digest('hex')+':'+row.id+':'+count+':'+(selection?.snapshot==='before'?'before':'after');
+ validateChangedSelection(canvasChanges(row.plan,count),selection);
+ const key=crypto.createHash('sha256').update(req.auth.token).digest('hex')+':'+row.id+':'+count+':'+(selection.snapshot==='before'?'before':'after');
  let pending=canvasContexts.get(key);
  if(!pending||pending.expires<Date.now()){
-  const work=(async()=>{const change=canvasChanges(row.plan,count),current=await voiceCallSnapshot(scoped,p,{snapshot:'review'});const previous=selection?.snapshot==='before'||!selection&&change.blocks.some(block=>block.deleted)?await voiceCallSnapshot({...scoped,body:{...scoped.body,step:count-1}},p,{snapshot:'review'}):null;return {change,current,previous}})();
+  const work=(async()=>{const change=canvasChanges(row.plan,count),current=await voiceCallSnapshot(scoped,p,{snapshot:'review'});const previous=selection.snapshot==='before'?await voiceCallSnapshot({...scoped,body:{...scoped.body,step:count-1}},p,{snapshot:'review'}):null;return {change,current,previous}})();
   pending={work,expires:Date.now()+300000};canvasContexts.set(key,pending);if(canvasContexts.size>30)canvasContexts.delete(canvasContexts.keys().next().value);work.catch(()=>{if(canvasContexts.get(key)===pending)canvasContexts.delete(key)});
  }
  const {change,current,previous}=await pending.work;
- const result={...(selection?canvasSelection(change,selection,current,previous):canvasRelations(change,current,previous)),excludedFiles:current.index.skipped||[]};
+ const result={...canvasSelection(change,selection,current,previous),excludedFiles:current.index.skipped||[]};
  if(req.body.expandNode!==undefined){const node=result.relations.find(node=>node.id===req.body.expandNode);if(!node)return res.status(400).json({error:'Choose a source card in this change.'});return res.json({node})}
  const offset=page*24,relations=result.relations.slice(offset,offset+24).map(node=>{const rows=node.text.split('\n'),preview=rows.slice(0,100).join('\n').slice(0,16000);return preview.length<node.text.length?{...node,text:preview,end:node.start+preview.split('\n').length-1,fullEnd:node.end,clipped:true}:node});
  res.json({...result,relations,total:result.relations.length,nextPage:offset+24<result.relations.length?page+1:null});
@@ -312,6 +318,7 @@ app.post('/api/ask',wrap(async(req,res)=>{
   await answer({draftReview:args=>reviewDraft(req,p,args,changed),req,res,p,changed,question,selection,history,token:req.auth.token,sourceIndex:snapshot?.index,snapshot:snapshot?.snapshot||'PR head',reviewContext:context,finalSourceIndex:()=>repositoryIndex(req.auth.token,p.pr),exploreCalls:args=>reviewCallPeeks(req,p,{...args,snapshot:args.snapshot||(selection?.intermediate===false?'head':req.body.reviewId?'review':'head')})});
 }));
 app.use(express.static(path.join(root,'public')));
+app.get('/files/github/:owner/:repo/pull/:number',(req,res,next)=>{if(!/^[1-9]\d*$/.test(req.params.number))return next();res.sendFile(path.join(root,'public/files.html'))});
 app.get('/github/:owner/:repo/pull/:number',(req,res,next)=>{if(!/^[1-9]\d*$/.test(req.params.number))return next();res.sendFile(path.join(root,'public/index.html'))});
 app.get('/:owner/:repo/pull/:number',(req,res,next)=>{if(!/^[1-9]\d*$/.test(req.params.number))return next();res.redirect(308,'/github'+req.originalUrl)});
 app.use((error,req,res,_next)=>{if(res.headersSent)return res.end();if(error instanceof OpenAI.APIError){reportOpenAIError(error);return res.status(error.status===429?429:502).json({error:openAIErrorMessage(error)})}res.status(error.status||500).json({error:error.status?error.message:error instanceof OpenAI.APIError?'OpenAI request failed. Check project billing and model access.':error.message?.startsWith('Enter ')||error.message==='Invalid file path'?error.message:'The request could not be completed. Please retry.'})});

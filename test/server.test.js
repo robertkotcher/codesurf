@@ -261,3 +261,29 @@ test('repository picker loads only the selected repository with pagination and t
   global.fetch=async()=>Response.json({message:'Not Found'},{status:404});assert.notEqual((await request(origin+'/api/prs?repo=private/blocked',{headers:auth})).status,200);
  }finally{global.fetch=request}
 });
+
+test('repository browser serves deep links and preserves only safe OAuth returns',async()=>{
+ const route='/files/github/acme/project/pull/4?path=src%2Fa.ts&head='+'a'.repeat(40);
+ const page=await request(origin+route);assert.equal(page.status,200);assert.match(await page.text(),/\/files-app.js/);
+ for(const returnTo of [route,'https://evil.example/files/github/acme/project/pull/4','//evil.example/files/github/acme/project/pull/4','/files/github/acme/project/pull/4/../../../../auth/logout']){
+  const response=await request(origin+'/auth/github?'+new URLSearchParams({returnTo}),{redirect:'manual'});
+  const cookie=response.headers.get('set-cookie').split(';')[0].split('=')[1],saved=unseal(cookie,process.env.SESSION_SECRET);
+  assert.equal(saved.returnTo,returnTo===route?route:'/');
+ }
+});
+
+test('before-PR tree and deleted files both use the merge-base repository and commit',async()=>{
+ const head='a'.repeat(40),base='b'.repeat(40),merge='c'.repeat(40),folder='d'.repeat(40),calls=[];
+ global.fetch=async(url,options)=>{calls.push({url,token:options.headers.Authorization});if(url.includes('/pulls/'))return Response.json({head:{sha:head,repo:{full_name:'fork/project'}},base:{sha:base,repo:{full_name:'acme/project'}}});if(url.includes('/compare/'))return Response.json({merge_base_commit:{sha:merge}});if(url.includes('/git/trees/'))return Response.json({tree:[{path:'old.rb',type:'blob',sha:folder}]});return Response.json({type:'file',encoding:'base64',size:12,content:Buffer.from('old content\n').toString('base64')})};
+ try{
+  const params=new URLSearchParams({url:'https://github.com/acme/project/pull/4',head,side:'base'});
+  const root=await request(origin+'/api/tree?'+params,{headers:auth});assert.equal(root.status,200);assert.equal((await root.json()).sha,merge);assert(calls.some(call=>call.url.endsWith('/repos/acme/project/git/trees/'+merge)));
+  params.set('tree',folder);assert.equal((await request(origin+'/api/tree?'+params,{headers:auth})).status,200);assert(calls.some(call=>call.url.endsWith('/repos/acme/project/git/trees/'+folder)));
+  params.set('path','old.rb');const file=await request(origin+'/api/file?'+params,{headers:auth});assert.equal((await file.json()).sha,merge);assert(calls.some(call=>call.url.endsWith('/repos/acme/project/contents/old.rb?ref='+merge)));assert(calls.every(call=>call.token==='Bearer test-user-token'));
+ }finally{global.fetch=request}
+});
+
+test('canvas refuses unrequested relationship loading before fetching repository source',async()=>{
+ const previous=global.fetch;let reads=0;global.fetch=async()=>{reads++;throw new Error('Should not fetch GitHub')};
+ try{for(const selection of [undefined,null,{}]){const response=await request(origin+'/api/reviews/00000000-0000-0000-0000-000000000000/canvas',{method:'POST',headers:{...auth,Origin:process.env.APP_URL,'Content-Type':'application/json'},body:JSON.stringify({url:'https://github.com/acme/project/pull/4',head:'a'.repeat(40),step:1,selection})});assert.equal(response.status,400);assert.match((await response.json()).error,/Choose a code line/)}assert.equal(reads,0)}finally{global.fetch=previous}
+});

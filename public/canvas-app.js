@@ -1,3 +1,4 @@
+import {reviewFileURL} from './files-route.js';
 import {createCanvasChats} from './canvas-chat.js';
 import {readChatStream} from './chat-stream.js';
 import {icon} from './canvas-icons.js';
@@ -8,7 +9,7 @@ import {sortSavedPulls} from './saved-pulls.js';
 const $=id=>document.getElementById(id),post=body=>({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 let pr=null,session=null,plan=null,count=0,done=false,generation=0,pending=null,nextError='',moving=false,saved=[],user=null,library=[],libraryKind='my',older=false,libraryGeneration=0,status={},abort=new AbortController(),contextData={relations:[]},saveBusy=false,saveRevision=0;
 let chats;
-const graph=createReviewCanvas({viewport:$('canvas'),stage:$('canvasStage'),world:$('canvasWorld'),onExpand:confirmExpansion,onChat:openCanvasChat,onLayout:()=>chats?.layout()});
+const graph=createReviewCanvas({viewport:$('canvas'),stage:$('canvasStage'),world:$('canvasWorld'),fileURL:path=>pr?reviewFileURL(pr,path):null,onExpand:confirmExpansion,onChat:openCanvasChat,onLayout:()=>chats?.layout()});
 chats=createCanvasChats({viewport:$('canvas'),stage:$('canvasStage'),geometry:graph.geometry,request:streamCanvasChat});
 const stepContexts=new Map();let pendingSelection=null;
 async function api(path,options={}){const response=await fetch(path,options);const body=await response.json().catch(()=>({}));if(!response.ok)throw Object.assign(new Error(body.error||'The request could not be completed.'),{status:response.status});return body}
@@ -44,7 +45,7 @@ async function advance(delta){
  }catch(error){if(error.name!=='AbortError')toast(error.message)}finally{if(g===generation){moving=false;controls()}}
 }
 function showChange(){
- const change=canvasChanges(plan,count);change.counter=done?`${count} / ${plan.steps.length}`:`Change ${count}`;change.complete=done&&count===plan.steps.length;change.unavailable=plan.files.filter(file=>file.unavailable);pendingSelection=null;$('connectionDialog').close();$('canvasState').hidden=true;$('canvasStage').hidden=false;graph.show(change);chats.showStep(count);contextData=stepContexts.get(count)||{relations:[],requests:[]};stepContexts.set(count,contextData);if(contextData.relations.length||contextData.requests.length)graph.context(contextData);controls();
+ const change=canvasChanges(plan,count);change.counter=done?`${count} / ${plan.steps.length}`:String(count);change.complete=done&&count===plan.steps.length;change.unavailable=plan.files.filter(file=>file.unavailable);pendingSelection=null;$('connectionDialog').close();$('canvasState').hidden=true;$('canvasStage').hidden=false;graph.show(change);chats.showStep(count);contextData=stepContexts.get(count)||{relations:[],requests:[]};stepContexts.set(count,contextData);if(contextData.relations.length||contextData.requests.length)graph.context(contextData);controls();
  const g=generation,c=count;reviewAffordances(plan,c).then(data=>{if(g===generation&&c===count)graph.affordances(data)}).catch(error=>{if(g===generation&&c===count)toast('Code connection controls could not be prepared. '+error.message)});
 }
 function openCanvasChat(selection){if(pr&&session)chats.open({...selection,step:count,url:pr.url,head:pr.head,reviewId:session})}
