@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {transformationPlan} from '../transformations.js';
 import {canvasChanges} from '../canvas-model.js';
-import {canvasRelations} from '../canvas-relations.js';
+import {canvasRelations,canvasSelection,validateCanvasSelection} from '../canvas-relations.js';
+import {reviewAffordances} from '../public/canvas-affordances.js';
 import {relationshipSummary} from '../public/canvas-relationships.js';
 import {stateAt} from '../public/transformations.js';
 import {buildCallIndex,initCallParsers} from '../browser/source-index.js';
@@ -43,4 +44,23 @@ test('canvas labels calls elsewhere in an edited function separately from calls 
 test('canvas summaries describe uncertain relationships and the actual enclosing function',()=>{
  assert.equal(relationshipSummary({direction:'callees',symbol:'clear_for_user',ambiguous:true,edges:[{scope:'function',sourceSymbol:'payment_success',callLine:388}]}),'Elsewhere in payment_success, line 388 may call clear_for_user.');
  assert.equal(relationshipSummary({direction:'callers',symbol:'submit',edges:[{targetSymbol:'payment_success',callLine:12}]}),'submit calls payment_success at line 12.');
+});
+
+test('on-demand expansion traces only the selected line and direction',()=>{
+ const files=new Map([['changed.ts','function changed() {\n helper();\n other();\n}'],['helper.ts','function helper() { return 1; }'],['other.ts','function other() { return 2; }'],['caller.ts','function caller() {\n changed();\n}']]),current=snapshot(files),change={blocks:[{id:'edit',path:'changed.ts',start:2,end:2}]},selection={path:'changed.ts',line:2,direction:'callees',snapshot:'after',anchorId:'edit',level:0};
+ const callees=canvasSelection(change,selection,current);assert.deepEqual(callees.relations.map(node=>node.symbol),['helper']);assert.equal(callees.relations[0].level,1);assert.equal(callees.relations[0].edges[0].anchorLine,2);assert.deepEqual(callees.relations[0].affordances.calls,[]);
+ const callers=canvasSelection(change,{...selection,direction:'callers'},current);assert.deepEqual(callers.relations.map(node=>node.symbol),['caller']);assert.equal(callers.relations[0].level,-1);assert.equal(callers.relations[0].edges[0].targetLine,1);assert.equal(callers.relations[0].edges[0].callLine,2);assert.deepEqual(callers.relations[0].affordances.calls,[2]);
+ const nested=canvasSelection(change,{...selection,path:'caller.ts',direction:'callees',anchorId:callers.relations[0].id,level:-1},current);assert.deepEqual(nested.relations.map(node=>node.symbol),['changed']);assert.equal(nested.relations[0].level,0);assert.equal(nested.relations[0].edges[0].blockId,callers.relations[0].id);
+ assert.equal(canvasSelection(change,{...selection,line:4},current).relations.length,0);
+});
+test('on-demand Ruby expansion preserves selected receiver and old snapshot',async()=>{
+ await initCallParsers();const files=new Map([['one.rb','class One\n def update\n  true\n end\nend\n'],['two.rb','class Two\n def update\n  false\n end\nend\n'],['caller.rb','def call_one\n One.new.update\nend\ndef call_two\n Two.new.update\nend\n']]),before=snapshot(files),after=snapshot(new Map([...files].filter(([path])=>path!=='one.rb'))),change={blocks:[{id:'removed',path:'one.rb',oldStart:2,oldEnd:4,deleted:true}]},selection={path:'one.rb',line:2,direction:'callers',snapshot:'before',anchorId:'removed',level:0};
+ const result=canvasSelection(change,selection,after,before);assert.deepEqual(result.relations.map(node=>node.symbol),['call_one']);assert.equal(result.relations[0].snapshot,'Before this change');assert.throws(()=>canvasSelection(change,{...selection,snapshot:'after'},after,before),/unavailable/);
+ for(const invalid of [{direction:'all'},{path:'../secret'},{line:0},{level:99},{snapshot:'head'},{anchorId:''}])assert.throws(()=>validateCanvasSelection({...selection,...invalid}),/Choose a code line/);
+ assert.throws(()=>canvasSelection(change,{...selection,line:999},after,before),/unavailable/);
+});
+
+test('hover affordances use local syntax, skip unavailable files, and retain both snapshots',async()=>{
+ const before='function run() {\n return oldCall();\n}\n',after='function run() {\n return newCall();\n}\n',plan=await transformationPlan([{path:'run.ts',status:'modified',before,after},{path:'large.bin',unavailable:true,reason:'Binary'}],{explain:false});
+ const info=await reviewAffordances(plan,1);assert.equal(info.after['run.ts'].functions[0].symbol,'run');assert.deepEqual(info.after['run.ts'].calls,[2]);assert.deepEqual(info.before['run.ts'].calls,[2]);assert.equal(info.after['large.bin'],undefined);
 });

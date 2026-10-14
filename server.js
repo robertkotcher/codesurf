@@ -1,5 +1,5 @@
 import {canvasChanges} from './canvas-model.js';
-import {canvasRelations} from './canvas-relations.js';
+import {canvasRelations,canvasSelection,validateCanvasSelection} from './canvas-relations.js';
 import {savedURL,listSavedPulls,savePull,refreshSavedPull,removeSavedPull} from './saved-pulls.js';
 import {futureCallers} from './browser/future-callers.js';
 import {functionPeeks} from './browser/function-peeks.js';
@@ -219,15 +219,17 @@ async function reviewCallPeeks(req,p,args){
 const canvasContexts=new Map();
 app.post('/api/reviews/:id/canvas',wrap(async(req,res)=>{
  const page=req.body.page??0;if(!Number.isInteger(page)||page<0||page>10000)return res.status(400).json({error:'Invalid context page.'});
+ const selection=req.body.selection===undefined?null:validateCanvasSelection(req.body.selection);
  const p=await pull(req.auth.token,req.body.url,req.body.head),scoped={auth:req.auth,body:{...req.body,reviewId:req.params.id}};
  const row=await ownedVoiceReview(scoped,p),count=req.body.step;if(count<1)return res.status(400).json({error:'Open a review change first.'});
- const key=crypto.createHash('sha256').update(req.auth.token).digest('hex')+':'+row.id+':'+count;
+ const key=crypto.createHash('sha256').update(req.auth.token).digest('hex')+':'+row.id+':'+count+':'+(selection?.snapshot==='before'?'before':'after');
  let pending=canvasContexts.get(key);
  if(!pending||pending.expires<Date.now()){
-  const work=(async()=>{const change=canvasChanges(row.plan,count),current=await voiceCallSnapshot(scoped,p,{snapshot:'review'});const previous=change.blocks.some(block=>block.deleted)?await voiceCallSnapshot({...scoped,body:{...scoped.body,step:count-1}},p,{snapshot:'review'}):null;return {...canvasRelations(change,current,previous),excludedFiles:current.index.skipped||[]}})();
+  const work=(async()=>{const change=canvasChanges(row.plan,count),current=await voiceCallSnapshot(scoped,p,{snapshot:'review'});const previous=selection?.snapshot==='before'||!selection&&change.blocks.some(block=>block.deleted)?await voiceCallSnapshot({...scoped,body:{...scoped.body,step:count-1}},p,{snapshot:'review'}):null;return {change,current,previous}})();
   pending={work,expires:Date.now()+300000};canvasContexts.set(key,pending);if(canvasContexts.size>30)canvasContexts.delete(canvasContexts.keys().next().value);work.catch(()=>{if(canvasContexts.get(key)===pending)canvasContexts.delete(key)});
  }
- const result=await pending.work;
+ const {change,current,previous}=await pending.work;
+ const result={...(selection?canvasSelection(change,selection,current,previous):canvasRelations(change,current,previous)),excludedFiles:current.index.skipped||[]};
  if(req.body.expandNode!==undefined){const node=result.relations.find(node=>node.id===req.body.expandNode);if(!node)return res.status(400).json({error:'Choose a source card in this change.'});return res.json({node})}
  const offset=page*24,relations=result.relations.slice(offset,offset+24).map(node=>{const rows=node.text.split('\n'),preview=rows.slice(0,100).join('\n').slice(0,16000);return preview.length<node.text.length?{...node,text:preview,end:node.start+preview.split('\n').length-1,fullEnd:node.end,clipped:true}:node});
  res.json({...result,relations,total:result.relations.length,nextPage:offset+24<result.relations.length?page+1:null});
