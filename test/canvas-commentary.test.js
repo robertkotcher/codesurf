@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {stepCommentary} from '../public/canvas-commentary.js';
+import {stepCommentary,canvasCommentary} from '../public/canvas-commentary.js';
 const block=(rows,extra={})=>({id:'edit',path:'file.ts',rows,...extra});
 test('step commentary uses the block explanation and a real added line',()=>{
  const result=stepCommentary({summary:'Overall change.',blocks:[block([{kind:'context',line:10,text:'unchanged'},{kind:'removed',old:11,text:'old()'},{kind:'added',line:11,text:''},{kind:'added',line:12,text:'}'},{kind:'added',line:13,text:'  const safe = Math.max(0, value);'}],{explanation:'Negative inputs become zero. A second sentence is omitted.'})]});
@@ -20,4 +20,19 @@ test('commentary stays brief and skips generic fallback counts',()=>{
 });
 test('the opening callout stays on the first changed block rather than skipping ahead',()=>{
  const result=stepCommentary({summary:'Use the shared list for validation.',blocks:[block([{kind:'added',line:5,text:'SHARED_LIST.include?(value)'}]),block([{kind:'added',line:100,text:'validate()'}],{id:'later',explanation:'This is a later block.'})]});assert.equal(result.anchorId,'edit');assert.equal(result.line,5);
+});
+
+test('canvas comments bind each explanation to its own added block and line',()=>{
+ const change={summary:'Overall payment changes.',blocks:[
+  block([{kind:'removed',old:9,text:'old_list = []'}],{id:'removed',explanation:'Remove the old list.'}),
+  block([{kind:'context',line:10,text:'def confirm'},{kind:'added',line:11,text:'validate_payment()'}],{id:'validate',explanation:'The author has added a payment check.'}),
+  block([{kind:'added',line:70,text:'send_receipt()'}],{id:'receipt',path:'receipt.rb',explanation:'The author has updated how the receipt is sent.'})]};
+ assert.deepEqual(canvasCommentary(change),[
+  {anchorId:'validate',path:'file.ts',line:11,snapshot:'after',text:'The author has added a payment check.'},
+  {anchorId:'receipt',path:'receipt.rb',line:70,snapshot:'after',text:'The author has updated how the receipt is sent.'}]);
+});
+test('canvas comments use the step explanation once only when block explanations are absent',()=>{
+ const change={summary:'The author has added a payment check.',blocks:[block([{kind:'added',line:11,text:'validate_payment()'}]),block([{kind:'added',line:70,text:'send_receipt()'}],{id:'later'})]};
+ assert.deepEqual(canvasCommentary(change),[stepCommentary(change)]);
+ assert.deepEqual(canvasCommentary({...change,summary:'Review 2 edits across 1 files.'}),[]);
 });

@@ -12,3 +12,13 @@ export function stepCommentary(change){
  const text=choice.text||concise(change.summary);if(!text)return null;
  return {anchorId:choice.block.id,path:choice.block.path,line:choice.row.line,snapshot:'after',text};
 }
+
+// Specific block explanations stay attached to their own immutable edit and line.
+export function canvasCommentary(change){
+ const notes=change.blocks.filter(block=>!block.metadata).flatMap(block=>{
+  const text=concise(block.explanation),row=block.rows.find(row=>row.kind==='added'&&meaningful(row));
+  return text&&row?[{anchorId:block.id,path:block.path,line:row.line,snapshot:'after',text}]:[];
+ });
+ if(notes.length)return notes;
+ const opening=stepCommentary(change);return opening?[opening]:[];
+}
