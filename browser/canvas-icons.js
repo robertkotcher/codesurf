@@ -1,3 +1,3 @@
-import {createElement,UserRound,ChevronDown,Eye,EyeOff,Bookmark,BookmarkCheck,Scan,ZoomIn,ZoomOut,X,GitPullRequest,GitMerge,GitPullRequestClosed,ChevronLeft,ChevronRight,Check,RefreshCw} from 'lucide';
-const icons={user:UserRound,down:ChevronDown,eye:Eye,hide:EyeOff,bookmark:Bookmark,saved:BookmarkCheck,fit:Scan,zoomIn:ZoomIn,zoomOut:ZoomOut,close:X,pulls:GitPullRequest,merged:GitMerge,closed:GitPullRequestClosed,left:ChevronLeft,right:ChevronRight,check:Check,refresh:RefreshCw};
+import {createElement,UserRound,ChevronDown,Eye,EyeOff,Bookmark,BookmarkCheck,Scan,ZoomIn,ZoomOut,X,GitPullRequest,GitMerge,GitPullRequestClosed,ChevronLeft,ChevronRight,Check,RefreshCw,WrapText} from 'lucide';
+const icons={user:UserRound,down:ChevronDown,eye:Eye,hide:EyeOff,bookmark:Bookmark,saved:BookmarkCheck,fit:Scan,zoomIn:ZoomIn,zoomOut:ZoomOut,close:X,pulls:GitPullRequest,merged:GitMerge,closed:GitPullRequestClosed,left:ChevronLeft,right:ChevronRight,check:Check,refresh:RefreshCw,wrap:WrapText};
 export const icon=name=>createElement(icons[name]||GitPullRequest,{'aria-hidden':'true',width:16,height:16,'stroke-width':1.6}).outerHTML;
