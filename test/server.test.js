@@ -16,7 +16,7 @@ const auth={Cookie:'codesurf_session='+session};
 test.after(()=>server.close());
 test('repository and question routes reject unauthenticated requests',async()=>{
   for(const p of ['/api/pr?url=https://github.com/a/b/pull/1','/api/file?url=x&path=a','/api/prs','/api/search?q=retry&url=https://github.com/a/b/pull/1'])assert.equal((await request(origin+p)).status,401);
-  for(const route of ['/api/reviews','/api/reviews/00000000-0000-0000-0000-000000000000/next','/api/reviews/00000000-0000-0000-0000-000000000000/progress','/api/reviews/00000000-0000-0000-0000-000000000000/canvas'])assert.equal((await request(origin+route,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).status,401);
+  for(const route of ['/api/reviews','/api/reviews/00000000-0000-0000-0000-000000000000/next','/api/reviews/00000000-0000-0000-0000-000000000000/progress','/api/reviews/00000000-0000-0000-0000-000000000000/canvas','/api/reviews/00000000-0000-0000-0000-000000000000/canvas/preload'])assert.equal((await request(origin+route,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).status,401);
   assert.equal((await request(origin+'/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).status,401);
   assert.equal((await request(origin+'/api/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).status,401);
 });

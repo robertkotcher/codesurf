@@ -29,3 +29,21 @@ a.block-path{color:inherit;text-decoration:none}a.block-path:hover,.context-head
 .changed-column{gap:16px}.change-heading{padding:0 4px 4px;cursor:default}.change-heading .card-kicker{margin-bottom:8px}.file-card{border-top:1px solid #ded9e8;box-shadow:0 4px 18px #43335708}.file-card-heading{background:#fff;padding:13px 18px}.changed-column>.unavailable{margin:0 4px}.changed-column>.review-end{border-top:0;padding:4px}
 
 .step-commentary-heading span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.step-commentary-heading button{flex:none}.commentary-column{pointer-events:none}.step-commentary{background:#fff;box-shadow:0 3px 14px #4e37650c}
+
+.empty-connection-dialog{width:320px;padding:20px}.empty-connection-dialog h2{font-size:15px}.empty-connection-dialog .dialog-heading{margin-bottom:0}.empty-connection-dialog .connection-dialog-actions{margin-top:18px}
+
+/* Product header, review navigation, and canvas tools occupy separate regions. */
+body{display:flex;flex-direction:column}
+.canvas-header{flex:none;min-height:64px;padding:12px 24px;gap:20px}
+.canvas-header .header-pr{display:grid}.canvas-header .header-tools{margin-left:auto}
+.review-subheader{flex:none;display:flex;align-items:center;gap:20px;padding:7px 24px;background:#f0eef5;border-bottom:1px solid #e2deea}
+.step-heading{display:flex;align-items:center;gap:12px;flex:1;min-width:0}
+.step-heading>span{font-size:9px;color:#978aa3;white-space:nowrap;font-weight:600}
+.step-heading h1{margin:0;font-size:12px;font-weight:600;color:#665773;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:-.15px}
+.review-subheader .step-navigation{margin-left:auto}.review-subheader .step-navigation button{padding:6px 11px;font-size:10px}
+.canvas-shell{position:relative;flex:1;min-height:0;overflow:hidden}
+.canvas-shell .review-canvas{width:100%;height:100%}
+.canvas-controls{position:absolute;right:16px;top:12px;z-index:8;display:flex;align-items:center;gap:2px;padding:3px;background:#fffffff2;border:1px solid #e4e1ea;border-radius:7px;box-shadow:0 2px 8px #43335708}
+.canvas-controls .icon-button{width:28px;height:28px;padding:6px}
+.canvas-controls-divider{height:16px;width:1px;background:#e7e3ed;margin:0 3px}
+@media(max-width:720px){.canvas-header{min-height:60px;padding:10px 12px;gap:10px}.canvas-header .brand{font-size:15px}.canvas-header .brand svg{width:24px;height:24px}.canvas-header form{margin-top:4px}.canvas-header .header-pr{flex:1}.canvas-header .header-tools{gap:0}.review-subheader{padding:7px 12px;gap:12px}.step-heading{display:grid;gap:2px}.step-heading h1{font-size:11px}.canvas-controls{right:12px;top:12px}}

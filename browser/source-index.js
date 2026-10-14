@@ -3,7 +3,7 @@ export {initCallParsers} from './ruby-parser.js';
 import {parser as javascript} from '@lezer/javascript';
 import {parser as python} from '@lezer/python';
 import {sourceBlocks} from '../public/call-graph.js';
-const warmed=new WeakMap(),js=javascript.configure({dialect:'ts jsx'});
+const warmed=new WeakMap(),lookups=new WeakMap(),js=javascript.configure({dialect:'ts jsx'});
 const functionKinds=new Set(['FunctionDeclaration','FunctionExpression','ArrowFunction','MethodDeclaration','FunctionDefinition','LambdaExpression']);
 function fileIndex(path,text){
  if(/\.rb$/.test(path))return rubyIndex(path,text);
@@ -24,7 +24,7 @@ function fileIndex(path,text){
  }
  if(node.name==='CallExpression'){
  const callee=node.firstChild,expression=callee?text.slice(callee.from,callee.to):'',name=expression.match(/([\w$]+)\s*$/),symbol=name?.[1];
- if(symbol)calls.push({path,line:lineAt(callee.from+name.index),symbol,expression:expression.slice(0,200),callerStart:enclosing?.start??null,precision:'syntax'});
+ if(symbol)calls.push({path,line:lineAt(callee.from+name.index),symbol,expression:expression.slice(0,200),callerStart:enclosing?.start??null,precision:'syntax',ambiguous:!/^[$\w]+$/.test(expression)});
  }
  for(let child=node.firstChild;child;child=child.nextSibling)visit(child,enclosing);
  }
@@ -37,19 +37,26 @@ export function buildCallIndex(files){
  const index=resolveIndex(blocks,calls,imports,languages);warmed.set(files,index);return index;
 }
 function resolveIndex(blocks,calls,imports,languages){return {blocks,calls,imports,languages}}
+function callLookup(index){
+ if(lookups.has(index))return lookups.get(index);
+ const symbols=new Map(),bySymbol=new Map(),byLine=new Map(),aliases=new Map();
+ for(const block of index.blocks){const list=symbols.get(block.symbol)||[];list.push(block);symbols.set(block.symbol,list)}
+ for(const call of index.calls){for(const [map,key]of [[bySymbol,call.symbol],[byLine,call.path+':'+call.line]]){const list=map.get(key)||[];list.push(call);map.set(key,list)}}
+ for(const [,bindings]of index.imports)for(const match of bindings)for(const binding of match[1].split(',')){const [original,alias=original]=binding.trim().split(/\s+as\s+/);const names=aliases.get(original)||new Set();names.add(alias);aliases.set(original,names)}
+ const value={symbols,bySymbol,byLine,aliases,importsByPath:new Map(index.imports),owners:new Set(index.blocks.filter(block=>block.owner).map(block=>block.owner))};lookups.set(index,value);return value;
+}
 function resolveEdges(index,root,path,line,direction){
- const {blocks,imports}=index;
- const names=new Set([root?.symbol]);if(direction==='callers')for(const [,bindings]of imports)for(const match of bindings)for(const binding of match[1].split(',')){const [original,alias=original]=binding.trim().split(/\s+as\s+/);if(original===root.symbol)names.add(alias)}
- const calls=index.calls.filter(c=>direction==='callers'?names.has(c.symbol):c.path===path&&c.line===line);
- const symbols=new Map();for(const b of blocks){const list=symbols.get(b.symbol)||[];list.push(b);symbols.set(b.symbol,list)}
- const edges=[],importsByPath=new Map(imports),owners=new Set(blocks.filter(b=>b.owner).map(b=>b.owner));
+ const {blocks}=index,{symbols,bySymbol,byLine,aliases,importsByPath,owners}=callLookup(index);
+ const names=new Set([root?.symbol,...(aliases.get(root?.symbol)||[])]);
+ const calls=direction==='callers'?[...new Set([...names].flatMap(name=>bySymbol.get(name)||[]))]:byLine.get(path+':'+line)||[];
+ const edges=[];
  for(const call of calls){let targets=symbols.get(call.symbol)||[];
  if(call.ruby){
   const receiver=call.receiver;
   if(receiver){let owner=receiver.owner;if(receiver.namespace&&!owner.includes('::')){const parts=receiver.namespace.split('::');while(parts.length){const candidate=parts.join('::')+'::'+owner;if(owners.has(candidate)){owner=candidate;break}parts.pop()}}
    // Resolve the selected receiver's method, walking known inheritance only.
    const seen=new Set();let resolved=[];while(owner&&!seen.has(owner)){seen.add(owner);resolved=targets.filter(b=>b.owner===owner&&b.methodKind===receiver.kind);if(resolved.length)break;const parent=blocks.find(b=>b.owner===owner&&b.parentClass)?.parentClass;const namespace=owner.split('::').slice(0,-1).join('::');owner=parent&&namespace&&owners.has(namespace+'::'+parent)?namespace+'::'+parent:parent||null}targets=resolved;
-  }else targets=targets.filter(b=>!b.owner&&b.path===call.path);
+  }else targets=call.explicitReceiver?[]:targets.filter(b=>!b.owner&&b.path===call.path);
  }else{const same=targets.filter(b=>b.path===call.path);if(same.length)targets=same;}
  // Resolve named relative imports before considering same-named definitions elsewhere.
  const imports=importsByPath.get(call.path)||[];

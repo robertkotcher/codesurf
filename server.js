@@ -1,5 +1,5 @@
 import {canvasChanges} from './canvas-model.js';
-import {canvasSelection,validateCanvasSelection,validateChangedSelection} from './canvas-relations.js';
+import {canvasSelection,validateCanvasSelection,validateChangedSelection,prepareCanvasConnections,canvasConnectionKey,canvasConnectionPage} from './canvas-relations.js';
 import {savedURL,listSavedPulls,savePull,refreshSavedPull,removeSavedPull} from './saved-pulls.js';
 import {futureCallers} from './browser/future-callers.js';
 import {functionPeeks} from './browser/function-peeks.js';
@@ -196,9 +196,9 @@ async function voiceContext(req,p){
  if(selection&&text===undefined)text=(await content(req.auth.token,p,selection.path)).text;
  return {title:p.pr.title,description:(p.pr.body||'').slice(0,6000),head:p.pr.head.sha,snapshot,review,selection:selection?voiceSelection(selection,text):null};
 }
-async function voiceCallSnapshot(req,p,args){
+async function voiceCallSnapshot(req,p,args,preparedReview=null){
  if(args.snapshot!=='review'||!req.body.reviewId){const index=await repositoryIndex(req.auth.token,p.pr);await initCallParsers();return {index,graph:buildCallIndex(index.files),snapshot:'PR head'}}
- const row=await ownedVoiceReview(req,p),count=req.body.step;
+ const row=preparedReview||await ownedVoiceReview(req,p),count=req.body.step;
  const comparison=await github(req.auth.token,`${p.prefix}/compare/${p.pr.base.sha}...${p.pr.head.sha}`),sha=comparison.merge_base_commit?.sha;
  if(!sha)throw new Error('Cannot determine the review merge-base.');
  const base=await repositoryIndex(req.auth.token,{...p.pr,head:{...p.pr.base,sha}}),overrides=new Map(),state=stateAt(row.plan,count),manifest=manifestAt(row.plan,count);
@@ -222,23 +222,39 @@ async function reviewCallPeeks(req,p,args){
  return {...result,root:source(result.root),blocks:result.blocks.map(source)};
 }
 const canvasContexts=new Map();
+function cachedCanvasContext(req,p,row,count){
+ const revision=JSON.stringify(row.plan.steps.slice(0,count).map(step=>step.ids));
+ const key=crypto.createHash('sha256').update(req.auth.token+'\0'+row.id+'\0'+row.head+'\0'+count+'\0'+revision).digest('hex');
+ let pending=canvasContexts.get(key);
+ if(!pending||pending.expires<Date.now()){
+  const work=(async()=>{
+   const change=canvasChanges(row.plan,count),scoped={auth:req.auth,body:{...req.body,reviewId:row.id,step:count}};
+   const current=await voiceCallSnapshot(scoped,p,{snapshot:'review'},row);
+   const previous=count>0&&change.blocks.some(block=>block.rows.some(row=>row.kind==='removed'))?await voiceCallSnapshot({...scoped,body:{...scoped.body,step:count-1}},p,{snapshot:'review'},row):null;
+   return {change,current,previous,prepared:prepareCanvasConnections(change,current,previous)};
+  })();
+  pending={work,expires:Date.now()+300000};canvasContexts.set(key,pending);if(canvasContexts.size>30)canvasContexts.delete(canvasContexts.keys().next().value);work.catch(()=>{if(canvasContexts.get(key)===pending)canvasContexts.delete(key)});
+ }
+ return pending.work;
+}
+app.post('/api/reviews/:id/canvas/preload',wrap(async(req,res)=>{
+ const row=await getReview(req.auth.user.login,req.params.id),count=req.body.step;
+ if(!Number.isInteger(count)||count<0||count>row.plan.steps.length)return res.status(400).json({error:'Choose a prepared review change.'});
+ const p=await pull(req.auth.token,req.body.url,req.body.head);
+ if(row.head!==p.pr.head.sha||row.pr_url!==p.pr.html_url)return res.status(409).json({error:'Reopen this review before loading connections.'});
+ const {prepared,current}=await cachedCanvasContext(req,p,row,count),{results,...data}=prepared;
+ res.json({...data,excludedFiles:current.index.skipped||0});
+}));
 app.post('/api/reviews/:id/canvas',wrap(async(req,res)=>{
  const page=req.body.page??0;if(!Number.isInteger(page)||page<0||page>10000)return res.status(400).json({error:'Invalid context page.'});
  const selection=validateCanvasSelection(req.body.selection);
  const p=await pull(req.auth.token,req.body.url,req.body.head),scoped={auth:req.auth,body:{...req.body,reviewId:req.params.id}};
  const row=await ownedVoiceReview(scoped,p),count=req.body.step;if(count<1)return res.status(400).json({error:'Open a review change first.'});
  validateChangedSelection(canvasChanges(row.plan,count),selection);
- const key=crypto.createHash('sha256').update(req.auth.token).digest('hex')+':'+row.id+':'+count+':'+(selection.snapshot==='before'?'before':'after');
- let pending=canvasContexts.get(key);
- if(!pending||pending.expires<Date.now()){
-  const work=(async()=>{const change=canvasChanges(row.plan,count),current=await voiceCallSnapshot(scoped,p,{snapshot:'review'});const previous=selection.snapshot==='before'?await voiceCallSnapshot({...scoped,body:{...scoped.body,step:count-1}},p,{snapshot:'review'}):null;return {change,current,previous}})();
-  pending={work,expires:Date.now()+300000};canvasContexts.set(key,pending);if(canvasContexts.size>30)canvasContexts.delete(canvasContexts.keys().next().value);work.catch(()=>{if(canvasContexts.get(key)===pending)canvasContexts.delete(key)});
- }
- const {change,current,previous}=await pending.work;
- const result={...canvasSelection(change,selection,current,previous),excludedFiles:current.index.skipped||[]};
+ const {change,current,previous,prepared}=await cachedCanvasContext(req,p,row,count);
+ const result={...(prepared.results.get(canvasConnectionKey(selection))?.result||canvasSelection(change,selection,current,previous)),excludedFiles:current.index.skipped||0};
  if(req.body.expandNode!==undefined){const node=result.relations.find(node=>node.id===req.body.expandNode);if(!node)return res.status(400).json({error:'Choose a source card in this change.'});return res.json({node})}
- const offset=page*24,relations=result.relations.slice(offset,offset+24).map(node=>{const rows=node.text.split('\n'),preview=rows.slice(0,100).join('\n').slice(0,16000);return preview.length<node.text.length?{...node,text:preview,end:node.start+preview.split('\n').length-1,fullEnd:node.end,clipped:true}:node});
- res.json({...result,relations,total:result.relations.length,nextPage:offset+24<result.relations.length?page+1:null});
+ res.json(canvasConnectionPage(result,page));
 }));
 async function reviewDraft(req,p,args,files){
  const row=req.body.reviewId?await ownedVoiceReview(req,p):null;

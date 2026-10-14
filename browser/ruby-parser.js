@@ -38,7 +38,7 @@ export function rubyIndex(path,text){
     const name=node.childForFieldName('name');if(name){enclosing={path,start:node.startPosition.row+1,end:node.endPosition.row+1,symbol:name.text,owner:scope.owner,methodKind:scope.kind,parentClass:scope.parentClass||null,precision:'syntax',text:node.text};blocks.push(enclosing)}
    }
    if(node.type==='call'){
-    const name=node.childForFieldName('method');if(name)calls.push({path,line:name.startPosition.row+1,symbol:name.text,ruby:true,receiver:receiverType(node.childForFieldName('receiver'),scope),expression:node.text.slice(0,200),callerStart:enclosing?.start??null,precision:'syntax'});
+    const name=node.childForFieldName('method');if(name)calls.push({path,line:name.startPosition.row+1,symbol:name.text,ruby:true,explicitReceiver:!!node.childForFieldName('receiver'),receiver:receiverType(node.childForFieldName('receiver'),scope),expression:node.text.slice(0,200),callerStart:enclosing?.start??null,precision:'syntax'});
    }else if(node.type==='identifier'&&!locals.has(node.text)&&node.parent?.type!=='call'){
     // Bare Ruby identifiers may be zero-argument calls or local variables.
     // Exclude parameters and assigned locals; remaining bare names are possible calls.
