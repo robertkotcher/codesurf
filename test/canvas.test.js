@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {transformationPlan} from '../transformations.js';
 import {canvasChanges} from '../canvas-model.js';
 import {canvasSelection,validateCanvasSelection,validateChangedSelection} from '../canvas-relations.js';
-import {reviewAffordances} from '../public/canvas-affordances.js';
+import {reviewAffordances,callerDefinitionForBlock} from '../public/canvas-affordances.js';
 import {relationshipSummary} from '../public/canvas-relationships.js';
 import {stateAt} from '../public/transformations.js';
 import {buildCallIndex,initCallParsers} from '../browser/source-index.js';
@@ -49,7 +49,8 @@ const select=(block,line,direction='callees',snapshot='after')=>({path:snapshot=
 test('only explicitly selected changed calls return their direct targets',async()=>{
  const before='function changed() {\n old();\n other();\n}\n',after=before.replace('old();','helper();'),plan=await transformationPlan([{path:'changed.ts',status:'modified',before,after}],{explain:false}),change=canvasChanges(plan,1),block=change.blocks[0],current=snapshot(new Map([['changed.ts',after],['helper.ts','function helper() { return 1; }'],['other.ts','function other() { return 2; }'],['caller.ts','function caller() { changed(); }']]));
  const result=canvasSelection(change,select(block,2),current);assert.deepEqual(result.relations.map(node=>node.symbol),['helper']);assert.equal(result.relations[0].edges[0].anchorLine,2);assert.equal(result.relations[0].edges[0].scope,'change');
- for(const selection of [select(block,1,'callers'),select(block,2,'callers'),select(block,3),select(block,4),{...select(block,2),anchorId:'invented'},{...select(block,2),path:'other.ts'},{...select(block,2),level:-1}])assert.throws(()=>canvasSelection(change,selection,current),{status:400});
+ assert.deepEqual(canvasSelection(change,select(block,1,'callers'),current).relations.map(node=>node.symbol),['caller']);
+ for(const selection of [select(block,2,'callers'),select(block,3),select(block,4),{...select(block,2),anchorId:'invented'},{...select(block,2),path:'other.ts'},{...select(block,2),level:-1}])assert.throws(()=>canvasSelection(change,selection,current),{status:400});
  assert.throws(()=>canvasSelection(change,{...select(block,1),path:'helper.ts',anchorId:result.relations[0].id,level:1},current),{status:400});
 });
 
@@ -62,7 +63,8 @@ test('changed function definitions load callers only when that definition is sel
 test('clear_for_user elsewhere in a changed method cannot appear as a change connection',async()=>{
  await initCallParsers();const before="class PaymentActionsController\n def payment_success\n  unless ['old'].include?(payment_type)\n   reject\n  end\n  finish\n  DashboardCacheService.clear_for_user(user)\n  DashboardCacheService.clear_for_user(current_user)\n end\nend\n",after=before.replace("['old']",'Guard::PAYMENT_TYPES'),plan=await transformationPlan([{path:'controller.rb',status:'modified',before,after}],{explain:false}),change=canvasChanges(plan,1),block=change.blocks[0],current=snapshot(new Map([['controller.rb',after],['cache.rb','class DashboardCacheService\n def self.clear_for_user(user)\n  reset(user)\n end\nend\n']]));
  assert.deepEqual(canvasSelection(change,select(block,3),current).relations,[]);
- for(const line of [2,7,8]){assert.throws(()=>canvasSelection(change,select(block,line),current),{status:400});assert.throws(()=>canvasSelection(change,select(block,line,'callers'),current),{status:400})}
+ assert.deepEqual(canvasSelection(change,select(block,2,'callers'),current).relations,[]);assert.throws(()=>canvasSelection(change,select(block,2),current),{status:400});
+ for(const line of [7,8]){assert.throws(()=>canvasSelection(change,select(block,line),current),{status:400});assert.throws(()=>canvasSelection(change,select(block,line,'callers'),current),{status:400})}
 });
 
 test('removed Ruby definitions retain old source and class-scoped callers',async()=>{
@@ -81,4 +83,15 @@ test('removed runs collapse independently and expansion restores exact text and 
  assert.equal(collapsed.filter(item=>item.removed).length,2);assert.equal(collapsed.some(item=>item.row?.kind==='removed'),false);assert.deepEqual(collapsed.filter(item=>item.removed).map(({from,to,count})=>({from,to,count})),[{from:2,to:3,count:2},{from:5,to:5,count:1}]);
  const first=displayCodeRows(rows,{preview:true,expandedRemoved:new Set([1])});assert.deepEqual(first.filter(item=>item.row?.kind==='removed').map(item=>item.row),rows.slice(1,3));assert.equal(first.find(item=>item.index===5).expanded,false);assert(first.filter(item=>item.row?.kind==='removed').every(item=>item.removedExpanded));
  const all=displayCodeRows(rows,{expandedRemoved:new Set([1,5])});assert.deepEqual(all.filter(item=>item.row).map(item=>item.row),rows);assert.deepEqual(all.filter(item=>item.row).map(item=>item.index),[0,1,2,3,4,5,6]);assert.equal(JSON.stringify(rows),original);
+});
+
+test('Ruby payment_type_supported? is parsed and exposes callers from its unchanged signature',async()=>{
+ await initCallParsers();
+ const rows=['class ConfirmPaymentService',' def confirm(intent)','  payment_type_supported?(intent)',...Array(39).fill('  # surrounding source'),' end','',' def payment_type_supported?(intent)','  PAYMENT_TYPES.include?(intent.metadata&.[]("payment_type"))',' end','',' def belongs_to_document?(intent)','  intent.metadata["customer_document_id"]',' end','end'];
+ assert.equal(rows[44],' def payment_type_supported?(intent)');
+ const before=rows.join('\n')+'\n',after=before.replace('  PAYMENT_TYPES.include?', '  ::OffcycleAchPaymentGuard::OFFCYCLE_PAYMENT_TYPES.include?'),path='confirm_payment_service.rb',plan=await transformationPlan([{path,status:'modified',before,after}],{explain:false}),change=canvasChanges(plan,1),block=change.blocks[0],current=snapshot(new Map([[path,after]])),info=await reviewAffordances(plan,1);
+ const method=current.graph.blocks.find(fn=>fn.start===45);assert.equal(method.symbol,'payment_type_supported?');assert.equal(method.precision,'syntax');assert.equal(method.owner,'ConfirmPaymentService');
+ assert.equal(block.rows.find(row=>row.line===45).kind,'context');assert.equal(callerDefinitionForBlock(block,info.after[path].functions,45,'after').symbol,'payment_type_supported?');assert.equal(callerDefinitionForBlock(block,info.after[path].functions,46,'after'),null);assert.equal(callerDefinitionForBlock(block,info.after[path].functions,49,'after'),null);
+ const callers=canvasSelection(change,select(block,45,'callers'),current);assert.deepEqual(callers.relations.map(node=>node.symbol),['confirm']);assert.equal(callers.relations[0].edges[0].targetLine,45);assert.equal(callers.relations[0].edges[0].callLine,3);
+ assert.throws(()=>canvasSelection(change,select(block,49,'callers'),current),{status:400});assert.throws(()=>canvasSelection(change,select(block,45,'callees'),current),{status:400});
 });

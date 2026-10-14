@@ -11,3 +11,9 @@ export async function reviewAffordances(plan,count){
  }
  return result;
 }
+
+export function callerDefinitionForBlock(block,functions,line,snapshot){
+ if(!block||block.metadata)return null;
+ const before=snapshot==='before';
+ return functions.find(fn=>fn.start===line&&block.rows.some(row=>row.kind===(before?'removed':'added')&&(before?row.old:row.line)>=fn.start&&(before?row.old:row.line)<=fn.end))||null;
+}
