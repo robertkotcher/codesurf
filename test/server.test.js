@@ -248,3 +248,16 @@ test('voice comments are validated drafts and both review outcomes publish all c
   calls.length=0;response=await post('/api/voice/tool',{...target,head:'stale',name:'draft_review',args:{path:null,body:'Concern'}});assert.equal(response.status,409);assert(!calls.some(c=>c.options.method==='POST'));
  }finally{global.fetch=request}
 });
+
+test('repository picker loads only the selected repository with pagination and the user token',async()=>{
+ const calls=[];
+ global.fetch=async(url,options)=>{calls.push({url,options});const query=new URL(url);assert.equal(query.pathname,'/repos/acme/project/pulls');assert.equal(query.searchParams.get('sort'),'updated');assert.equal(query.searchParams.get('state'),'open');assert.equal(query.searchParams.get('per_page'),'30');return Response.json(query.searchParams.get('page')==='1'?Array.from({length:30},(_,i)=>({title:'Change '+i,html_url:`https://github.com/acme/project/pull/${i+1}`,number:i+1,user:{login:'maya'},draft:false})):[])};
+ try{
+  assert.equal((await request(origin+'/api/prs?repo=acme/project')).status,401);
+  for(const repo of ['acme/project?state=closed','acme/../private','acme/..'])assert.equal((await request(origin+'/api/prs?'+new URLSearchParams({repo}),{headers:auth})).status,400);
+  assert.equal((await request(origin+'/api/prs?repo=acme/project&page=-1',{headers:auth})).status,400);assert.equal(calls.length,0);
+  const first=await request(origin+'/api/prs?repo=acme/project',{headers:auth});assert.equal(first.status,200);const data=await first.json();assert.equal(data.items.length,30);assert.equal(data.nextPage,2);assert.equal(data.items[0].repo,'acme/project');
+  const last=await request(origin+'/api/prs?repo=acme/project&page=2',{headers:auth});assert.deepEqual(await last.json(),{items:[],nextPage:null});assert(calls.every(call=>call.options.headers.Authorization==='Bearer test-user-token'));
+  global.fetch=async()=>Response.json({message:'Not Found'},{status:404});assert.notEqual((await request(origin+'/api/prs?repo=private/blocked',{headers:auth})).status,200);
+ }finally{global.fetch=request}
+});

@@ -83,6 +83,12 @@ app.post('/api/saved-prs/refresh',wrap(async(req,res)=>{
  res.json({items});
 }));
 app.get('/api/prs',wrap(async(req,res)=>{
+  if(req.query.repo!==undefined){
+    const repo=req.query.repo,page=Number(req.query.page||1);
+    if(typeof repo!=='string'||!/^[-\w]+\/(?!\.{1,2}$)[.\w-]+$/.test(repo)||!Number.isInteger(page)||page<1||page>1000)return res.status(400).json({error:'Invalid repository or page.'});
+    const batch=await github(req.auth.token,`/repos/${repo}/pulls?state=open&sort=updated&direction=desc&per_page=30&page=${page}`);
+    return res.json({items:batch.map(pr=>({title:pr.title,url:pr.html_url,number:pr.number,repo,updated:pr.updated_at,author:pr.user?.login,draft:pr.draft})),nextPage:batch.length===30?page+1:null});
+  }
   if(req.query.relation==='all'||req.query.relation==='assigned'){
     const assigned=req.query.relation==='assigned',older=req.query.older==='1';
     const cutoff=Date.parse(req.query.since||new Date(Date.now()-14*864e5).toISOString());
