@@ -9,7 +9,7 @@ function codeRows(path,rows,before=false,id='',expandedRemoved=new Set()){const 
 export function createReviewCanvas({viewport,stage,world,fileURL=()=>null,onExpand=()=>{},onChat=()=>{},onExcerpt=()=>{},commentActions={},onLayout=()=>{}}){
  world.classList.add('no-wrap');
  let change=null,context={relations:[]},zoom=1,edges=[],drag=null,affordances={},hovered=null,lastHovered=null,centeredScroll=0,sourceRanges={};
- const removedExpanded=new Map();
+ const removedExpanded=new Map(),expandedThreads=new Set();
  function codeBlock(id,path,original,before=false,metadata=sourceRanges[id]){
   const extra=context.excerpts?.[id],coordinate=row=>before?row.old:row.line,numbers=original.map(coordinate).filter(Number.isInteger),from=Math.min(...numbers),to=Math.max(...numbers),added=extra?.rows||[],rows=[...added.filter(row=>coordinate(row)<from),...original,...added.filter(row=>coordinate(row)>to)];
   const range=metadata?{...metadata,...extra?{start:Math.min(metadata.start,extra.start),end:Math.max(metadata.end,extra.end)}:{} }:null,loading=!!context.excerptLoading?.[id];
@@ -48,7 +48,7 @@ export function createReviewCanvas({viewport,stage,world,fileURL=()=>null,onExpa
   world.style.gridTemplateColumns=slots.map(slot=>widthOf(slot)+'px').join(' ');world.style.width=(760+side*2)+'px';world.style.minHeight='';
   world.innerHTML=`<svg class="canvas-links" aria-hidden="true"></svg>${slots.map(level=>`<section class="canvas-column ${level===0?'changed-column':level<0?'callers-column':'callees-column'}" data-level="${level}">${level===0?central():''}${context.relations.filter(node=>levelOf(node)===level).map(related).join('')}${requests.filter(request=>requestLevel(request)===level&&(request.status!=='done'||!request.total||request.nextPage!=null)).map(requestCard).join('')}</section>`).join('')}<button class="connection-plus primary" data-expand-connection="callers" hidden>${icon('plus')}</button><button class="connection-plus primary" data-expand-connection="callees" hidden>${icon('plus')}</button><button class="connection-plus connection-chat" data-chat-line hidden aria-label="Ask AI or leave a comment" title="Ask AI or leave a comment" aria-haspopup="menu" aria-expanded="false">${icon('chat')}</button>`;
   world.querySelectorAll('[data-source-block]').forEach(el=>{const prior=scroll.get(el.dataset.sourceBlock);if(prior){el.querySelector('.code-rows').scrollTop=prior.top;el.querySelector('.code-rows').scrollLeft=prior.left}});
-  markFunctions();renderCanvasComments({world,threads:context.threads,drafts:context.commentDrafts,user:context.commentUser,sourceForRow:rowSource,...commentActions});
+  markFunctions();renderCanvasComments({world,threads:context.threads,drafts:context.commentDrafts,user:context.commentUser,sourceForRow:rowSource,...commentActions,expandedThreads,onToggle:()=>{hideHover();resize()}});
   if(editing){const input=[...world.querySelectorAll('[data-comment-input]')].find(input=>input.dataset.commentInput===editing.key);if(input){input.focus({preventScroll:true});input.setSelectionRange(editing.start,editing.end)}}
   edges=context.relations.flatMap(node=>node.edges.map(edge=>({...edge,sourceSide:node.snapshot==='Before this change'?'before':'after',nodeId:node.id,direction:node.direction,ambiguous:node.ambiguous||node.precision==='heuristic'})));
   references();requestAnimationFrame(()=>{resize();if(reset)fit();else draw()});
