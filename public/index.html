@@ -4,20 +4,20 @@
 <body>
 <header class="canvas-header">
  <a class="brand" href="/" aria-label="CodeSurf home"><svg aria-hidden="true" viewBox="0 0 32 32" fill="none"><path d="M5 12C12 5 20 19 27 12M5 21C12 14 20 28 27 21" stroke="currentColor" stroke-width="4" stroke-linecap="round"/></svg><span>CodeSurf<span class="brand-io">.io</span></span></a>
+ <button id="toggleOutline" class="icon-button" aria-label="Hide change list" title="Hide change list" aria-expanded="true" aria-controls="reviewOutline" hidden></button>
  <form id="openForm" hidden><input id="url" type="url" aria-label="GitHub pull request URL" placeholder="Paste a GitHub pull request link…" required><button type="submit" class="primary" id="openPR">Open PR</button></form>
  <div class="header-tools"><button class="icon-button" id="savePR" aria-label="Save pull request" title="Save pull request" aria-pressed="false" disabled hidden></button><div class="account"><button id="accountButton" class="icon-button" aria-label="Account menu" aria-expanded="false" aria-controls="accountMenu"></button><div id="accountMenu" class="account-menu" hidden><small id="identity"></small><button id="myPulls">My pull requests</button><button id="savedPulls">Saved pull requests</button><button id="settingsButton">Settings</button><button id="completeReview" disabled>Complete review</button><a id="signInLink" href="/auth/github">Sign in with GitHub</a><button id="signOut" hidden>Sign out</button></div></div></div>
 </header>
 <div id="reviewSurface" class="review-surface" aria-busy="false">
-<section id="reviewSubheader" class="review-subheader" aria-label="Review change navigation" hidden>
- <button id="toggleOutline" class="icon-button" aria-label="Hide change list" title="Hide change list" aria-expanded="true" aria-controls="reviewOutline"></button>
- <div class="step-heading"><span id="stepCounter"></span><h1 id="stepTitle"></h1></div>
- <nav class="step-navigation" aria-label="Review navigation"><button id="previous" disabled>Previous</button><button id="next" class="primary" disabled>Next</button></nav>
-</section>
 <div id="canvasShell" class="canvas-shell">
  <aside id="reviewOutline" class="review-outline" aria-labelledby="outlineTitle" hidden>
-  <div class="outline-pr" id="prHeading" hidden><span id="repo"></span><b id="prTitle"></b></div>
+  <div class="outline-pr" id="prHeading" hidden><div class="outline-pr-meta"><span id="repo"></span><span id="prNumber" class="outline-pr-number"></span></div><h1 id="prTitle"></h1></div>
   <header><h2 id="outlineTitle">Changes</h2><span id="outlineCount"></span></header>
-  <nav aria-label="Changes in this pull request"><ol id="outlineList"></ol></nav>
+  <nav class="outline-changes" aria-label="Changes in this pull request"><ol id="outlineList"></ol></nav>
+  <footer id="reviewSubheader" class="outline-footer" aria-label="Review change navigation" hidden>
+   <div class="step-heading"><span id="stepCounter"></span><h2 id="stepTitle"></h2></div>
+   <nav class="step-navigation" aria-label="Review navigation"><button id="previous" disabled>Previous</button><button id="next" class="primary" disabled>Next</button></nav>
+  </footer>
  </aside>
  <div id="canvasControls" class="canvas-controls" role="toolbar" aria-label="Canvas controls" hidden><button class="icon-button" id="zoomOut" aria-label="Zoom out" title="Zoom out"></button><button class="icon-button" id="zoomIn" aria-label="Zoom in" title="Zoom in"></button><span class="canvas-controls-divider" aria-hidden="true"></span><button class="icon-button" id="fitCanvas" aria-label="Fit canvas" title="Fit canvas"></button><button class="icon-button" id="wrapCode" aria-label="Wrap code lines" title="Wrap code lines" aria-pressed="false"></button></div>
  <main id="canvas" class="review-canvas" aria-label="Pull request change canvas"><div id="canvasState" class="canvas-state"><h1>A better way to review pull requests</h1><button id="selectRepository" class="primary">Select repository</button></div><div id="canvasStage" class="canvas-stage" hidden><div id="canvasWorld" class="canvas-world"></div></div></main>

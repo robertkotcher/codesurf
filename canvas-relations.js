@@ -1,6 +1,8 @@
 import {canvasConnectionKey} from './public/canvas-preload.js';
 export {canvasConnectionKey} from './public/canvas-preload.js';
 import {indexedCalls,resolvedCallSites} from './browser/source-index.js';
+import {variableBindings} from './browser/variable-index.js';
+import {mergeVariableBindings} from './public/variable-data.js';
 export function validateCanvasSelection(selection){
  if(!selection||!['callers','callees'].includes(selection.direction)||!['before','after'].includes(selection.snapshot)||typeof selection.path!=='string'||selection.path.length>500||selection.path.split('/').some(part=>!part||part==='.'||part==='..')||/[\x00-\x1f\\]/.test(selection.path)||!Number.isInteger(selection.line)||selection.line<1||typeof selection.anchorId!=='string'||!selection.anchorId||selection.anchorId.length>1000||!Number.isInteger(selection.level)||Math.abs(selection.level)>8)throw Object.assign(new Error('Choose a code line and a connection direction.'),{status:400});
  if(selection.column!==undefined&&(!Number.isInteger(selection.column)||selection.column<0||selection.column>200000))throw Object.assign(new Error('Invalid function selection.'),{status:400});
@@ -30,7 +32,8 @@ export function canvasSourceAffordances(source,path,start,end){
   const result=indexedCalls(source.graph,{path,line:call.line,column:call.column,direction:'callees'});
   if(result.blocks.some(target=>precise(target,source.graph,path,call.line,'callees')))tokens.push({line:call.line,column:call.column,endColumn:call.endColumn,symbol:call.symbol});
  }
- const result={path,functions,calls:[...new Set(tokens.map(token=>token.line))],tokens};cache.set(key,result);return result;
+ const variables=variableBindings(source.index.files,path,{owners:source.graph.owners}).map(binding=>({...binding,occurrences:binding.occurrences.filter(token=>token.line>=start&&token.line<=end)})).filter(binding=>binding.occurrences.length);
+ const result={path,functions,calls:[...new Set(tokens.map(token=>token.line))],tokens,variables};cache.set(key,result);return result;
 }
 export function canvasExcerpt(change,selection,range,direction,current,previous=null){
  if(!range||!Number.isInteger(range.start)||!Number.isInteger(range.end)||range.start<1||range.end<range.start||!['up','down'].includes(direction))throw Object.assign(new Error('Choose a valid source range and expansion direction.'),{status:400});
@@ -84,7 +87,7 @@ export function prepareCanvasConnections(change,current,previous=null){
    const start=Math.min(...numbers),end=Math.max(...numbers),info=canvasSourceAffordances(source,path,start,end),lines=new Set(numbers);
    const selections=[...info.functions.filter(fn=>lines.has(fn.start)).map(fn=>({line:fn.start,direction:'callers',symbol:fn.symbol})),...info.calls.filter(line=>lines.has(line)).map(line=>({line,direction:'callees'})),...info.tokens.filter(token=>lines.has(token.line)).map(token=>({line:token.line,column:token.column,symbol:token.symbol,direction:'callees'}))];
    for(const item of selections){const selection={path,snapshot,anchorId:block.id,level:0,...item},result=canvasSelection(change,selection,current,previous);connections.set(canvasConnectionKey(selection),{selection,result})}
-   const prior=affordances[snapshot][block.key];affordances[snapshot][block.key]={...info,calls:[...new Set([...(prior?.calls||[]),...info.calls])],tokens:[...new Map([...(prior?.tokens||[]),...info.tokens].map(token=>[token.line+':'+token.column,token])).values()]};
+   const prior=affordances[snapshot][block.key];affordances[snapshot][block.key]={...info,calls:[...new Set([...(prior?.calls||[]),...info.calls])],tokens:[...new Map([...(prior?.tokens||[]),...info.tokens].map(token=>[token.line+':'+token.column,token])).values()],variables:mergeVariableBindings(prior?.variables,info.variables)};
    if(snapshot===(block.deleted?'before':'after'))excerpts[block.id]={path,snapshot,anchorId:block.id,level:0,start,end,totalLines:source.index.files.get(path).split('\n').length};
   }
  }

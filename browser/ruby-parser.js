@@ -13,6 +13,10 @@ export function initCallParsers(){
   }
  })().catch(error=>{ready=null;throw error});return ready;
 }
+export function withRubySyntaxTree(text,visit){
+ if(!parser)throw new Error('Ruby parser is not ready.');
+ const tree=parser.parse(text);try{return visit(tree.rootNode)}finally{tree.delete()}
+}
 export function rubyIndex(path,text){
  if(!parser)throw new Error('Ruby parser is not ready.');
  const tree=parser.parse(text),blocks=[],calls=[],owners=[];

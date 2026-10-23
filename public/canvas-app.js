@@ -1,4 +1,5 @@
 import {reviewOutline} from './review-outline.js';
+import {mergeVariableBindings} from './variable-data.js';
 import {createReviewLoading} from './review-loading.js';
 import {commentDraftKey,mergeCommentThreads} from './canvas-comments.js';
 import {reviewFileURL} from './files-route.js';
@@ -20,14 +21,16 @@ const commentReads=new Map(),stepContexts=new Map(),preparedContexts=new Map(),p
 async function api(path,options={}){const response=await fetch(path,options);const body=await response.json().catch(()=>({}));if(!response.ok)throw Object.assign(new Error(body.error||'The request could not be completed.'),{status:response.status});return body}
 let toastTimer;function toast(message){clearTimeout(toastTimer);$('toast').textContent=message;$('toast').hidden=false;toastTimer=setTimeout(()=>$('toast').hidden=true,5000)}
 function reviewMode(enabled){document.body.classList.toggle('reviewing',enabled);$('openForm').hidden=enabled}
-function showState(title,message='',loading=false,retry=null){$('reviewOutline').hidden=true;$('reviewSubheader').hidden=true;$('canvasControls').hidden=true;$('canvasStage').hidden=true;$('canvasState').hidden=false;$('canvasState').innerHTML=`${loading?'<span class="spinner" aria-hidden="true"></span>':'<div class="welcome-mark" aria-hidden="true">≈</div>'}<h1>${esc(title)}</h1><p role="status">${esc(message)}</p>${retry?'<button id="retryLoad" class="primary">Try again</button>':''}`;if(retry)$('retryLoad').onclick=retry}
+function showState(title,message='',loading=false,retry=null){$('reviewOutline').hidden=true;$('reviewSubheader').hidden=true;$('toggleOutline').hidden=true;$('canvasControls').hidden=true;$('canvasStage').hidden=true;$('canvasState').hidden=false;$('canvasState').innerHTML=`${loading?'<span class="spinner" aria-hidden="true"></span>':'<div class="welcome-mark" aria-hidden="true">≈</div>'}<h1>${esc(title)}</h1><p role="status">${esc(message)}</p>${retry?'<button id="retryLoad" class="primary">Try again</button>':''}`;if(retry)$('retryLoad').onclick=retry}
 function offerSignIn(){const link=document.createElement('a');link.href='/auth/github';link.className='github-sign';link.innerHTML='<img src="/github-mark.svg" width="18" height="18" alt="">Continue with GitHub';$('canvasState').append(link)}
 function route(url){return '/github'+new URL(url).pathname}
 function directPR(){const match=location.pathname.match(/^\/github(\/[^/]+\/[^/]+\/pull\/[1-9]\d*\/?)$/);return match?'https://github.com'+match[1]:null}
 function controls(){renderOutline();const ready=!!plan&&count<plan.steps.length;$('previous').disabled=loading.busy()||moving||count<=1;$('next').disabled=loading.busy()||moving||!plan||!ready&&done&&!nextError;$('next').textContent=nextError?'Retry':!ready&&pending?'Preparing…':'Next';$('next').title=done&&!ready?'All available changes reviewed':nextError||'Next logical change';$('savePR').disabled=!pr||!user||saveBusy;$('savePR').hidden=!pr;$('completeReview').disabled=loading.busy()||!pr;if(plan&&count>0){$('stepCounter').textContent=done?`Change ${count} of ${plan.steps.length}`:`Change ${count}`;$('stepTitle').textContent=plan.steps[count-1].title;$('stepTitle').title=plan.steps[count-1].title}}
 function renderOutline(){
  const visible=!!plan&&count>0&&!$('canvasStage').hidden,items=reviewOutline(plan,count),list=$('outlineList');
- $('reviewOutline').hidden=!visible||!outlineOpen;$('toggleOutline').innerHTML=icon(outlineOpen?'collapse':'expand');$('toggleOutline').setAttribute('aria-expanded',String(outlineOpen));$('toggleOutline').setAttribute('aria-label',outlineOpen?'Hide change list':'Show change list');$('toggleOutline').title=outlineOpen?'Hide change list':'Show change list';
+ $('reviewOutline').hidden=!visible||!outlineOpen;$('reviewSubheader').hidden=!visible;$('toggleOutline').hidden=!visible;
+ const footer=$('reviewSubheader'),host=outlineOpen?$('reviewOutline'):$('canvasShell');if(footer.parentElement!==host)host.append(footer);footer.classList.toggle('outline-footer-floating',!outlineOpen);
+ $('toggleOutline').innerHTML=icon(outlineOpen?'collapse':'expand');$('toggleOutline').setAttribute('aria-expanded',String(outlineOpen));$('toggleOutline').setAttribute('aria-label',outlineOpen?'Hide change list':'Show change list');$('toggleOutline').title=outlineOpen?'Hide change list':'Show change list';
  $('outlineCount').textContent=items.length?String(items.length):'';
  // Keep focused outline buttons intact as background preparation finishes.
  const html=items.map(item=>`<li class="${item.active?'active':item.reviewed?'reviewed':''}">${item.step?`<button type="button" data-outline-step="${item.step}" ${item.active?'aria-current="step"':''} ${moving||loading.busy()?'disabled':''}>`:'<div class="outline-upcoming">'}<span class="outline-number" aria-hidden="true">${item.number}.</span><span class="outline-description">${esc(item.title)}</span>${item.step?'</button>':'</div>'}</li>`).join('');if(outlineMarkup!==html){list.innerHTML=html;outlineMarkup=html}
@@ -41,7 +44,7 @@ async function openPR(url,navigate=true){
  const tasks=loadingTasks('waiting');tasks[0].status='loading';const ticket=loading.begin(tasks);
  try{
   pr=await api('/api/pr?'+new URLSearchParams({url}),{signal});if(g!==generation)return;loading.update(ticket,'pull','done');loading.update(ticket,'changes','loading');
-  $('url').value=pr.url;$('repo').textContent=pr.repo;$('prTitle').textContent=pr.title+' #'+pr.number;$('prTitle').title=pr.title;$('prHeading').hidden=false;if(navigate&&location.pathname!==route(pr.url))history.pushState({},'',route(pr.url));savedState();controls();
+  $('url').value=pr.url;$('repo').textContent=pr.repo;$('prTitle').textContent=pr.title;$('prNumber').textContent='#'+pr.number;$('prTitle').title=pr.title;$('prHeading').hidden=false;if(navigate&&location.pathname!==route(pr.url))history.pushState({},'',route(pr.url));savedState();controls();
   const result=await api('/api/reviews',{...post({url:pr.url,head:pr.head,pace:'moderate'}),signal});if(g!==generation)return;
   session=result.id;plan=result.plan;count=result.cursor;done=result.done;
   if(!plan.operations.length){loading.clear();showState('No reviewable changes.','This PR has no available text changes to break apart.');controls();return}
@@ -123,7 +126,7 @@ async function expandExcerpt({selection,range,direction}){
  try{
   const data=await api('/api/reviews/'+session+'/canvas/excerpt',{...post({url:pr.url,head:pr.head,step,selection,range,direction}),signal:abort.signal});if(g!==generation)return;
   state.excerpts||={};const prior=state.excerpts[id],a=prior?.affordances,b=data.affordances;
-  state.excerpts[id]={...data,rows:[...new Map([...(prior?.rows||[]),...data.rows].map(row=>[(selection.snapshot==='before'?row.old:row.line),row])).values()].sort((a,b)=>(selection.snapshot==='before'?a.old-b.old:a.line-b.line)),affordances:{...b,calls:[...new Set([...(a?.calls||[]),...b.calls])],tokens:[...new Map([...(a?.tokens||[]),...b.tokens].map(token=>[token.line+':'+token.column,token])).values()]}};
+  state.excerpts[id]={...data,rows:[...new Map([...(prior?.rows||[]),...data.rows].map(row=>[(selection.snapshot==='before'?row.old:row.line),row])).values()].sort((a,b)=>(selection.snapshot==='before'?a.old-b.old:a.line-b.line)),affordances:{...b,variables:mergeVariableBindings(a?.variables,b.variables),calls:[...new Set([...(a?.calls||[]),...b.calls])],tokens:[...new Map([...(a?.tokens||[]),...b.tokens].map(token=>[token.line+':'+token.column,token])).values()]}};
  }catch(error){if(g!==generation||error.name==='AbortError')return;state.excerptErrors[id]=error.message}
  finally{state.excerptLoading[id]=false;if(g===generation&&step===count){graph.context(state);graph.reveal(id,direction)}}
 }
