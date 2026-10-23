@@ -6,7 +6,7 @@ export function shortChangeTitle(value){
 }
 export function reviewOutline(plan,count=0){
  if(!plan)return [];
- const steps=plan.steps||[],story=(plan.story||[]).filter(chapter=>Array.isArray(chapter.ids)&&chapter.ids.length),covered=new Set(story.flatMap(chapter=>chapter.ids)),groups=story.length?[...steps.filter(step=>!step.ids.some(id=>covered.has(id))),...story]:steps;
+ const steps=plan.steps||[],story=(plan.story||[]).filter(chapter=>Array.isArray(chapter.ids)&&chapter.ids.length),covered=new Set(story.flatMap(chapter=>chapter.ids)),prepared=new Set(steps.flatMap(step=>step.ids)),complete=Array.isArray(plan.operations)&&plan.operations.every(op=>prepared.has(op.id)),groups=complete?steps:story.length?[...steps.filter(step=>!step.ids.some(id=>covered.has(id))),...story]:steps;
  const reviewed=new Set(steps.slice(0,count).flatMap(step=>step.ids)),activeID=steps[count-1]?.ids[0];
  return groups.map((group,index)=>({number:index+1,title:shortChangeTitle(group.shortTitle||group.title),active:!!activeID&&group.ids.includes(activeID),reviewed:group.ids.every(id=>reviewed.has(id)),step:steps.findIndex(step=>step.ids.some(id=>group.ids.includes(id)))+1}));
 }

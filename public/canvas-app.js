@@ -1,4 +1,5 @@
 import {reviewOutline} from './review-outline.js';
+import {reviewLocation,reviewChangeURL} from './review-url.js';
 import {createSidebarResizer} from './resize-sidebar.js';
 import {mergeVariableBindings} from './variable-data.js';
 import {createReviewLoading} from './review-loading.js';
@@ -21,13 +22,22 @@ const loadingTasks=(changes='done')=>[{id:'pull',label:'Pull request',status:'do
 const graph=createReviewCanvas({viewport:$('canvas'),stage:$('canvasStage'),world:$('canvasWorld'),fileURL:path=>pr?reviewFileURL(pr,path):null,onExpand:confirmExpansion,onChat:openCanvasChat,onExcerpt:expandExcerpt,commentActions:{onOpen:openLineComment,onEdit:editLineComment,onPost:postLineComment,onCancel:cancelLineComment,onReply:replyToComment},onLayout:()=>chats?.layout()});
 chats=createCanvasChats({viewport:$('canvas'),stage:$('canvasStage'),geometry:graph.geometry,request:streamCanvasChat});
 const commentReads=new Map(),stepContexts=new Map(),preparedContexts=new Map(),preloadTasks=new Map();let pendingSelection=null;
-async function api(path,options={}){const response=await fetch(path,options);const body=await response.json().catch(()=>({}));if(!response.ok)throw Object.assign(new Error(body.error||'The request could not be completed.'),{status:response.status});return body}
+async function api(path,options={}){const response=await fetch(path,options);const body=await response.json().catch(()=>({}));if(!response.ok)throw Object.assign(new Error(body.error||'The request could not be completed.'),{status:response.status,code:body.code});return body}
 let toastTimer;function toast(message){clearTimeout(toastTimer);$('toast').textContent=message;$('toast').hidden=false;toastTimer=setTimeout(()=>$('toast').hidden=true,5000)}
 function reviewMode(enabled){document.body.classList.toggle('reviewing',enabled);$('openForm').hidden=enabled}
 function showState(title,message='',loading=false,retry=null){$('reviewOutline').hidden=true;$('reviewSubheader').hidden=true;$('canvasControls').hidden=true;$('canvasStage').hidden=true;$('canvasState').hidden=false;$('canvasState').innerHTML=`${loading?'<span class="spinner" aria-hidden="true"></span>':'<div class="welcome-mark" aria-hidden="true">≈</div>'}<h1>${esc(title)}</h1><p role="status">${esc(message)}</p>${retry?'<button id="retryLoad" class="primary">Try again</button>':''}`;if(retry)$('retryLoad').onclick=retry}
 function offerSignIn(){const link=document.createElement('a');link.href='/auth/github';link.className='github-sign';link.innerHTML='<img src="/github-mark.svg" width="18" height="18" alt="">Continue with GitHub';$('canvasState').append(link)}
 function route(url){return '/github'+new URL(url).pathname}
+function rememberReview(url,position){try{sessionStorage.setItem('codesurf-pending-pr',url);sessionStorage.setItem('codesurf-pending-review-position',JSON.stringify({url,...position}))}catch{}}
 function directPR(){const match=location.pathname.match(/^\/github(\/[^/]+\/[^/]+\/pull\/[1-9]\d*\/?)$/);return match?'https://github.com'+match[1]:null}
+function syncReviewURL(mode='push'){
+ const url=reviewChangeURL(pr.url,count,pr.head,plan.base);if(location.pathname+location.search!==url)history[mode==='replace'?'replaceState':'pushState']({},'',url);
+}
+function showRevisionChanged(message){
+ const url=pr?.url||directPR();abort.abort();++generation;pending=null;moving=false;plan=null;session=null;count=0;loading.clear();chats.clear();$('connectionDialog').close();$('emptyConnectionDialog').close();
+ showState('This pull request has changed.',message||'New commits are available. Load the updated pull request to prepare its changes.');
+ const button=document.createElement('button');button.className='primary';button.textContent='Load updated changes';button.onclick=()=>openPR(url);$('canvasState').append(button);controls();
+}
 function controls(){renderOutline();const ready=!!plan&&count<plan.steps.length;$('previous').disabled=loading.busy()||moving||count<=1;$('next').disabled=loading.busy()||moving||!plan||!ready&&done&&!nextError;$('next').textContent=nextError?'Retry':!ready&&pending?'Preparing…':'Next';$('next').title=done&&!ready?'All available changes reviewed':nextError||'Next logical change';$('savePR').disabled=!pr||!user||saveBusy;$('savePR').hidden=!pr;$('completeReview').disabled=loading.busy()||!pr;if(plan&&count>0){$('stepCounter').textContent=done?`Change ${count} of ${plan.steps.length}`:`Change ${count}`}}
 function renderOutline(){
  const visible=!!plan&&count>0&&!$('canvasStage').hidden,items=reviewOutline(plan,count),list=$('outlineList');
@@ -38,32 +48,34 @@ function renderOutline(){
 }
 $('outlineList').onclick=event=>{const button=event.target.closest('[data-outline-step]');if(button)navigateChange(Number(button.dataset.outlineStep))};
 function savedState(){const exists=pr&&saved.some(item=>item.url.toLowerCase()===pr.url.toLowerCase());$('savePR').innerHTML=icon(exists?'saved':'bookmark');$('savePR').setAttribute('aria-pressed',String(!!exists));$('savePR').title=exists?'Remove saved pull request':'Save pull request';$('savePR').setAttribute('aria-label',$('savePR').title)}
-async function openPR(url,navigate=true){
+async function openPR(url,navigate=true,position={change:1}){
  reviewMode(true);loading.clear();
  abort.abort();abort=new AbortController();const signal=abort.signal,g=++generation;pr=null;session=null;plan=null;count=0;pending=null;moving=false;done=false;nextError='';commentReads.clear();stepContexts.clear();preparedContexts.clear();preloadTasks.clear();chats.clear();pendingSelection=null;$('connectionDialog').close();$('emptyConnectionDialog').close();$('reviewDialog').close();$('reviewBody').value='';$('postedReview').hidden=true;controls();$('prHeading').hidden=true;showState('Breaking this change into logical chunks…','Fetching the pull request and finding connected changes.',true);
  const tasks=loadingTasks('waiting');tasks[0].status='loading';const ticket=loading.begin(tasks);
  try{
-  pr=await api('/api/pr?'+new URLSearchParams({url}),{signal});if(g!==generation)return;loading.update(ticket,'pull','done');loading.update(ticket,'changes','loading');
-  $('url').value=pr.url;$('repo').textContent=pr.repo;$('prTitle').textContent=pr.title;$('prNumber').textContent='#'+pr.number;$('prTitle').title=pr.title;$('prHeading').hidden=false;if(navigate&&location.pathname!==route(pr.url))history.pushState({},'',route(pr.url));savedState();controls();
-  const result=await api('/api/reviews',{...post({url:pr.url,head:pr.head,pace:'moderate'}),signal});if(g!==generation)return;
-  session=result.id;plan=result.plan;count=result.cursor;done=result.done;
+  pr=await api('/api/pr?'+new URLSearchParams({url}),{signal});if(g!==generation)return;if(position.head&&position.head!==pr.head){showRevisionChanged('New commits are available. Load the updated pull request to prepare its changes.');return}loading.update(ticket,'pull','done');loading.update(ticket,'changes','loading');
+  $('url').value=pr.url;$('repo').textContent=pr.repo;$('prTitle').textContent=pr.title;$('prNumber').textContent='#'+pr.number;$('prTitle').title=pr.title;$('prHeading').hidden=false;if(navigate&&location.pathname+location.search!==route(pr.url))history.pushState({},'',route(pr.url));savedState();controls();
+  const result=await api('/api/reviews',{...post({url:pr.url,head:pr.head,pace:'moderate',...position.base?{base:position.base}:{}}),signal});if(g!==generation)return;
+  session=result.id;plan=result.plan;count=0;done=result.done;
   if(!plan.operations.length){loading.clear();showState('No reviewable changes.','This PR has no available text changes to break apart.');controls();return}
-  if(count>0)await showChange(ticket);else{preloadConnections(0).catch(()=>{});await prepareNext();if(g===generation&&plan.steps.length)await advance(1)}
- }catch(error){if(g!==generation||error.name==='AbortError')return;loading.clear();showState('This pull request could not be opened.',error.message,false,()=>openPR(url,false));if(error.status===401){try{sessionStorage.setItem('codesurf-pending-pr',url)}catch{}offerSignIn()}if(error.status===404){const button=document.createElement('button');button.textContent='Check repository connections';button.onclick=openSettings;$('canvasState').append(button)}controls()}
+  if(!plan.steps.length&&!done)await prepareNext();if(g!==generation)return;
+  if(position.change>plan.steps.length){loading.clear();showState('This change is unavailable.',`This review has ${plan.steps.length} changes.`);const button=document.createElement('button');button.className='primary';button.textContent='Go to the first change';button.onclick=()=>openPR(pr.url);$('canvasState').append(button);return}
+  await navigateChange(position.change,{historyMode:'replace',ticket});
+ }catch(error){if(g!==generation||error.name==='AbortError')return;if(error.code==='PR_REVISION_CHANGED'){showRevisionChanged(error.message);return}loading.clear();showState('This pull request could not be opened.',error.message,false,()=>openPR(url,false,position));if(error.status===401){rememberReview(url,position);offerSignIn()}if(error.status===404){const button=document.createElement('button');button.textContent='Check repository connections';button.onclick=openSettings;$('canvasState').append(button)}controls()}
 }
 async function prepareNext(){
  if(!plan)return;if(plan.steps.length>count){preloadConnections(count+1).catch(()=>{});return}if(done)return;if(pending)return pending;
  const g=generation,id=session,index=plan.steps.length;nextError='';
- const work=(async()=>{try{const result=await api('/api/reviews/'+id+'/next',{...post({index}),signal:abort.signal});if(g!==generation)return;if(Array.isArray(result.story))plan.story=result.story;if(result.step&&!plan.steps[index])plan.steps.push(result.step);if(result.step)preloadConnections(index+1).catch(()=>{});done=result.done}catch(error){if(g!==generation||error.name==='AbortError')return;nextError=error.message;toast(error.message);if(!count){loading.clear();showState('This change could not be prepared.',error.message,false,()=>openPR(pr.url,false))}}finally{if(g===generation){pending=null;controls()}}})();
+ const work=(async()=>{try{const result=await api('/api/reviews/'+id+'/next',{...post({index}),signal:abort.signal});if(g!==generation)return;if(Array.isArray(result.story))plan.story=result.story;if(result.step&&!plan.steps[index])plan.steps.push(result.step);if(result.step)preloadConnections(index+1).catch(()=>{});done=result.done}catch(error){if(g!==generation||error.name==='AbortError')return;if(error.code==='PR_REVISION_CHANGED'){showRevisionChanged(error.message);return}nextError=error.message;toast(error.message);if(!count){loading.clear();showState('This change could not be prepared.',error.message,false,()=>openPR(pr.url,false))}}finally{if(g===generation){pending=null;controls()}}})();
  pending=work;controls();return work;
 }
 async function advance(delta){return navigateChange(count+delta)}
-async function navigateChange(target){
- if(!plan||moving||loading.busy()&&count>0||!Number.isInteger(target)||target<1||target===count||target>plan.steps.length+1)return;const g=generation;moving=true;const ticket=loading.begin(loadingTasks('loading'));controls();
+async function navigateChange(target,{historyMode='push',ticket:initialTicket}={}){
+ if(!plan||moving||loading.busy()&&count>0||!Number.isInteger(target)||target<1||target===count||target>plan.steps.length+1)return;const g=generation;moving=true;const ticket=initialTicket||loading.begin(loadingTasks('loading'));controls();
  try{
   if(target>plan.steps.length){if(done){loading.clear();return}await prepareNext();if(g!==generation)return;if(target>plan.steps.length){loading.clear();return}}
-  if(target>count)await api('/api/reviews/'+session+'/progress',{...post({cursor:target}),signal:abort.signal});if(g!==generation)return;count=target;await showChange(ticket);
- }catch(error){if(g===generation&&error.name!=='AbortError'){loading.update(ticket,'changes','error');loading.fail(ticket,error.message,()=>{loading.clear();navigateChange(target)})}}finally{if(g===generation){moving=false;controls()}}
+  if(target>count)await api('/api/reviews/'+session+'/progress',{...post({cursor:target}),signal:abort.signal});if(g!==generation)return;count=target;if(historyMode!=='none')syncReviewURL(historyMode);await showChange(ticket);
+ }catch(error){if(g===generation&&error.name!=='AbortError'){if(error.code==='PR_REVISION_CHANGED'){showRevisionChanged(error.message);return}loading.update(ticket,'changes','error');loading.fail(ticket,error.message,()=>{loading.clear();navigateChange(target)})}}finally{if(g===generation){moving=false;controls()}}
 }
 function preloadConnections(step){
  if(preparedContexts.has(step))return Promise.resolve(preparedContexts.get(step));
@@ -83,6 +95,7 @@ async function readyChange(ticket){
  const results=await Promise.allSettled([run('comments',()=>loadLineComments(c)),run('connections',()=>preloadConnections(c))]);
  if(g!==generation||c!==count)return;
  const failed=results.find(result=>result.status==='rejected');
+ if(failed?.reason.code==='PR_REVISION_CHANGED'){showRevisionChanged(failed.reason.message);return}
  if(failed){loading.fail(ticket,failed.reason.message,()=>{const retry=loading.begin(loadingTasks());readyChange(retry)});controls();return}
  // Include the DOM updates and layout in readiness, not just the HTTP responses.
  await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
@@ -200,6 +213,6 @@ $('libraryList').onclick=async event=>{const remove=event.target.closest('[data-
 $('completeReview').onclick=()=>{if(!pr)return;$('reviewTarget').textContent=pr.repo+' #'+pr.number;$('reviewError').textContent='';$('postedReview').hidden=true;$('publishReview').disabled=false;openDialog('reviewDialog')};
 $('publishReview').onclick=async()=>{if(!pr)return;const current=pr,button=$('publishReview');if(button.disabled)return;button.disabled=true;try{const result=await api('/api/review',post({url:current.url,head:current.head,body:$('reviewBody').value,event:$('reviewEvent').value,comments:[]}));if(pr!==current)return;$('postedReview').href=result.url;$('postedReview').hidden=false;toast('Review published on GitHub.')}catch(error){$('reviewError').textContent=error.message;button.disabled=false}};
 $('signOut').onclick=async()=>{await api('/auth/logout',post({}));location.href='/'};
-window.addEventListener('popstate',()=>{let url=directPR();try{url||=sessionStorage.getItem('codesurf-pending-pr');sessionStorage.removeItem('codesurf-pending-pr')}catch{}if(url)openPR(url,false);else location.reload()});
-async function init(){const initial=directPR();reviewMode(!!initial);if(initial){showState('Breaking this change into logical chunks…','Checking GitHub access and preparing the review.',true);$('url').value=initial;try{sessionStorage.setItem('codesurf-pending-pr',initial)}catch{}}try{status=await api('/api/status');user=await api('/api/me');$('identity').textContent='@'+user.login;$('signInLink').hidden=true;$('signOut').hidden=false;const revision=saveRevision;api('/api/saved-prs').then(data=>{if(revision!==saveRevision)return;saved=data.items;savedState()}).catch(()=>{});let url=directPR();try{url||=sessionStorage.getItem('codesurf-pending-pr');sessionStorage.removeItem('codesurf-pending-pr')}catch{}if(url&&generation===0)openPR(url,false)}catch(error){if(initial){showState('Sign in to review this pull request.','Connect your GitHub account to continue.');offerSignIn()}if(error.status!==401)toast(error.message)}}
+window.addEventListener('popstate',()=>{const url=directPR(),position=reviewLocation(location.href);if(url&&url===pr?.url&&plan&&!moving&&!loading.busy()&&position.head===pr.head&&position.base===plan.base&&position.change<=plan.steps.length){navigateChange(position.change,{historyMode:'none'});return}if(url)openPR(url,false,position);else location.reload()});
+async function init(){const initial=directPR();reviewMode(!!initial);if(initial){showState('Breaking this change into logical chunks…','Checking GitHub access and preparing the review.',true);$('url').value=initial;rememberReview(initial,reviewLocation(location.href))}try{status=await api('/api/status');user=await api('/api/me');$('identity').textContent='@'+user.login;$('signInLink').hidden=true;$('signOut').hidden=false;const revision=saveRevision;api('/api/saved-prs').then(data=>{if(revision!==saveRevision)return;saved=data.items;savedState()}).catch(()=>{});let url=directPR(),position=url?reviewLocation(location.href):{change:1};try{url||=sessionStorage.getItem('codesurf-pending-pr');const saved=JSON.parse(sessionStorage.getItem('codesurf-pending-review-position')||'null');if(!directPR()&&saved?.url===url)position=reviewLocation(new URL('/?'+new URLSearchParams(saved),location.origin).href);sessionStorage.removeItem('codesurf-pending-pr');sessionStorage.removeItem('codesurf-pending-review-position')}catch{}if(url&&generation===0)openPR(url,false,position)}catch(error){if(initial){showState('Sign in to review this pull request.','Connect your GitHub account to continue.');offerSignIn()}if(error.status!==401)toast(error.message)}}
 init();

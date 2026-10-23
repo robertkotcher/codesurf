@@ -8,7 +8,8 @@ import {functionPeeks} from './browser/function-peeks.js';
 import {voiceSelection,voiceSession,voiceReviewContext} from './realtime-voice.js';
 import {stateAt,manifestAt} from './public/transformations.js';
 import {openAIErrorMessage,reportOpenAIError} from './openai-errors.js';
-import {findReview,createReview,getReview,publicReview,nextStep,advanceReview,reviewPace,setReviewPace,stepBudget,ensureStepBlocks} from './review-sessions.js';
+import {createReview,getReview,publicReview,nextStep,advanceReview,reviewPace,stepBudget} from './review-sessions.js';
+import {cachedBreakdown} from './review-breakdowns.js';
 import {buildCallIndex,indexedCalls,initCallParsers,overlayCallIndex} from './browser/source-index.js';
 import {functionData} from './public/data-shapes.js';
 import {demoFiles} from './demo-plan.js';
@@ -107,14 +108,24 @@ app.get('/api/prs',wrap(async(req,res)=>{
   }
   const relation=req.query.relation==='assigned'?'assignee':'review-requested';const q=encodeURIComponent(`is:pr is:open ${relation}:${req.auth.user.login}`);const result=await github(req.auth.token,`/search/issues?q=${q}&sort=updated&per_page=50`);res.json({items:result.items.map(x=>({title:x.title,url:x.html_url,number:x.number,repo:x.repository_url.split('/').slice(-2).join('/')})),total:result.total_count})
 }));
-async function pull(token,url,expectedHead){const p=parsePR(url),prefix=`/repos/${p.owner}/${p.repo}`;const pr=await github(token,`${prefix}/pulls/${p.number}`);if(expectedHead&&pr.head.sha!==expectedHead){const e=new Error('This PR has new commits. Reopen it before asking about the updated code.');e.status=409;throw e}return {...p,prefix,pr}}
+async function pull(token,url,expectedHead){const p=parsePR(url),prefix=`/repos/${p.owner}/${p.repo}`;const pr=await github(token,`${prefix}/pulls/${p.number}`);if(expectedHead&&pr.head.sha!==expectedHead){const e=new Error('This PR has new commits. Reopen it before asking about the updated code.');e.status=409;e.code='PR_REVISION_CHANGED';throw e}return {...p,prefix,pr}}
+const mergeBases=new Map();
+async function reviewBase(token,p){
+ const key=crypto.createHash('sha256').update(JSON.stringify([token,p.prefix,p.pr.base.sha,p.pr.head.sha])).digest('hex');
+ let entry=mergeBases.get(key);if(!entry||entry.expires<Date.now()){
+  const work=github(token,`${p.prefix}/compare/${p.pr.base.sha}...${p.pr.head.sha}`).then(result=>{const sha=result.merge_base_commit?.sha;if(!sha)throw new Error('Cannot determine the PR merge-base.');return sha});
+  entry={work,expires:Date.now()+300000};mergeBases.set(key,entry);if(mergeBases.size>200)mergeBases.delete(mergeBases.keys().next().value);work.catch(()=>{if(mergeBases.get(key)===entry)mergeBases.delete(key)});
+ }return entry.work;
+}
+async function assertReviewRevision(token,p,row){
+ if(row.plan.base&&row.plan.base!==await reviewBase(token,p))throw Object.assign(new Error('The pull request comparison changed. Reopen it to review the updated changes.'),{status:409,code:'PR_REVISION_CHANGED'});
+}
 async function changedFiles(token,p){let files=[];for(let page=1;page<=30;page++){const batch=await github(token,`${p.prefix}/pulls/${p.number}/files?per_page=100&page=${page}`);files.push(...batch);if(batch.length<100)break}return files}
 async function content(token,p,filename,side='head'){cleanPath(filename);const branch=side==='base'?p.pr.base:p.pr.head;const repo=branch.repo?.full_name;if(!repo)throw new Error('The source repository is no longer accessible.');const f=await github(token,`/repos/${repo}/contents/${encodePath(filename)}?ref=${branch.sha}`);if(f.type!=='file'||f.encoding!=='base64'||f.size>500000)throw new Error('File is binary, too large, or unavailable.');const raw=Buffer.from(f.content,'base64'),text=raw.toString('utf8');if(!Buffer.from(text,'utf8').equals(raw))throw new Error('Non-UTF-8 source cannot be reconstructed as text.');if(text.includes('\0'))throw new Error('Binary files cannot be shown in the code editor.');return {path:filename,text,sha:branch.sha}}
 app.get('/api/pr',wrap(async(req,res)=>{const p=await pull(req.auth.token,req.query.url);const files=await changedFiles(req.auth.token,p);res.json({url:p.pr.html_url,title:p.pr.title,number:p.number,repo:`${p.owner}/${p.repo}`,head:p.pr.head.sha,base:p.pr.base.sha,author:p.pr.user.login,body:p.pr.body||'',changedFiles:p.pr.changed_files,limited:p.pr.changed_files>files.length,files:files.map(f=>({path:f.filename,previousPath:f.previous_filename,status:f.status,additions:f.additions,deletions:f.deletions,patch:f.patch||null}))})}));
-async function snapshot(req,p){
+async function snapshot(req,p,pinnedBase){
   const raw=await changedFiles(req.auth.token,p);
-  const comparison=await github(req.auth.token,`${p.prefix}/compare/${p.pr.base.sha}...${p.pr.head.sha}`);
-  const mergeBase=comparison.merge_base_commit?.sha;if(!mergeBase)throw new Error('Cannot determine the PR merge-base.');
+  const mergeBase=pinnedBase||await reviewBase(req.auth.token,p);
   const source={...p,pr:{...p.pr,base:{...p.pr.base,sha:mergeBase}}},files=[];let bytes=0;
   for(let i=0;i<raw.length;i+=4){if(bytes>1200000){files.push(...raw.slice(i).map(f=>({path:f.filename,status:f.status,unavailable:true,reason:'Review snapshot exceeds the current response size limit. Inspect this file on GitHub.'})));break}const batch=await Promise.all(raw.slice(i,i+4).map(async f=>{
     const meta={path:f.filename,previousPath:f.previous_filename||f.filename,status:f.status};
@@ -125,13 +136,15 @@ async function snapshot(req,p){
 }
 app.post('/api/analyze',wrap(async(req,res)=>{const p=await pull(req.auth.token,req.body.url,req.body.head);res.json(await snapshot(req,p))}));
 app.post('/api/reviews',wrap(async(req,res)=>{
- const pace=reviewPace(req.body.pace);const p=await pull(req.auth.token,req.body.url,req.body.head);
- const owner=req.auth.user.login;let row=await findReview(owner,p.pr.html_url,p.pr.head.sha);
- if(!row)row=await createReview(owner,p.pr.html_url,p.pr.head.sha,await snapshot(req,p));
- row=await setReviewPace(row,pace);row=await ensureStepBlocks(row);res.json(publicReview(row));
+ const pace=reviewPace(req.body.pace),p=await pull(req.auth.token,req.body.url,req.body.head),base=await reviewBase(req.auth.token,p),owner=req.auth.user.login;
+ if(req.body.base&&req.body.base!==base)throw Object.assign(new Error('The pull request comparison changed. Reopen it to review the updated changes.'),{status:409,code:'PR_REVISION_CHANGED'});
+ const cached=await cachedBreakdown({owner,url:p.pr.html_url,head:p.pr.head.sha,base,pace},async()=>{
+  const plan=await snapshot(req,p,base),latest=await pull(req.auth.token,p.pr.html_url,p.pr.head.sha);await assertReviewRevision(req.auth.token,latest,{plan});return plan;
+ });
+ const row=await createReview(owner,p.pr.html_url,p.pr.head.sha,cached.row.plan,cached.row.id);res.json({...publicReview(row),cacheHit:cached.hit});
 }));
-app.post('/api/reviews/:id/next',wrap(async(req,res)=>{const row=await getReview(req.auth.user.login,req.params.id);await pull(req.auth.token,row.pr_url,row.head);res.json(await nextStep(row,req.body.index))}));
-app.post('/api/reviews/:id/progress',wrap(async(req,res)=>{const row=await getReview(req.auth.user.login,req.params.id);await pull(req.auth.token,row.pr_url,row.head);res.json(await advanceReview(row,req.body.cursor))}));
+app.post('/api/reviews/:id/next',wrap(async(req,res)=>{const row=await getReview(req.auth.user.login,req.params.id),p=await pull(req.auth.token,row.pr_url,row.head);await assertReviewRevision(req.auth.token,p,row);res.json(await nextStep(row,req.body.index))}));
+app.post('/api/reviews/:id/progress',wrap(async(req,res)=>{const row=await getReview(req.auth.user.login,req.params.id),p=await pull(req.auth.token,row.pr_url,row.head);await assertReviewRevision(req.auth.token,p,row);res.json(await advanceReview(row,req.body.cursor))}));
 app.get('/api/tree',wrap(async(req,res)=>{
   let p=await pull(req.auth.token,req.query.url,req.query.head);
   const side=req.query.side==='base'?'base':'head';
@@ -187,7 +200,7 @@ app.post('/api/review',wrap(async(req,res)=>{
 async function ownedVoiceReview(req,p){
  const row=await getReview(req.auth.user.login,req.body.reviewId),count=req.body.step;
  if(row.head!==p.pr.head.sha||row.pr_url!==p.pr.html_url||!Number.isInteger(count)||count<0||count>row.cursor)throw Object.assign(new Error('Reopen this review before continuing voice chat.'),{status:409});
- return row;
+ await assertReviewRevision(req.auth.token,p,row);return row;
 }
 async function voiceContext(req,p){
  const selection=req.body.selection;let review=null,text,snapshot='PR head';
@@ -201,8 +214,7 @@ async function voiceContext(req,p){
 async function voiceCallSnapshot(req,p,args,preparedReview=null){
  if(args.snapshot!=='review'||!req.body.reviewId){const index=await repositoryIndex(req.auth.token,p.pr);await initCallParsers();return {index,graph:buildCallIndex(index.files),snapshot:'PR head'}}
  const row=preparedReview||await ownedVoiceReview(req,p),count=req.body.step;
- const comparison=await github(req.auth.token,`${p.prefix}/compare/${p.pr.base.sha}...${p.pr.head.sha}`),sha=comparison.merge_base_commit?.sha;
- if(!sha)throw new Error('Cannot determine the review merge-base.');
+ const sha=await reviewBase(req.auth.token,p);
  const base=await repositoryIndex(req.auth.token,{...p.pr,head:{...p.pr.base,sha}}),overrides=new Map(),state=stateAt(row.plan,count),manifest=manifestAt(row.plan,count);
  for(const file of row.plan.files){if(file.unavailable)continue;overrides.set(file.path,null);if(file.previousPath)overrides.set(file.previousPath,null);const entry=manifest.find(item=>item.key===file.path);if(entry?.exists)overrides.set(entry.path,state[file.path])}
  const selected=manifest.find(item=>item.key===args.path);if(selected)args.path=selected.path;
@@ -290,6 +302,7 @@ app.post('/api/reviews/:id/canvas/preload',wrap(async(req,res)=>{
  if(!Number.isInteger(count)||count<0||count>row.plan.steps.length)return res.status(400).json({error:'Choose a prepared review change.'});
  const p=await pull(req.auth.token,req.body.url,req.body.head);
  if(row.head!==p.pr.head.sha||row.pr_url!==p.pr.html_url)return res.status(409).json({error:'Reopen this review before loading connections.'});
+ await assertReviewRevision(req.auth.token,p,row);
  const {prepared,current}=await cachedCanvasContext(req,p,row,count),{results,...data}=prepared;
  res.json({...data,excludedFiles:current.index.skipped||0});
 }));
@@ -394,6 +407,6 @@ app.use(express.static(path.join(root,'public')));
 app.get('/files/github/:owner/:repo/pull/:number',(req,res,next)=>{if(!/^[1-9]\d*$/.test(req.params.number))return next();res.sendFile(path.join(root,'public/files.html'))});
 app.get('/github/:owner/:repo/pull/:number',(req,res,next)=>{if(!/^[1-9]\d*$/.test(req.params.number))return next();res.sendFile(path.join(root,'public/index.html'))});
 app.get('/:owner/:repo/pull/:number',(req,res,next)=>{if(!/^[1-9]\d*$/.test(req.params.number))return next();res.redirect(308,'/github'+req.originalUrl)});
-app.use((error,req,res,_next)=>{if(res.headersSent)return res.end();if(error instanceof OpenAI.APIError){reportOpenAIError(error);return res.status(error.status===429?429:502).json({error:openAIErrorMessage(error)})}res.status(error.status||500).json({error:error.status?error.message:error instanceof OpenAI.APIError?'OpenAI request failed. Check project billing and model access.':error.message?.startsWith('Enter ')||error.message==='Invalid file path'?error.message:'The request could not be completed. Please retry.'})});
+app.use((error,req,res,_next)=>{if(res.headersSent)return res.end();if(error instanceof OpenAI.APIError){reportOpenAIError(error);return res.status(error.status===429?429:502).json({error:openAIErrorMessage(error)})}res.status(error.status||500).json({...error.code==='PR_REVISION_CHANGED'?{code:error.code}:{},error:error.status?error.message:error instanceof OpenAI.APIError?'OpenAI request failed. Check project billing and model access.':error.message?.startsWith('Enter ')||error.message==='Invalid file path'?error.message:'The request could not be completed. Please retry.'})});
 if(!env.VERCEL&&process.env.NODE_ENV!=='test')app.listen(Number(env.PORT||5179),'127.0.0.1',()=>console.log('CodeSurf: http://localhost:'+(env.PORT||5179)));
 export default app;
