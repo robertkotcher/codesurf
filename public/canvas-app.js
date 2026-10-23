@@ -1,4 +1,5 @@
 import {reviewOutline} from './review-outline.js';
+import {createReviewLoading} from './review-loading.js';
 import {commentDraftKey,mergeCommentThreads} from './canvas-comments.js';
 import {reviewFileURL} from './files-route.js';
 import {createCanvasChats} from './canvas-chat.js';
@@ -11,6 +12,8 @@ import {sortSavedPulls} from './saved-pulls.js';
 const $=id=>document.getElementById(id),post=body=>({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 let pr=null,session=null,plan=null,count=0,done=false,generation=0,pending=null,nextError='',moving=false,saved=[],user=null,library=[],libraryKind='my',older=false,libraryGeneration=0,status={},abort=new AbortController(),contextData={relations:[]},saveBusy=false,saveRevision=0;
 let chats,outlineMarkup='',outlineOpen=!window.matchMedia('(max-width:720px)').matches;
+const loading=createReviewLoading({surface:$('reviewSurface'),overlay:$('reviewLoading'),regions:[$('reviewSubheader'),$('canvasShell')]});
+const loadingTasks=(changes='done')=>[{id:'pull',label:'Pull request',status:'done'},{id:'changes',label:'Logical changes',status:changes},{id:'comments',label:'Comments',status:'waiting'},{id:'connections',label:'Callers and callees',status:'waiting'}];
 const graph=createReviewCanvas({viewport:$('canvas'),stage:$('canvasStage'),world:$('canvasWorld'),fileURL:path=>pr?reviewFileURL(pr,path):null,onExpand:confirmExpansion,onChat:openCanvasChat,onExcerpt:expandExcerpt,commentActions:{onOpen:openLineComment,onEdit:editLineComment,onPost:postLineComment,onCancel:cancelLineComment,onReply:replyToComment},onLayout:()=>chats?.layout()});
 chats=createCanvasChats({viewport:$('canvas'),stage:$('canvasStage'),geometry:graph.geometry,request:streamCanvasChat});
 const commentReads=new Map(),stepContexts=new Map(),preparedContexts=new Map(),preloadTasks=new Map();let pendingSelection=null;
@@ -21,43 +24,43 @@ function showState(title,message='',loading=false,retry=null){$('reviewOutline')
 function offerSignIn(){const link=document.createElement('a');link.href='/auth/github';link.className='github-sign';link.innerHTML='<img src="/github-mark.svg" width="18" height="18" alt="">Continue with GitHub';$('canvasState').append(link)}
 function route(url){return '/github'+new URL(url).pathname}
 function directPR(){const match=location.pathname.match(/^\/github(\/[^/]+\/[^/]+\/pull\/[1-9]\d*\/?)$/);return match?'https://github.com'+match[1]:null}
-function controls(){renderOutline();const ready=!!plan&&count<plan.steps.length;$('previous').disabled=moving||count<=1;$('next').disabled=moving||!plan||!ready&&done&&!nextError;$('next').textContent=nextError?'Retry':!ready&&pending?'Preparing…':'Next';$('next').title=done&&!ready?'All available changes reviewed':nextError||'Next logical change';$('savePR').disabled=!pr||!user||saveBusy;$('savePR').hidden=!pr;$('completeReview').disabled=!pr;if(plan&&count>0){$('stepCounter').textContent=done?`Change ${count} of ${plan.steps.length}`:`Change ${count}`;$('stepTitle').textContent=plan.steps[count-1].title;$('stepTitle').title=plan.steps[count-1].title}}
+function controls(){renderOutline();const ready=!!plan&&count<plan.steps.length;$('previous').disabled=loading.busy()||moving||count<=1;$('next').disabled=loading.busy()||moving||!plan||!ready&&done&&!nextError;$('next').textContent=nextError?'Retry':!ready&&pending?'Preparing…':'Next';$('next').title=done&&!ready?'All available changes reviewed':nextError||'Next logical change';$('savePR').disabled=!pr||!user||saveBusy;$('savePR').hidden=!pr;$('completeReview').disabled=loading.busy()||!pr;if(plan&&count>0){$('stepCounter').textContent=done?`Change ${count} of ${plan.steps.length}`:`Change ${count}`;$('stepTitle').textContent=plan.steps[count-1].title;$('stepTitle').title=plan.steps[count-1].title}}
 function renderOutline(){
  const visible=!!plan&&count>0&&!$('canvasStage').hidden,items=reviewOutline(plan,count),list=$('outlineList');
  $('reviewOutline').hidden=!visible||!outlineOpen;$('toggleOutline').innerHTML=icon(outlineOpen?'collapse':'expand');$('toggleOutline').setAttribute('aria-expanded',String(outlineOpen));$('toggleOutline').setAttribute('aria-label',outlineOpen?'Hide change list':'Show change list');$('toggleOutline').title=outlineOpen?'Hide change list':'Show change list';
  $('outlineCount').textContent=items.length?String(items.length):'';
  // Keep focused outline buttons intact as background preparation finishes.
- const html=items.map(item=>`<li class="${item.active?'active':item.reviewed?'reviewed':''}">${item.step?`<button type="button" data-outline-step="${item.step}" ${item.active?'aria-current="step"':''} ${moving?'disabled':''}>`:'<div class="outline-upcoming">'}<span class="outline-number" aria-hidden="true">${item.number}.</span><span class="outline-description">${esc(item.title)}</span>${item.step?'</button>':'</div>'}</li>`).join('');if(outlineMarkup!==html){list.innerHTML=html;outlineMarkup=html}
+ const html=items.map(item=>`<li class="${item.active?'active':item.reviewed?'reviewed':''}">${item.step?`<button type="button" data-outline-step="${item.step}" ${item.active?'aria-current="step"':''} ${moving||loading.busy()?'disabled':''}>`:'<div class="outline-upcoming">'}<span class="outline-number" aria-hidden="true">${item.number}.</span><span class="outline-description">${esc(item.title)}</span>${item.step?'</button>':'</div>'}</li>`).join('');if(outlineMarkup!==html){list.innerHTML=html;outlineMarkup=html}
 }
 $('toggleOutline').onclick=()=>{outlineOpen=!outlineOpen;renderOutline()};
 $('outlineList').onclick=event=>{const button=event.target.closest('[data-outline-step]');if(button)navigateChange(Number(button.dataset.outlineStep))};
 function savedState(){const exists=pr&&saved.some(item=>item.url.toLowerCase()===pr.url.toLowerCase());$('savePR').innerHTML=icon(exists?'saved':'bookmark');$('savePR').setAttribute('aria-pressed',String(!!exists));$('savePR').title=exists?'Remove saved pull request':'Save pull request';$('savePR').setAttribute('aria-label',$('savePR').title)}
 async function openPR(url,navigate=true){
- reviewMode(true);
+ reviewMode(true);loading.clear();
  abort.abort();abort=new AbortController();const signal=abort.signal,g=++generation;pr=null;session=null;plan=null;count=0;pending=null;moving=false;done=false;nextError='';commentReads.clear();stepContexts.clear();preparedContexts.clear();preloadTasks.clear();chats.clear();pendingSelection=null;$('connectionDialog').close();$('emptyConnectionDialog').close();$('reviewDialog').close();$('reviewBody').value='';$('postedReview').hidden=true;controls();$('prHeading').hidden=true;showState('Breaking this change into logical chunks…','Fetching the pull request and finding connected changes.',true);
+ const tasks=loadingTasks('waiting');tasks[0].status='loading';const ticket=loading.begin(tasks);
  try{
-  pr=await api('/api/pr?'+new URLSearchParams({url}),{signal});if(g!==generation)return;
+  pr=await api('/api/pr?'+new URLSearchParams({url}),{signal});if(g!==generation)return;loading.update(ticket,'pull','done');loading.update(ticket,'changes','loading');
   $('url').value=pr.url;$('repo').textContent=pr.repo;$('prTitle').textContent=pr.title+' #'+pr.number;$('prTitle').title=pr.title;$('prHeading').hidden=false;if(navigate&&location.pathname!==route(pr.url))history.pushState({},'',route(pr.url));savedState();controls();
   const result=await api('/api/reviews',{...post({url:pr.url,head:pr.head,pace:'moderate'}),signal});if(g!==generation)return;
   session=result.id;plan=result.plan;count=result.cursor;done=result.done;
-  if(!plan.operations.length){showState('No reviewable changes.','This PR has no available text changes to break apart.');controls();return}
-  preloadConnections(0).catch(()=>{});
-  if(count>0){showChange();prepareNext()}else{await prepareNext();if(g===generation&&plan.steps.length)await advance(1)}
- }catch(error){if(g!==generation||error.name==='AbortError')return;showState('This pull request could not be opened.',error.message,false,()=>openPR(url,false));if(error.status===401){try{sessionStorage.setItem('codesurf-pending-pr',url)}catch{}offerSignIn()}if(error.status===404){const button=document.createElement('button');button.textContent='Check repository connections';button.onclick=openSettings;$('canvasState').append(button)}controls()}
+  if(!plan.operations.length){loading.clear();showState('No reviewable changes.','This PR has no available text changes to break apart.');controls();return}
+  if(count>0)await showChange(ticket);else{preloadConnections(0).catch(()=>{});await prepareNext();if(g===generation&&plan.steps.length)await advance(1)}
+ }catch(error){if(g!==generation||error.name==='AbortError')return;loading.clear();showState('This pull request could not be opened.',error.message,false,()=>openPR(url,false));if(error.status===401){try{sessionStorage.setItem('codesurf-pending-pr',url)}catch{}offerSignIn()}if(error.status===404){const button=document.createElement('button');button.textContent='Check repository connections';button.onclick=openSettings;$('canvasState').append(button)}controls()}
 }
 async function prepareNext(){
  if(!plan)return;if(plan.steps.length>count){preloadConnections(count+1).catch(()=>{});return}if(done)return;if(pending)return pending;
  const g=generation,id=session,index=plan.steps.length;nextError='';
- const work=(async()=>{try{const result=await api('/api/reviews/'+id+'/next',{...post({index}),signal:abort.signal});if(g!==generation)return;if(Array.isArray(result.story))plan.story=result.story;if(result.step&&!plan.steps[index])plan.steps.push(result.step);if(result.step)preloadConnections(index+1).catch(()=>{});done=result.done}catch(error){if(g!==generation||error.name==='AbortError')return;nextError=error.message;toast(error.message);if(!count)showState('This change could not be prepared.',error.message,false,()=>openPR(pr.url,false))}finally{if(g===generation){pending=null;controls()}}})();
+ const work=(async()=>{try{const result=await api('/api/reviews/'+id+'/next',{...post({index}),signal:abort.signal});if(g!==generation)return;if(Array.isArray(result.story))plan.story=result.story;if(result.step&&!plan.steps[index])plan.steps.push(result.step);if(result.step)preloadConnections(index+1).catch(()=>{});done=result.done}catch(error){if(g!==generation||error.name==='AbortError')return;nextError=error.message;toast(error.message);if(!count){loading.clear();showState('This change could not be prepared.',error.message,false,()=>openPR(pr.url,false))}}finally{if(g===generation){pending=null;controls()}}})();
  pending=work;controls();return work;
 }
 async function advance(delta){return navigateChange(count+delta)}
 async function navigateChange(target){
- if(!plan||moving||!Number.isInteger(target)||target<1||target===count||target>plan.steps.length+1)return;const g=generation;moving=true;controls();
+ if(!plan||moving||loading.busy()&&count>0||!Number.isInteger(target)||target<1||target===count||target>plan.steps.length+1)return;const g=generation;moving=true;const ticket=loading.begin(loadingTasks('loading'));controls();
  try{
-  if(target>plan.steps.length){if(done)return;await prepareNext();if(g!==generation||target>plan.steps.length)return}
-  if(target>count)await api('/api/reviews/'+session+'/progress',{...post({cursor:target}),signal:abort.signal});if(g!==generation)return;count=target;showChange();prepareNext();
- }catch(error){if(error.name!=='AbortError')toast(error.message)}finally{if(g===generation){moving=false;controls()}}
+  if(target>plan.steps.length){if(done){loading.clear();return}await prepareNext();if(g!==generation)return;if(target>plan.steps.length){loading.clear();return}}
+  if(target>count)await api('/api/reviews/'+session+'/progress',{...post({cursor:target}),signal:abort.signal});if(g!==generation)return;count=target;await showChange(ticket);
+ }catch(error){if(g===generation&&error.name!=='AbortError'){loading.update(ticket,'changes','error');loading.fail(ticket,error.message,()=>{loading.clear();navigateChange(target)})}}finally{if(g===generation){moving=false;controls()}}
 }
 function preloadConnections(step){
  if(preparedContexts.has(step))return Promise.resolve(preparedContexts.get(step));
@@ -66,17 +69,30 @@ function preloadConnections(step){
  const work=api('/api/reviews/'+id+'/canvas/preload',{...post({url,head,step}),signal:abort.signal}).then(data=>{if(g===generation){preparedContexts.set(step,data);if(step===count&&step>0)graph.affordances(data.affordances,data.excerpts)}return data}).finally(()=>{if(preloadTasks.get(step)===work)preloadTasks.delete(step)});
  preloadTasks.set(step,work);return work;
 }
-function showChange(){
+async function showChange(ticket=loading.begin(loadingTasks())){
  const change=canvasChanges(plan,count);change.counter=done?`${count} / ${plan.steps.length}`:String(count);change.complete=done&&count===plan.steps.length;change.unavailable=plan.files.filter(file=>file.unavailable);pendingSelection=null;$('connectionDialog').close();$('emptyConnectionDialog').close();$('canvasState').hidden=true;$('canvasStage').hidden=false;$('reviewSubheader').hidden=false;$('canvasControls').hidden=false;graph.show(change);chats.showStep(count);contextData=stepContexts.get(count)||{relations:[],requests:[]};contextData.commentUser=user;stepContexts.set(count,contextData);if(contextData.relations.length||contextData.requests.length||Object.keys(contextData.excerpts||{}).length||contextData.threads?.length||Object.keys(contextData.commentDrafts||{}).length)graph.context(contextData);controls();
  const ready=preparedContexts.get(count);if(ready)graph.affordances(ready.affordances,ready.excerpts);
- loadLineComments(count);
- const g=generation,c=count;preloadConnections(c).catch(error=>{if(error.name!=='AbortError'&&g===generation&&c===count)toast('Code connections could not be prepared. '+error.message)});
+ await readyChange(ticket);
+}
+async function readyChange(ticket){
+ const g=generation,c=count;loading.update(ticket,'changes','done');controls();
+ const run=async(id,task)=>{loading.update(ticket,id,'loading');try{await task();if(g===generation&&c===count)loading.update(ticket,id,'done')}catch(error){if(g===generation&&c===count&&error.name!=='AbortError')loading.update(ticket,id,'error');throw error}};
+ const results=await Promise.allSettled([run('comments',()=>loadLineComments(c)),run('connections',()=>preloadConnections(c))]);
+ if(g!==generation||c!==count)return;
+ const failed=results.find(result=>result.status==='rejected');
+ if(failed){loading.fail(ticket,failed.reason.message,()=>{const retry=loading.begin(loadingTasks());readyChange(retry)});controls();return}
+ // Include the DOM updates and layout in readiness, not just the HTTP responses.
+ await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+ if(g!==generation||c!==count)return;loading.finish(ticket);controls();prepareNext();
 }
 function commentState(){const state=stepContexts.get(count);if(state){state.commentDrafts||={};state.commentUser=user}return state}
 function updateComments(state,step){if(step===count){contextData=state;graph.context(state)}}
 function loadLineComments(step){
- if(!pr||!session||commentReads.has(step))return;const g=generation,state=stepContexts.get(step);if(!state)return;
- const work=api('/api/reviews/'+session+'/comments/list',{...post({url:pr.url,head:pr.head,step}),signal:abort.signal}).then(data=>{if(g!==generation)return;const threads=mergeCommentThreads(data.threads,state.confirmedThreads||[]);if(JSON.stringify(threads)!==JSON.stringify(state.threads||[])){state.threads=threads;updateComments(state,step)}}).catch(error=>{if(g===generation&&step===count&&error.name!=='AbortError')toast('Pull request comments could not be loaded. '+error.message)}).finally(()=>{if(commentReads.get(step)===work)commentReads.delete(step)});commentReads.set(step,work);
+ if(commentReads.has(step))return commentReads.get(step);
+ const g=generation,state=stepContexts.get(step);if(!pr||!session||!state)return Promise.reject(new Error('Reopen the review to load comments.'));
+ // Revisited changes can use a recent successful read, including an empty list.
+ if(Date.now()-(state.commentsLoadedAt||0)<30000)return Promise.resolve();
+ const work=api('/api/reviews/'+session+'/comments/list',{...post({url:pr.url,head:pr.head,step}),signal:abort.signal}).then(data=>{if(g!==generation)return;const threads=mergeCommentThreads(data.threads,state.confirmedThreads||[]);state.commentsLoadedAt=Date.now();if(JSON.stringify(threads)!==JSON.stringify(state.threads||[])){state.threads=threads;updateComments(state,step)}}).finally(()=>{if(commentReads.get(step)===work)commentReads.delete(step)});commentReads.set(step,work);return work;
 }
 async function openLineComment(selection){
  selection={...selection,direction:'callees'};

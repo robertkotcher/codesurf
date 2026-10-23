@@ -7,12 +7,13 @@
  <form id="openForm" hidden><input id="url" type="url" aria-label="GitHub pull request URL" placeholder="Paste a GitHub pull request link…" required><button type="submit" class="primary" id="openPR">Open PR</button></form>
  <div class="header-tools"><button class="icon-button" id="savePR" aria-label="Save pull request" title="Save pull request" aria-pressed="false" disabled hidden></button><div class="account"><button id="accountButton" class="icon-button" aria-label="Account menu" aria-expanded="false" aria-controls="accountMenu"></button><div id="accountMenu" class="account-menu" hidden><small id="identity"></small><button id="myPulls">My pull requests</button><button id="savedPulls">Saved pull requests</button><button id="settingsButton">Settings</button><button id="completeReview" disabled>Complete review</button><a id="signInLink" href="/auth/github">Sign in with GitHub</a><button id="signOut" hidden>Sign out</button></div></div></div>
 </header>
+<div id="reviewSurface" class="review-surface" aria-busy="false">
 <section id="reviewSubheader" class="review-subheader" aria-label="Review change navigation" hidden>
  <button id="toggleOutline" class="icon-button" aria-label="Hide change list" title="Hide change list" aria-expanded="true" aria-controls="reviewOutline"></button>
  <div class="step-heading"><span id="stepCounter"></span><h1 id="stepTitle"></h1></div>
  <nav class="step-navigation" aria-label="Review navigation"><button id="previous" disabled>Previous</button><button id="next" class="primary" disabled>Next</button></nav>
 </section>
-<div class="canvas-shell">
+<div id="canvasShell" class="canvas-shell">
  <aside id="reviewOutline" class="review-outline" aria-labelledby="outlineTitle" hidden>
   <div class="outline-pr" id="prHeading" hidden><span id="repo"></span><b id="prTitle"></b></div>
   <header><h2 id="outlineTitle">Changes</h2><span id="outlineCount"></span></header>
@@ -20,6 +21,10 @@
  </aside>
  <div id="canvasControls" class="canvas-controls" role="toolbar" aria-label="Canvas controls" hidden><button class="icon-button" id="zoomOut" aria-label="Zoom out" title="Zoom out"></button><button class="icon-button" id="zoomIn" aria-label="Zoom in" title="Zoom in"></button><span class="canvas-controls-divider" aria-hidden="true"></span><button class="icon-button" id="fitCanvas" aria-label="Fit canvas" title="Fit canvas"></button><button class="icon-button" id="wrapCode" aria-label="Wrap code lines" title="Wrap code lines" aria-pressed="false"></button></div>
  <main id="canvas" class="review-canvas" aria-label="Pull request change canvas"><div id="canvasState" class="canvas-state"><h1>A better way to review pull requests</h1><button id="selectRepository" class="primary">Select repository</button></div><div id="canvasStage" class="canvas-stage" hidden><div id="canvasWorld" class="canvas-world"></div></div></main>
+</div>
+<div id="reviewLoading" class="review-loading" role="region" aria-label="Review preparation" tabindex="-1" hidden>
+ <div class="review-loading-card"><h2>Preparing your review</h2><progress value="0" max="4" aria-label="Review preparation progress"></progress><ol aria-live="polite" aria-atomic="true"></ol><p data-loading-error class="error" role="alert" hidden></p><button data-loading-retry class="primary" hidden>Try again</button></div>
+</div>
 </div>
 <dialog id="connectionDialog" aria-labelledby="connectionTitle"><div class="dialog-heading"><h2 id="connectionTitle">Show callers?</h2><button class="icon-button dialog-close" aria-label="Cancel connection"></button></div><p id="connectionTarget" class="muted"></p><p class="muted">Open connected code beside this change.</p><div class="connection-dialog-actions"><button id="cancelConnection">Cancel</button><button id="confirmConnection" class="primary">Show callers</button></div></dialog>
 <dialog id="emptyConnectionDialog" class="empty-connection-dialog" aria-labelledby="emptyConnectionTitle"><div class="dialog-heading"><h2 id="emptyConnectionTitle">No callees found.</h2><button class="icon-button dialog-close" aria-label="Close connection message"></button></div><div class="connection-dialog-actions"><button id="closeEmptyConnection" class="primary">OK</button></div></dialog>
