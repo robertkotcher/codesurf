@@ -1,0 +1,30 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
+import {gzipSync} from 'node:zlib';
+import tar from 'tar-stream';
+import {seal} from '../lib.js';
+import {transformationPlan} from '../transformations.js';
+import {canvasChanges} from '../canvas-model.js';
+process.env.NODE_ENV='test';process.env.DATABASE_URL='postgresql://test:test@localhost/test';process.env.SESSION_SECRET='comment-test-secret-'.repeat(4);process.env.APP_URL='http://localhost:5179';
+const {pool}=await import('../database.js'),{default:app}=await import('../server.js'),request=global.fetch;
+const head='a'.repeat(40),base='b'.repeat(40),url='https://github.com/acme/test/pull/1',id=crypto.randomUUID(),before='function run() {\n return 1;\n}\n',after=before.replace('return 1','return helper()'),plan=await transformationPlan([{path:'entry.ts',status:'modified',before,after}],{explain:false});plan.steps=[{ids:plan.operations.map(op=>op.id),title:'Calculate'}];
+const row={id,owner:'reviewer',head,pr_url:url,plan,cursor:1};pool.query=async(_sql,args)=>({rows:args[0]===row.owner&&args[1]===id?[row]:[]});
+const block=canvasChanges(plan,1).blocks[0],selection={path:'entry.ts',line:2,anchorId:block.id,level:0,snapshot:'after',direction:'callees'},patch='@@ -1,3 +1,3 @@\n function run() {\n- return 1;\n+ return helper();\n }';
+const pack=tar.pack(),chunks=[],read=(async()=>{for await(const part of pack)chunks.push(part)})();pack.entry({name:'snapshot/entry.ts'},before);pack.entry({name:'snapshot/helper.ts'},'function helper() { return 2; }');pack.finalize();await read;const archive=gzipSync(Buffer.concat(chunks));
+const server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.once('listening',resolve));const origin='http://127.0.0.1:'+server.address().port;
+const headers=login=>({'Content-Type':'application/json',Origin:process.env.APP_URL,Cookie:'codesurf_session='+seal({token:'test-user-token',tokenExp:Date.now()+3600000,exp:Date.now()+3600000,user:{login}},process.env.SESSION_SECRET)});
+const call=(route,body={},login='reviewer',extra={})=>request(origin+'/api/reviews/'+id+'/comments'+route,{method:'POST',headers:{...headers(login),...extra},body:JSON.stringify({url,head,step:1,selection,...body})});
+let writes=[],comments=[],postStatus=201;
+global.fetch=async(address,options={})=>{const path=new URL(address).pathname;if(options.method==='POST'){writes.push({address,options});if(postStatus!==201)return Response.json({error:'denied'},{status:postStatus});const body=JSON.parse(options.body),comment={id:comments.length+10,path:body.path||'entry.ts',line:body.line||2,side:'RIGHT',body:body.body,commit_id:head,html_url:url+'#discussion_r10',user:{login:'reviewer'},created_at:'2026-10-23T12:00:00Z',...(body.in_reply_to?{in_reply_to_id:body.in_reply_to}:{})};comments.push(comment);return Response.json(comment,{status:201})}if(path.endsWith('/files'))return Response.json([{filename:'entry.ts',patch}]);if(path.endsWith('/comments'))return Response.json(comments);if(path.includes('/pulls/comments/'))return Response.json({...comments.find(comment=>comment.id===Number(path.split('/').at(-1))),pull_request_url:'https://api.github.com/repos/acme/test/pulls/1'});if(path.includes('/pulls/'))return Response.json({html_url:url,head:{sha:head,repo:{full_name:'acme/test'}},base:{sha:base,repo:{full_name:'acme/test'}}});if(path.includes('/compare/'))return Response.json({merge_base_commit:{sha:base}});if(path.includes('/tarball/'))return new Response(archive);throw new Error('Unexpected request '+address)};
+test.after(async()=>{global.fetch=request;server.close();await pool.end()});
+test('posting is authenticated, origin checked, review owned, commit pinned, and explicitly validated before writing',async()=>{
+ assert.equal((await call('',{body:'Test',requestId:crypto.randomUUID()},'other')).status,404);assert.equal((await call('',{body:'Test',requestId:crypto.randomUUID()},'reviewer',{Origin:'https://evil.example'})).status,403);assert.equal((await call('',{body:'Test',requestId:crypto.randomUUID(),head:'stale'})).status,409);assert.equal(writes.length,0);
+ const prepared=await call('/context');assert.equal(prepared.status,200);assert.deepEqual(await prepared.json(),{path:'entry.ts',line:2,side:'RIGHT'});assert.equal(writes.length,0);
+ const requestId=crypto.randomUUID(),body={body:'Please explain this change.',requestId};const [a,b]=await Promise.all([call('',body),call('',body)]);assert.equal(a.status,200);assert.equal(b.status,200);assert.equal(writes.length,1);const payload=JSON.parse(writes[0].options.body);assert.deepEqual(payload,{body:body.body,path:'entry.ts',line:2,side:'RIGHT',commit_id:head});assert.equal(writes[0].options.headers.Authorization,'Bearer test-user-token');assert.equal((await a.json()).threads[0].comments[0].body,body.body);
+ assert.equal((await call('',{...body,body:'Changed payload'})).status,409);assert.equal(writes.length,1);const listed=await call('/list');assert.equal((await listed.json()).threads[0].comments[0].id,10);
+});
+test('replies target a real thread on this PR and permissions failures are not reported as posted',async()=>{
+ const response=await call('',{body:'Thanks, that helps.',replyTo:10,requestId:crypto.randomUUID()});assert.equal(response.status,200);assert.deepEqual(JSON.parse(writes.at(-1).options.body),{body:'Thanks, that helps.',in_reply_to:10});assert.equal((await response.json()).threads[0].comments.length,2);
+ postStatus=403;const failed=await call('',{body:'Permission test',requestId:crypto.randomUUID()});assert.equal(failed.status,403);assert.match((await failed.json()).error,/read and write/);postStatus=201;
+});

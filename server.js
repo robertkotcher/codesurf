@@ -1,6 +1,7 @@
+import {inlineCommentTarget,reviewCommentThreads,publicPRComment} from './canvas-comments.js';
 import {withRubyDependencies} from './ruby-dependencies.js';
 import {canvasChanges} from './canvas-model.js';
-import {canvasSelection,validateCanvasSelection,validateChangedSelection,prepareCanvasConnections,canvasConnectionKey,canvasConnectionPage} from './canvas-relations.js';
+import {canvasSelection,validateCanvasSelection,validateChangedSelection,prepareCanvasConnections,canvasConnectionKey,canvasConnectionPage,canvasExcerpt,canvasSourceAffordances,sourceForSelection} from './canvas-relations.js';
 import {savedURL,listSavedPulls,savePull,refreshSavedPull,removeSavedPull} from './saved-pulls.js';
 import {futureCallers} from './browser/future-callers.js';
 import {functionPeeks} from './browser/function-peeks.js';
@@ -238,6 +239,52 @@ function cachedCanvasContext(req,p,row,count){
  }
  return pending.work;
 }
+async function commentReview(req){
+ if(typeof req.body.head!=='string'||!req.body.head)return Promise.reject(Object.assign(new Error('A PR commit is required.'),{status:400}));
+ const p=await pull(req.auth.token,req.body.url,req.body.head),scoped={auth:req.auth,body:{...req.body,reviewId:req.params.id}},row=await ownedVoiceReview(scoped,p);
+ if(req.body.step<1)throw Object.assign(new Error('Open a review change first.'),{status:400});
+ return {p,row,count:req.body.step};
+}
+async function pullComments(token,p){
+ const comments=[];for(let page=1;page<=30;page++){const batch=await github(token,`${p.prefix}/pulls/${p.number}/comments?per_page=100&page=${page}`);comments.push(...batch);if(batch.length<100)return comments}
+ throw Object.assign(new Error('This pull request has too many inline comments to load completely.'),{status:422});
+}
+async function commentTarget(req,context){
+ const selection=validateCanvasSelection(req.body.selection),{p,row,count}=context;validateChangedSelection(canvasChanges(row.plan,count),selection);
+ const {change,current,previous}=await cachedCanvasContext(req,p,row,count),source=sourceForSelection(change,selection,current,previous);
+ return inlineCommentTarget(row.plan,count,selection,await changedFiles(req.auth.token,p),source.index.files);
+}
+app.post('/api/reviews/:id/comments/list',wrap(async(req,res)=>{
+ const {p,row,count}=await commentReview(req);res.json({threads:reviewCommentThreads(await pullComments(req.auth.token,p),row.plan,count)});
+}));
+app.post('/api/reviews/:id/comments/context',wrap(async(req,res)=>{
+ const context=await commentReview(req),target=await commentTarget(req,context);res.json({path:target.path,line:target.line,side:target.side});
+}));
+const commentWrites=new Map();
+app.post('/api/reviews/:id/comments',wrap(async(req,res)=>{
+ const {body,requestId,replyTo}=req.body;
+ if(typeof body!=='string'||!body.trim()||body.length>10000||typeof requestId!=='string'||!/^[a-f0-9-]{36}$/i.test(requestId)||replyTo!==undefined&&(!Number.isSafeInteger(replyTo)||replyTo<1))return res.status(400).json({error:'Write a comment under 10,000 characters.'});
+ const context=await commentReview(req),{p,row,count}=context;let payload;
+ if(replyTo!==undefined){
+  const root=await github(req.auth.token,`${p.prefix}/pulls/comments/${replyTo}`);
+  if(root.pull_request_url!==`https://api.github.com${p.prefix}/pulls/${p.number}`||root.in_reply_to_id)return res.status(400).json({error:'Choose a comment thread on this pull request.'});
+  payload={body:body.trim(),in_reply_to:replyTo};
+ }else{const target=await commentTarget(req,context);payload={body:body.trim(),path:target.path,line:target.line,side:target.side,commit_id:p.pr.head.sha}}
+ const key=crypto.createHash('sha256').update(req.auth.token+'\0'+row.id+'\0'+requestId).digest('hex'),fingerprint=JSON.stringify(payload);let cached=commentWrites.get(key);
+ if(cached&&cached.fingerprint!==fingerprint)return res.status(409).json({error:'This comment request has changed. Reopen the comment editor.'});
+ if(!cached){
+  const work=(async()=>{
+   let response;try{response=await fetch(`https://api.github.com${p.prefix}/pulls/${p.number}/comments`,{method:'POST',headers:{Authorization:`Bearer ${req.auth.token}`,Accept:'application/vnd.github+json','Content-Type':'application/json','X-GitHub-Api-Version':'2022-11-28'},body:fingerprint,signal:AbortSignal.timeout(20000)})}catch{throw Object.assign(new Error('GitHub could not confirm the comment. Check the pull request before retrying to avoid a duplicate.'),{status:502})}
+   if(!response.ok)throw Object.assign(new Error(response.status===403?'Posting comments requires Pull requests: read and write permission on GitHub.':response.status===422?'GitHub could not attach this comment. The diff may have changed; reopen the pull request.':'GitHub could not confirm the comment. Check the pull request before retrying to avoid a duplicate.'),{status:response.status===403?403:response.status===422?422:502});
+   try{return await response.json()}catch{throw Object.assign(new Error('GitHub could not confirm the comment. Check the pull request before retrying to avoid a duplicate.'),{status:502})}
+  })();cached={work,fingerprint};commentWrites.set(key,cached);if(commentWrites.size>1000)commentWrites.delete(commentWrites.keys().next().value);setTimeout(()=>{if(commentWrites.get(key)===cached)commentWrites.delete(key)},20*60000).unref();work.catch(error=>{if((error.status===403||error.status===422)&&commentWrites.get(key)===cached)commentWrites.delete(key)});
+ }
+ const comment=await cached.work;
+ // Return the confirmed GitHub object even if refreshing the rest of the thread
+ // fails: a successful write must never be presented as a failed submission.
+ let raw=[comment];try{raw=await pullComments(req.auth.token,p);if(!raw.some(item=>item.id===comment.id))raw.push(comment)}catch{if(replyTo){const root=await github(req.auth.token,`${p.prefix}/pulls/comments/${replyTo}`).catch(()=>null);if(root)raw.unshift(root)}}
+ res.json({posted:true,commentId:comment.id,comment:publicPRComment(comment),threads:reviewCommentThreads(raw,row.plan,count)});
+}));
 app.post('/api/reviews/:id/canvas/preload',wrap(async(req,res)=>{
  const row=await getReview(req.auth.user.login,req.params.id),count=req.body.step;
  if(!Number.isInteger(count)||count<0||count>row.plan.steps.length)return res.status(400).json({error:'Choose a prepared review change.'});
@@ -245,6 +292,15 @@ app.post('/api/reviews/:id/canvas/preload',wrap(async(req,res)=>{
  if(row.head!==p.pr.head.sha||row.pr_url!==p.pr.html_url)return res.status(409).json({error:'Reopen this review before loading connections.'});
  const {prepared,current}=await cachedCanvasContext(req,p,row,count),{results,...data}=prepared;
  res.json({...data,excludedFiles:current.index.skipped||0});
+}));
+app.post('/api/reviews/:id/canvas/excerpt',wrap(async(req,res)=>{
+ const selection=validateCanvasSelection(req.body.selection),{range,direction}=req.body;
+ if(!range||!Number.isInteger(range.start)||!Number.isInteger(range.end)||range.start<1||range.end<range.start||!['up','down'].includes(direction))return res.status(400).json({error:'Choose a valid source range and expansion direction.'});
+ const p=await pull(req.auth.token,req.body.url,req.body.head),scoped={auth:req.auth,body:{...req.body,reviewId:req.params.id}},row=await ownedVoiceReview(scoped,p),count=req.body.step;
+ if(count<1)return res.status(400).json({error:'Open a review change first.'});
+ validateChangedSelection(canvasChanges(row.plan,count),selection);
+ const {change,current,previous}=await cachedCanvasContext(req,p,row,count);
+ res.json(canvasExcerpt(change,selection,range,direction,current,previous));
 }));
 app.post('/api/reviews/:id/canvas',wrap(async(req,res)=>{
  const page=req.body.page??0;if(!Number.isInteger(page)||page<0||page>10000)return res.status(400).json({error:'Invalid context page.'});
@@ -254,7 +310,7 @@ app.post('/api/reviews/:id/canvas',wrap(async(req,res)=>{
  validateChangedSelection(canvasChanges(row.plan,count),selection);
  const {change,current,previous,prepared}=await cachedCanvasContext(req,p,row,count);
  const result={...(prepared.results.get(canvasConnectionKey(selection))?.result||canvasSelection(change,selection,current,previous)),excludedFiles:current.index.skipped||0};
- if(req.body.expandNode!==undefined){const node=result.relations.find(node=>node.id===req.body.expandNode);if(!node)return res.status(400).json({error:'Choose a source card in this change.'});return res.json({node})}
+ if(req.body.expandNode!==undefined){const node=result.relations.find(node=>node.id===req.body.expandNode);if(!node)return res.status(400).json({error:'Choose a source card in this change.'});const source=selection.snapshot==='before'?previous:current;return res.json({node:{...node,affordances:node.library?node.affordances:canvasSourceAffordances(source,node.path,node.start,node.end)}})}
  res.json(canvasConnectionPage(result,page));
 }));
 async function reviewDraft(req,p,args,files){

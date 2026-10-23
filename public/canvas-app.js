@@ -1,3 +1,5 @@
+import {reviewOutline} from './review-outline.js';
+import {commentDraftKey,mergeCommentThreads} from './canvas-comments.js';
 import {reviewFileURL} from './files-route.js';
 import {createCanvasChats} from './canvas-chat.js';
 import {readChatStream} from './chat-stream.js';
@@ -8,22 +10,31 @@ import {createReviewCanvas,escapeHTML as esc} from './review-canvas.js';
 import {sortSavedPulls} from './saved-pulls.js';
 const $=id=>document.getElementById(id),post=body=>({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 let pr=null,session=null,plan=null,count=0,done=false,generation=0,pending=null,nextError='',moving=false,saved=[],user=null,library=[],libraryKind='my',older=false,libraryGeneration=0,status={},abort=new AbortController(),contextData={relations:[]},saveBusy=false,saveRevision=0;
-let chats;
-const graph=createReviewCanvas({viewport:$('canvas'),stage:$('canvasStage'),world:$('canvasWorld'),fileURL:path=>pr?reviewFileURL(pr,path):null,onExpand:confirmExpansion,onChat:openCanvasChat,onLayout:()=>chats?.layout()});
+let chats,outlineMarkup='',outlineOpen=!window.matchMedia('(max-width:720px)').matches;
+const graph=createReviewCanvas({viewport:$('canvas'),stage:$('canvasStage'),world:$('canvasWorld'),fileURL:path=>pr?reviewFileURL(pr,path):null,onExpand:confirmExpansion,onChat:openCanvasChat,onExcerpt:expandExcerpt,commentActions:{onOpen:openLineComment,onEdit:editLineComment,onPost:postLineComment,onCancel:cancelLineComment,onReply:replyToComment},onLayout:()=>chats?.layout()});
 chats=createCanvasChats({viewport:$('canvas'),stage:$('canvasStage'),geometry:graph.geometry,request:streamCanvasChat});
-const stepContexts=new Map(),preparedContexts=new Map(),preloadTasks=new Map();let pendingSelection=null;
+const commentReads=new Map(),stepContexts=new Map(),preparedContexts=new Map(),preloadTasks=new Map();let pendingSelection=null;
 async function api(path,options={}){const response=await fetch(path,options);const body=await response.json().catch(()=>({}));if(!response.ok)throw Object.assign(new Error(body.error||'The request could not be completed.'),{status:response.status});return body}
 let toastTimer;function toast(message){clearTimeout(toastTimer);$('toast').textContent=message;$('toast').hidden=false;toastTimer=setTimeout(()=>$('toast').hidden=true,5000)}
 function reviewMode(enabled){document.body.classList.toggle('reviewing',enabled);$('openForm').hidden=enabled}
-function showState(title,message='',loading=false,retry=null){$('reviewSubheader').hidden=true;$('canvasControls').hidden=true;$('canvasStage').hidden=true;$('canvasState').hidden=false;$('canvasState').innerHTML=`${loading?'<span class="spinner" aria-hidden="true"></span>':'<div class="welcome-mark" aria-hidden="true">≈</div>'}<h1>${esc(title)}</h1><p role="status">${esc(message)}</p>${retry?'<button id="retryLoad" class="primary">Try again</button>':''}`;if(retry)$('retryLoad').onclick=retry}
+function showState(title,message='',loading=false,retry=null){$('reviewOutline').hidden=true;$('reviewSubheader').hidden=true;$('canvasControls').hidden=true;$('canvasStage').hidden=true;$('canvasState').hidden=false;$('canvasState').innerHTML=`${loading?'<span class="spinner" aria-hidden="true"></span>':'<div class="welcome-mark" aria-hidden="true">≈</div>'}<h1>${esc(title)}</h1><p role="status">${esc(message)}</p>${retry?'<button id="retryLoad" class="primary">Try again</button>':''}`;if(retry)$('retryLoad').onclick=retry}
 function offerSignIn(){const link=document.createElement('a');link.href='/auth/github';link.className='github-sign';link.innerHTML='<img src="/github-mark.svg" width="18" height="18" alt="">Continue with GitHub';$('canvasState').append(link)}
 function route(url){return '/github'+new URL(url).pathname}
 function directPR(){const match=location.pathname.match(/^\/github(\/[^/]+\/[^/]+\/pull\/[1-9]\d*\/?)$/);return match?'https://github.com'+match[1]:null}
-function controls(){const ready=!!plan&&count<plan.steps.length;$('previous').disabled=moving||count<=1;$('next').disabled=moving||!plan||!ready&&done&&!nextError;$('next').textContent=nextError?'Retry':!ready&&pending?'Preparing…':'Next';$('next').title=done&&!ready?'All available changes reviewed':nextError||'Next logical change';$('savePR').disabled=!pr||!user||saveBusy;$('savePR').hidden=!pr;$('completeReview').disabled=!pr;if(plan&&count>0){$('stepCounter').textContent=done?`Change ${count} of ${plan.steps.length}`:`Change ${count}`;$('stepTitle').textContent=plan.steps[count-1].title;$('stepTitle').title=plan.steps[count-1].title}}
+function controls(){renderOutline();const ready=!!plan&&count<plan.steps.length;$('previous').disabled=moving||count<=1;$('next').disabled=moving||!plan||!ready&&done&&!nextError;$('next').textContent=nextError?'Retry':!ready&&pending?'Preparing…':'Next';$('next').title=done&&!ready?'All available changes reviewed':nextError||'Next logical change';$('savePR').disabled=!pr||!user||saveBusy;$('savePR').hidden=!pr;$('completeReview').disabled=!pr;if(plan&&count>0){$('stepCounter').textContent=done?`Change ${count} of ${plan.steps.length}`:`Change ${count}`;$('stepTitle').textContent=plan.steps[count-1].title;$('stepTitle').title=plan.steps[count-1].title}}
+function renderOutline(){
+ const visible=!!plan&&count>0&&!$('canvasStage').hidden,items=reviewOutline(plan,count),list=$('outlineList');
+ $('reviewOutline').hidden=!visible||!outlineOpen;$('toggleOutline').innerHTML=icon(outlineOpen?'collapse':'expand');$('toggleOutline').setAttribute('aria-expanded',String(outlineOpen));$('toggleOutline').setAttribute('aria-label',outlineOpen?'Hide change list':'Show change list');$('toggleOutline').title=outlineOpen?'Hide change list':'Show change list';
+ $('outlineCount').textContent=items.length?String(items.length):'';
+ // Keep focused outline buttons intact as background preparation finishes.
+ const html=items.map(item=>`<li class="${item.active?'active':item.reviewed?'reviewed':''}">${item.step?`<button type="button" data-outline-step="${item.step}" ${item.active?'aria-current="step"':''} ${moving?'disabled':''}>`:'<div class="outline-upcoming">'}<span class="outline-number" aria-hidden="true">${item.number}.</span><span class="outline-description">${esc(item.title)}</span>${item.step?'</button>':'</div>'}</li>`).join('');if(outlineMarkup!==html){list.innerHTML=html;outlineMarkup=html}
+}
+$('toggleOutline').onclick=()=>{outlineOpen=!outlineOpen;renderOutline()};
+$('outlineList').onclick=event=>{const button=event.target.closest('[data-outline-step]');if(button)navigateChange(Number(button.dataset.outlineStep))};
 function savedState(){const exists=pr&&saved.some(item=>item.url.toLowerCase()===pr.url.toLowerCase());$('savePR').innerHTML=icon(exists?'saved':'bookmark');$('savePR').setAttribute('aria-pressed',String(!!exists));$('savePR').title=exists?'Remove saved pull request':'Save pull request';$('savePR').setAttribute('aria-label',$('savePR').title)}
 async function openPR(url,navigate=true){
  reviewMode(true);
- abort.abort();abort=new AbortController();const signal=abort.signal,g=++generation;pr=null;session=null;plan=null;count=0;pending=null;moving=false;done=false;nextError='';stepContexts.clear();preparedContexts.clear();preloadTasks.clear();chats.clear();pendingSelection=null;$('connectionDialog').close();$('emptyConnectionDialog').close();$('reviewDialog').close();$('reviewBody').value='';$('postedReview').hidden=true;controls();$('prHeading').hidden=true;showState('Breaking this change into logical chunks…','Fetching the pull request and finding connected changes.',true);
+ abort.abort();abort=new AbortController();const signal=abort.signal,g=++generation;pr=null;session=null;plan=null;count=0;pending=null;moving=false;done=false;nextError='';commentReads.clear();stepContexts.clear();preparedContexts.clear();preloadTasks.clear();chats.clear();pendingSelection=null;$('connectionDialog').close();$('emptyConnectionDialog').close();$('reviewDialog').close();$('reviewBody').value='';$('postedReview').hidden=true;controls();$('prHeading').hidden=true;showState('Breaking this change into logical chunks…','Fetching the pull request and finding connected changes.',true);
  try{
   pr=await api('/api/pr?'+new URLSearchParams({url}),{signal});if(g!==generation)return;
   $('url').value=pr.url;$('repo').textContent=pr.repo;$('prTitle').textContent=pr.title+' #'+pr.number;$('prTitle').title=pr.title;$('prHeading').hidden=false;if(navigate&&location.pathname!==route(pr.url))history.pushState({},'',route(pr.url));savedState();controls();
@@ -37,27 +48,68 @@ async function openPR(url,navigate=true){
 async function prepareNext(){
  if(!plan)return;if(plan.steps.length>count){preloadConnections(count+1).catch(()=>{});return}if(done)return;if(pending)return pending;
  const g=generation,id=session,index=plan.steps.length;nextError='';
- const work=(async()=>{try{const result=await api('/api/reviews/'+id+'/next',{...post({index}),signal:abort.signal});if(g!==generation)return;if(result.step&&!plan.steps[index])plan.steps.push(result.step);if(result.step)preloadConnections(index+1).catch(()=>{});done=result.done}catch(error){if(g!==generation||error.name==='AbortError')return;nextError=error.message;toast(error.message);if(!count)showState('This change could not be prepared.',error.message,false,()=>openPR(pr.url,false))}finally{if(g===generation){pending=null;controls()}}})();
+ const work=(async()=>{try{const result=await api('/api/reviews/'+id+'/next',{...post({index}),signal:abort.signal});if(g!==generation)return;if(Array.isArray(result.story))plan.story=result.story;if(result.step&&!plan.steps[index])plan.steps.push(result.step);if(result.step)preloadConnections(index+1).catch(()=>{});done=result.done}catch(error){if(g!==generation||error.name==='AbortError')return;nextError=error.message;toast(error.message);if(!count)showState('This change could not be prepared.',error.message,false,()=>openPR(pr.url,false))}finally{if(g===generation){pending=null;controls()}}})();
  pending=work;controls();return work;
 }
-async function advance(delta){
- if(!plan||moving||delta<0&&count<=1)return;const g=generation,target=count+delta;moving=true;controls();
+async function advance(delta){return navigateChange(count+delta)}
+async function navigateChange(target){
+ if(!plan||moving||!Number.isInteger(target)||target<1||target===count||target>plan.steps.length+1)return;const g=generation;moving=true;controls();
  try{
-  if(delta>0&&count>=plan.steps.length){if(done)return;await prepareNext();if(g!==generation||target>plan.steps.length)return}
-  if(delta>0)await api('/api/reviews/'+session+'/progress',{...post({cursor:target}),signal:abort.signal});if(g!==generation)return;count=target;showChange();prepareNext();
+  if(target>plan.steps.length){if(done)return;await prepareNext();if(g!==generation||target>plan.steps.length)return}
+  if(target>count)await api('/api/reviews/'+session+'/progress',{...post({cursor:target}),signal:abort.signal});if(g!==generation)return;count=target;showChange();prepareNext();
  }catch(error){if(error.name!=='AbortError')toast(error.message)}finally{if(g===generation){moving=false;controls()}}
 }
 function preloadConnections(step){
  if(preparedContexts.has(step))return Promise.resolve(preparedContexts.get(step));
  if(preloadTasks.has(step))return preloadTasks.get(step);
  const g=generation,id=session,url=pr.url,head=pr.head;
- const work=api('/api/reviews/'+id+'/canvas/preload',{...post({url,head,step}),signal:abort.signal}).then(data=>{if(g===generation){preparedContexts.set(step,data);if(step===count&&step>0)graph.affordances(data.affordances)}return data}).finally(()=>{if(preloadTasks.get(step)===work)preloadTasks.delete(step)});
+ const work=api('/api/reviews/'+id+'/canvas/preload',{...post({url,head,step}),signal:abort.signal}).then(data=>{if(g===generation){preparedContexts.set(step,data);if(step===count&&step>0)graph.affordances(data.affordances,data.excerpts)}return data}).finally(()=>{if(preloadTasks.get(step)===work)preloadTasks.delete(step)});
  preloadTasks.set(step,work);return work;
 }
 function showChange(){
- const change=canvasChanges(plan,count);change.counter=done?`${count} / ${plan.steps.length}`:String(count);change.complete=done&&count===plan.steps.length;change.unavailable=plan.files.filter(file=>file.unavailable);pendingSelection=null;$('connectionDialog').close();$('emptyConnectionDialog').close();$('canvasState').hidden=true;$('canvasStage').hidden=false;$('reviewSubheader').hidden=false;$('canvasControls').hidden=false;graph.show(change);chats.showStep(count);contextData=stepContexts.get(count)||{relations:[],requests:[]};stepContexts.set(count,contextData);if(contextData.relations.length||contextData.requests.length)graph.context(contextData);controls();
- const ready=preparedContexts.get(count);if(ready)graph.affordances(ready.affordances);
+ const change=canvasChanges(plan,count);change.counter=done?`${count} / ${plan.steps.length}`:String(count);change.complete=done&&count===plan.steps.length;change.unavailable=plan.files.filter(file=>file.unavailable);pendingSelection=null;$('connectionDialog').close();$('emptyConnectionDialog').close();$('canvasState').hidden=true;$('canvasStage').hidden=false;$('reviewSubheader').hidden=false;$('canvasControls').hidden=false;graph.show(change);chats.showStep(count);contextData=stepContexts.get(count)||{relations:[],requests:[]};contextData.commentUser=user;stepContexts.set(count,contextData);if(contextData.relations.length||contextData.requests.length||Object.keys(contextData.excerpts||{}).length||contextData.threads?.length||Object.keys(contextData.commentDrafts||{}).length)graph.context(contextData);controls();
+ const ready=preparedContexts.get(count);if(ready)graph.affordances(ready.affordances,ready.excerpts);
+ loadLineComments(count);
  const g=generation,c=count;preloadConnections(c).catch(error=>{if(error.name!=='AbortError'&&g===generation&&c===count)toast('Code connections could not be prepared. '+error.message)});
+}
+function commentState(){const state=stepContexts.get(count);if(state){state.commentDrafts||={};state.commentUser=user}return state}
+function updateComments(state,step){if(step===count){contextData=state;graph.context(state)}}
+function loadLineComments(step){
+ if(!pr||!session||commentReads.has(step))return;const g=generation,state=stepContexts.get(step);if(!state)return;
+ const work=api('/api/reviews/'+session+'/comments/list',{...post({url:pr.url,head:pr.head,step}),signal:abort.signal}).then(data=>{if(g!==generation)return;const threads=mergeCommentThreads(data.threads,state.confirmedThreads||[]);if(JSON.stringify(threads)!==JSON.stringify(state.threads||[])){state.threads=threads;updateComments(state,step)}}).catch(error=>{if(g===generation&&step===count&&error.name!=='AbortError')toast('Pull request comments could not be loaded. '+error.message)}).finally(()=>{if(commentReads.get(step)===work)commentReads.delete(step)});commentReads.set(step,work);
+}
+async function openLineComment(selection){
+ selection={...selection,direction:'callees'};
+ if(!pr||!session)return;const state=commentState(),step=count,g=generation,key=commentDraftKey(selection);let draft=state.commentDrafts[key];
+ if(draft){graph.focusComment(key);return}
+ draft={key,selection:{...selection},body:'',preparing:true,ready:false,error:'',requestId:crypto.randomUUID()};state.commentDrafts[key]=draft;graph.context(state);graph.focusComment(key);
+ try{await api('/api/reviews/'+session+'/comments/context',{...post({url:pr.url,head:pr.head,step,selection}),signal:abort.signal});if(g!==generation||state.commentDrafts[key]!==draft)return;draft.ready=true}
+ catch(error){if(g!==generation||error.name==='AbortError'||state.commentDrafts[key]!==draft)return;draft.error=error.message}
+ finally{draft.preparing=false;if(g===generation&&state.commentDrafts[key]===draft)updateComments(state,step)}
+}
+function editLineComment(key,body){const draft=commentState()?.commentDrafts[key];if(draft&&!draft.busy){draft.body=body;draft.requestId=crypto.randomUUID()}}
+function cancelLineComment(key){const state=commentState();if(state?.commentDrafts[key]&&!state.commentDrafts[key].busy){delete state.commentDrafts[key];graph.context(state)}}
+function replyToComment(selection,replyTo){const state=commentState();if(!state)return;const key=commentDraftKey(selection,replyTo);state.commentDrafts[key]||={key,selection:{...selection},replyTo,body:'',ready:true,requestId:crypto.randomUUID()};graph.context(state);graph.focusComment(key)}
+async function postLineComment(key){
+ const state=commentState(),draft=state?.commentDrafts[key];if(!draft||!draft.ready||draft.busy||!draft.body.trim())return;
+ const g=generation,step=count;draft.busy=true;draft.error='';graph.context(state);
+ try{
+  const data=await api('/api/reviews/'+session+'/comments',{...post({url:pr.url,head:pr.head,step,selection:draft.selection,body:draft.body,requestId:draft.requestId,...draft.replyTo?{replyTo:draft.replyTo}:{}}),signal:abort.signal});if(g!==generation)return;
+  // Keep the confirmed comment inline even if GitHub's list endpoint lags.
+  const fallback={id:draft.replyTo||data.comment.id,path:draft.selection.path,line:draft.selection.line,snapshot:draft.selection.snapshot,comments:[data.comment]},threads=mergeCommentThreads(data.threads||[],[fallback]);
+  state.confirmedThreads=mergeCommentThreads(state.confirmedThreads||[],threads);state.threads=mergeCommentThreads(state.threads||[],threads);delete state.commentDrafts[key];toast(draft.replyTo?'Reply posted to GitHub.':'Comment posted to GitHub.');
+ }catch(error){if(g!==generation||error.name==='AbortError')return;draft.error=error.message}
+ finally{draft.busy=false;if(g===generation)updateComments(state,step)}
+}
+async function expandExcerpt({selection,range,direction}){
+ if(!pr||!session)return;const g=generation,step=count,state=stepContexts.get(step),id=selection.anchorId;
+ state.excerptLoading||={};if(state.excerptLoading[id])return;state.excerptLoading[id]=true;state.excerptErrors||={};delete state.excerptErrors[id];graph.context(state);
+ try{
+  const data=await api('/api/reviews/'+session+'/canvas/excerpt',{...post({url:pr.url,head:pr.head,step,selection,range,direction}),signal:abort.signal});if(g!==generation)return;
+  state.excerpts||={};const prior=state.excerpts[id],a=prior?.affordances,b=data.affordances;
+  state.excerpts[id]={...data,rows:[...new Map([...(prior?.rows||[]),...data.rows].map(row=>[(selection.snapshot==='before'?row.old:row.line),row])).values()].sort((a,b)=>(selection.snapshot==='before'?a.old-b.old:a.line-b.line)),affordances:{...b,calls:[...new Set([...(a?.calls||[]),...b.calls])],tokens:[...new Map([...(a?.tokens||[]),...b.tokens].map(token=>[token.line+':'+token.column,token])).values()]}};
+ }catch(error){if(g!==generation||error.name==='AbortError')return;state.excerptErrors[id]=error.message}
+ finally{state.excerptLoading[id]=false;if(g===generation&&step===count){graph.context(state);graph.reveal(id,direction)}}
 }
 function openCanvasChat(selection){if(pr&&session)chats.open({...selection,step:count,url:pr.url,head:pr.head,reviewId:session})}
 async function streamCanvasChat({context,question,history,signal,onEvent}){const response=await fetch('/api/ask',{...post({surface:'canvas',url:context.url,head:context.head,reviewId:context.reviewId,step:context.step,anchor:{path:context.path,line:context.line,snapshot:context.snapshot},question,history}),signal});await readChatStream(response,onEvent)}

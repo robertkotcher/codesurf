@@ -46,11 +46,12 @@ test('small deletion previews preserve the exact unblurred context around the de
 });
 
 const select=(block,line,direction='callees',snapshot='after')=>({path:snapshot==='before'?block.previousPath||block.path:block.path,line,direction,snapshot,anchorId:block.id,level:0});
-test('only explicitly selected changed calls return their direct targets',async()=>{
+test('explicitly selected calls in changed and surrounding code return their direct targets',async()=>{
  const before='function changed() {\n old();\n other();\n}\n',after=before.replace('old();','helper();'),plan=await transformationPlan([{path:'changed.ts',status:'modified',before,after}],{explain:false}),change=canvasChanges(plan,1),block=change.blocks[0],current=snapshot(new Map([['changed.ts',after],['helper.ts','function helper() { return 1; }'],['other.ts','function other() { return 2; }'],['caller.ts','function caller() { changed(); }']]));
  const result=canvasSelection(change,select(block,2),current);assert.deepEqual(result.relations.map(node=>node.symbol),['helper']);assert.equal(result.relations[0].edges[0].anchorLine,2);assert.equal(result.relations[0].edges[0].scope,'change');
  assert.deepEqual(canvasSelection(change,select(block,1,'callers'),current).relations.map(node=>node.symbol),['caller']);
- for(const selection of [select(block,2,'callers'),select(block,3),select(block,4),{...select(block,2),anchorId:'invented'},{...select(block,2),path:'other.ts'},{...select(block,2),level:-1}])assert.throws(()=>canvasSelection(change,selection,current),{status:400});
+ for(const selection of [select(block,2,'callers'),select(block,4),{...select(block,2),anchorId:'invented'},{...select(block,2),path:'other.ts'},{...select(block,2),level:-1}])assert.throws(()=>canvasSelection(change,selection,current),{status:400});
+ assert.deepEqual(canvasSelection(change,select(block,3),current).relations.map(node=>node.symbol),['other']);
  assert.throws(()=>canvasSelection(change,{...select(block,1),path:'helper.ts',anchorId:result.relations[0].id,level:1},current),{status:400});
 });
 
@@ -60,11 +61,11 @@ test('changed function definitions load callers only when that definition is sel
  const callee=canvasSelection(change,select(block,2),current);assert.deepEqual(callee.relations.map(node=>node.symbol),['helper']);assert.equal(callee.relations[0].edges[0].callLine,2);
 });
 
-test('clear_for_user elsewhere in a changed method cannot appear as a change connection',async()=>{
+test('clear_for_user is never inferred from another line but can be explicitly explored in surrounding code',async()=>{
  await initCallParsers();const before="class PaymentActionsController\n def payment_success\n  unless ['old'].include?(payment_type)\n   reject\n  end\n  finish\n  DashboardCacheService.clear_for_user(user)\n  DashboardCacheService.clear_for_user(current_user)\n end\nend\n",after=before.replace("['old']",'Guard::PAYMENT_TYPES'),plan=await transformationPlan([{path:'controller.rb',status:'modified',before,after}],{explain:false}),change=canvasChanges(plan,1),block=change.blocks[0],current=snapshot(new Map([['controller.rb',after],['cache.rb','class DashboardCacheService\n def self.clear_for_user(user)\n  reset(user)\n end\nend\n']]));
  assert.deepEqual(canvasSelection(change,select(block,3),current).relations,[]);
  assert.deepEqual(canvasSelection(change,select(block,2,'callers'),current).relations,[]);assert.throws(()=>canvasSelection(change,select(block,2),current),{status:400});
- for(const line of [7,8]){assert.throws(()=>canvasSelection(change,select(block,line),current),{status:400});assert.throws(()=>canvasSelection(change,select(block,line,'callers'),current),{status:400})}
+ for(const line of [7,8]){assert.deepEqual(canvasSelection(change,select(block,line),current).relations.map(node=>node.symbol),['clear_for_user']);assert.throws(()=>canvasSelection(change,select(block,line,'callers'),current),{status:400})}
 });
 
 test('removed Ruby definitions retain old source and class-scoped callers',async()=>{
@@ -93,5 +94,5 @@ test('Ruby payment_type_supported? is parsed and exposes callers from its unchan
  const method=current.graph.blocks.find(fn=>fn.start===45);assert.equal(method.symbol,'payment_type_supported?');assert.equal(method.precision,'syntax');assert.equal(method.owner,'ConfirmPaymentService');
  assert.equal(block.rows.find(row=>row.line===45).kind,'context');assert.equal(callerDefinitionForBlock(block,info.after[path].functions,45,'after').symbol,'payment_type_supported?');assert.equal(callerDefinitionForBlock(block,info.after[path].functions,46,'after'),null);assert.equal(callerDefinitionForBlock(block,info.after[path].functions,49,'after'),null);
  const callers=canvasSelection(change,select(block,45,'callers'),current);assert.deepEqual(callers.relations.map(node=>node.symbol),['confirm']);assert.equal(callers.relations[0].edges[0].targetLine,45);assert.equal(callers.relations[0].edges[0].callLine,3);
- assert.throws(()=>canvasSelection(change,select(block,49,'callers'),current),{status:400});assert.throws(()=>canvasSelection(change,select(block,45,'callees'),current),{status:400});
+ assert.deepEqual(canvasSelection(change,select(block,49,'callers'),current).relations,[]);assert.throws(()=>canvasSelection(change,select(block,45,'callees'),current),{status:400});
 });
