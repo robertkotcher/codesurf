@@ -1,3 +1,4 @@
+import {withRubyDependencies} from './ruby-dependencies.js';
 import {canvasChanges} from './canvas-model.js';
 import {canvasSelection,validateCanvasSelection,validateChangedSelection,prepareCanvasConnections,canvasConnectionKey,canvasConnectionPage} from './canvas-relations.js';
 import {savedURL,listSavedPulls,savePull,refreshSavedPull,removeSavedPull} from './saved-pulls.js';
@@ -229,8 +230,8 @@ function cachedCanvasContext(req,p,row,count){
  if(!pending||pending.expires<Date.now()){
   const work=(async()=>{
    const change=canvasChanges(row.plan,count),scoped={auth:req.auth,body:{...req.body,reviewId:row.id,step:count}};
-   const current=await voiceCallSnapshot(scoped,p,{snapshot:'review'},row);
-   const previous=count>0&&change.blocks.some(block=>block.rows.some(row=>row.kind==='removed'))?await voiceCallSnapshot({...scoped,body:{...scoped.body,step:count-1}},p,{snapshot:'review'},row):null;
+   const current=await withRubyDependencies(await voiceCallSnapshot(scoped,p,{snapshot:'review'},row));
+   const previous=count>0&&change.blocks.some(block=>block.rows.some(row=>row.kind==='removed'))?await withRubyDependencies(await voiceCallSnapshot({...scoped,body:{...scoped.body,step:count-1}},p,{snapshot:'review'},row)):null;
    return {change,current,previous,prepared:prepareCanvasConnections(change,current,previous)};
   })();
   pending={work,expires:Date.now()+300000};canvasContexts.set(key,pending);if(canvasContexts.size>30)canvasContexts.delete(canvasContexts.keys().next().value);work.catch(()=>{if(canvasContexts.get(key)===pending)canvasContexts.delete(key)});

@@ -13,7 +13,7 @@ export async function indexArchive(body){
   extract.on('entry',(header,stream,next)=>{
     if(++entries>150000){stream.resume();extract.destroy(new Error('Repository has too many archive entries.'));return}
     const name=header.name.split('/').slice(1).join('/');let valid=true;try{cleanPath(name)}catch{valid=false}
-    if(header.type!=='file'||!valid||skip.test(name)||header.size>200000||bytes+header.size>80*1024*1024){if(header.type==='file')skipped++;stream.resume();stream.on('end',next);return}
+    if(header.type!=='file'||!valid||(skip.test(name)&&name!=='Gemfile.lock')||header.size>200000||bytes+header.size>80*1024*1024){if(header.type==='file')skipped++;stream.resume();stream.on('end',next);return}
     const chunks=[];stream.on('data',chunk=>chunks.push(chunk));stream.on('end',()=>{const buffer=Buffer.concat(chunks);if(!buffer.includes(0)){const text=buffer.toString('utf8');files.set(name,text);bytes+=buffer.length}else skipped++;next()});
   });
   await pipeline(body,limiter(60*1024*1024),createGunzip(),limiter(300*1024*1024),extract);

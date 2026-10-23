@@ -61,11 +61,13 @@ function showChange(){
 }
 function openCanvasChat(selection){if(pr&&session)chats.open({...selection,step:count,url:pr.url,head:pr.head,reviewId:session})}
 async function streamCanvasChat({context,question,history,signal,onEvent}){const response=await fetch('/api/ask',{...post({surface:'canvas',url:context.url,head:context.head,reviewId:context.reviewId,step:context.step,anchor:{path:context.path,line:context.line,snapshot:context.snapshot},question,history}),signal});await readChatStream(response,onEvent)}
-function confirmExpansion(selection){
+function confirmExpansion(selection,{confirmed=false}={}){
+ if(confirmed){startExpansion({selection,step:count,generation});return}
  if(!pr||!session)return;if(preparedCanvasPage(preparedContexts.get(count),selection)?.total===0){showEmptyConnections(selection.direction);return}pendingSelection={selection,step:count,generation};$('connectionTitle').textContent=`Show ${selection.direction}?`;$('connectionTarget').textContent=`${selection.symbol} · ${selection.path}:${selection.line}`;$('confirmConnection').textContent=`Show ${selection.direction}`;openDialog('connectionDialog');
 }
 $('cancelConnection').onclick=()=>{$('connectionDialog').close();pendingSelection=null};
-$('confirmConnection').onclick=()=>{const request=pendingSelection;pendingSelection=null;$('connectionDialog').close();if(!request||request.generation!==generation||request.step!==count)return;const selection=request.selection,id=canvasConnectionKey(selection),state=stepContexts.get(count),prior=state.requests.find(request=>request.id===id);if(prior?.status==='loading'||prior?.status==='done')return;const item=prior||{id,selection,status:'loading'};if(!prior)state.requests.push(item);loadContext(state,item,count)};
+$('confirmConnection').onclick=()=>{const request=pendingSelection;pendingSelection=null;$('connectionDialog').close();startExpansion(request)};
+function startExpansion(request){if(!pr||!session)return;if(!request||request.generation!==generation||request.step!==count)return;const selection=request.selection,id=canvasConnectionKey(selection),state=stepContexts.get(count),prior=state.requests.find(request=>request.id===id);if(prior?.status==='loading'||prior?.status==='done')return;const item=prior||{id,selection,status:'loading'};if(!prior)state.requests.push(item);loadContext(state,item,count)}
 function mergeRelations(prior,incoming){const nodes=new Map(prior.map(node=>[node.id,node]));for(const node of incoming){const old=nodes.get(node.id);if(old){const edges=[...new Map([...old.edges,...node.edges].map(edge=>[JSON.stringify([edge.blockId,edge.anchorLine,edge.callLine,edge.targetLine]),edge])).values()];nodes.set(node.id,{...old,...node,text:old.clipped?node.text:old.text,end:old.clipped?node.end:old.end,clipped:old.clipped&&node.clipped,edges})}else nodes.set(node.id,node)}return [...nodes.values()]}
 function showEmptyConnections(direction){$('emptyConnectionTitle').textContent=`No ${direction} found.`;openDialog('emptyConnectionDialog')}
 $('closeEmptyConnection').onclick=()=>$('emptyConnectionDialog').close();

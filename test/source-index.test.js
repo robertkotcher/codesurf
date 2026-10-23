@@ -72,3 +72,24 @@ test('multiline calls point at the method name rather than the receiver above it
  const index=buildCallIndex(new Map([['call.ts','function run(client: Client) {\n const result = client\n  .update();\n return result;\n}\n'],['call.rb','def run(client)\n result = client\n  .update\n result\nend\n']]));
  for(const path of ['call.ts','call.rb']){assert.deepEqual(index.calls.filter(call=>call.path===path&&call.symbol==='update').map(call=>call.line),[3]);assert.equal(index.calls.some(call=>call.path===path&&call.line===2),false)}
 });
+
+test('Ruby mixins, prepends, extensions and empty intermediate classes preserve dispatch and overlays',async()=>{
+ const {initCallParsers}=await import('../browser/source-index.js');await initCallParsers();
+ const files=new Map([['mixins.rb','module Storage\n def stored_location_for(user)\n  user\n end\nend\nmodule Replacement\n def stored_location_for(user)\n  nil\n end\nend\nclass Base\n include Storage\nend\nclass Bridge < Base\nend\nclass Controller < Bridge\n def run(user)\n  stored_location_for(user)\n end\nend\nclass Other < Base\n prepend Replacement\n def run(user)\n  stored_location_for(user)\n end\nend\nclass Static\n extend Storage\n def self.run(user)\n  stored_location_for(user)\n end\nend']]);
+ const index=buildCallIndex(files),find=(line,graph=index)=>indexedCalls(graph,{path:'mixins.rb',line,direction:'callees'}).blocks.map(block=>block.owner);
+ assert.deepEqual(find(18),['Storage']);assert.deepEqual(find(24),['Replacement']);assert.deepEqual(find(30),['Storage']);
+ const overlaid=overlayCallIndexForTest(JSON.parse(JSON.stringify(index)),new Map([['mixins.rb',files.get('mixins.rb').replace('include Storage','include Replacement')]]));assert.deepEqual(find(18,overlaid),['Replacement']);
+});
+test('call tokens identify the selected function on a line with several calls',async()=>{
+ const {initCallParsers}=await import('../browser/source-index.js');await initCallParsers();
+ for(const [path,text,line]of [['a.rb','class Run\n def first(value)\n  value\n end\n def second\n  1\n end\n def run\n  first(second)\n end\nend',9],['a.ts','function first(v) { return v; }\nfunction second() { return 1; }\nfunction run() { return first(second()); }',3]]){
+  const index=buildCallIndex(new Map([[path,text]]));
+  for(const symbol of ['first','second']){const call=index.calls.find(call=>call.line===line&&call.symbol===symbol);assert.equal(text.split('\n')[line-1].slice(call.column,call.endColumn),symbol);assert.deepEqual(indexedCalls(index,{path,line,column:call.column,direction:'callees'}).blocks.map(block=>block.symbol),[symbol])}
+ }
+});
+
+test('Ruby include argument precedence differs from successive includes and Unicode call columns stay exact',async()=>{
+ const {initCallParsers}=await import('../browser/source-index.js');await initCallParsers();
+ const text='module First\n def value\n  1\n end\nend\nmodule Second\n def value\n  2\n end\nend\nclass Together\n include First, Second\n def run\n  note = "🌊"; value()\n end\nend\nclass Successive\n include First\n include Second\n def run\n  value\n end\nend',path='order.rb',index=buildCallIndex(new Map([[path,text]]));
+ assert.equal(indexedCalls(index,{path,line:14,direction:'callees'}).blocks[0].owner,'First');assert.equal(indexedCalls(index,{path,line:21,direction:'callees'}).blocks[0].owner,'Second');const call=index.calls.find(call=>call.symbol==='value'&&call.line===14);assert.equal(text.split('\n')[13].slice(call.column,call.endColumn),'value');
+});
