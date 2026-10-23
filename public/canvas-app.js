@@ -1,4 +1,5 @@
 import {reviewOutline} from './review-outline.js';
+import {createSidebarResizer} from './resize-sidebar.js';
 import {mergeVariableBindings} from './variable-data.js';
 import {createReviewLoading} from './review-loading.js';
 import {commentDraftKey,mergeCommentThreads} from './canvas-comments.js';
@@ -12,7 +13,9 @@ import {createReviewCanvas,escapeHTML as esc} from './review-canvas.js';
 import {sortSavedPulls} from './saved-pulls.js';
 const $=id=>document.getElementById(id),post=body=>({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 let pr=null,session=null,plan=null,count=0,done=false,generation=0,pending=null,nextError='',moving=false,saved=[],user=null,library=[],libraryKind='my',older=false,libraryGeneration=0,status={},abort=new AbortController(),contextData={relations:[]},saveBusy=false,saveRevision=0;
-let chats,outlineMarkup='',outlineOpen=!window.matchMedia('(max-width:720px)').matches;
+let chats,outlineMarkup='';
+$('resizeOutline').innerHTML=icon('resize');
+createSidebarResizer({sidebar:$('reviewOutline'),handle:$('resizeOutline'),container:$('canvasShell')});
 const loading=createReviewLoading({surface:$('reviewSurface'),overlay:$('reviewLoading'),regions:[$('reviewSubheader'),$('canvasShell')]});
 const loadingTasks=(changes='done')=>[{id:'pull',label:'Pull request',status:'done'},{id:'changes',label:'Logical changes',status:changes},{id:'comments',label:'Comments',status:'waiting'},{id:'connections',label:'Callers and callees',status:'waiting'}];
 const graph=createReviewCanvas({viewport:$('canvas'),stage:$('canvasStage'),world:$('canvasWorld'),fileURL:path=>pr?reviewFileURL(pr,path):null,onExpand:confirmExpansion,onChat:openCanvasChat,onExcerpt:expandExcerpt,commentActions:{onOpen:openLineComment,onEdit:editLineComment,onPost:postLineComment,onCancel:cancelLineComment,onReply:replyToComment},onLayout:()=>chats?.layout()});
@@ -21,21 +24,18 @@ const commentReads=new Map(),stepContexts=new Map(),preparedContexts=new Map(),p
 async function api(path,options={}){const response=await fetch(path,options);const body=await response.json().catch(()=>({}));if(!response.ok)throw Object.assign(new Error(body.error||'The request could not be completed.'),{status:response.status});return body}
 let toastTimer;function toast(message){clearTimeout(toastTimer);$('toast').textContent=message;$('toast').hidden=false;toastTimer=setTimeout(()=>$('toast').hidden=true,5000)}
 function reviewMode(enabled){document.body.classList.toggle('reviewing',enabled);$('openForm').hidden=enabled}
-function showState(title,message='',loading=false,retry=null){$('reviewOutline').hidden=true;$('reviewSubheader').hidden=true;$('toggleOutline').hidden=true;$('canvasControls').hidden=true;$('canvasStage').hidden=true;$('canvasState').hidden=false;$('canvasState').innerHTML=`${loading?'<span class="spinner" aria-hidden="true"></span>':'<div class="welcome-mark" aria-hidden="true">≈</div>'}<h1>${esc(title)}</h1><p role="status">${esc(message)}</p>${retry?'<button id="retryLoad" class="primary">Try again</button>':''}`;if(retry)$('retryLoad').onclick=retry}
+function showState(title,message='',loading=false,retry=null){$('reviewOutline').hidden=true;$('reviewSubheader').hidden=true;$('canvasControls').hidden=true;$('canvasStage').hidden=true;$('canvasState').hidden=false;$('canvasState').innerHTML=`${loading?'<span class="spinner" aria-hidden="true"></span>':'<div class="welcome-mark" aria-hidden="true">≈</div>'}<h1>${esc(title)}</h1><p role="status">${esc(message)}</p>${retry?'<button id="retryLoad" class="primary">Try again</button>':''}`;if(retry)$('retryLoad').onclick=retry}
 function offerSignIn(){const link=document.createElement('a');link.href='/auth/github';link.className='github-sign';link.innerHTML='<img src="/github-mark.svg" width="18" height="18" alt="">Continue with GitHub';$('canvasState').append(link)}
 function route(url){return '/github'+new URL(url).pathname}
 function directPR(){const match=location.pathname.match(/^\/github(\/[^/]+\/[^/]+\/pull\/[1-9]\d*\/?)$/);return match?'https://github.com'+match[1]:null}
-function controls(){renderOutline();const ready=!!plan&&count<plan.steps.length;$('previous').disabled=loading.busy()||moving||count<=1;$('next').disabled=loading.busy()||moving||!plan||!ready&&done&&!nextError;$('next').textContent=nextError?'Retry':!ready&&pending?'Preparing…':'Next';$('next').title=done&&!ready?'All available changes reviewed':nextError||'Next logical change';$('savePR').disabled=!pr||!user||saveBusy;$('savePR').hidden=!pr;$('completeReview').disabled=loading.busy()||!pr;if(plan&&count>0){$('stepCounter').textContent=done?`Change ${count} of ${plan.steps.length}`:`Change ${count}`;$('stepTitle').textContent=plan.steps[count-1].title;$('stepTitle').title=plan.steps[count-1].title}}
+function controls(){renderOutline();const ready=!!plan&&count<plan.steps.length;$('previous').disabled=loading.busy()||moving||count<=1;$('next').disabled=loading.busy()||moving||!plan||!ready&&done&&!nextError;$('next').textContent=nextError?'Retry':!ready&&pending?'Preparing…':'Next';$('next').title=done&&!ready?'All available changes reviewed':nextError||'Next logical change';$('savePR').disabled=!pr||!user||saveBusy;$('savePR').hidden=!pr;$('completeReview').disabled=loading.busy()||!pr;if(plan&&count>0){$('stepCounter').textContent=done?`Change ${count} of ${plan.steps.length}`:`Change ${count}`}}
 function renderOutline(){
  const visible=!!plan&&count>0&&!$('canvasStage').hidden,items=reviewOutline(plan,count),list=$('outlineList');
- $('reviewOutline').hidden=!visible||!outlineOpen;$('reviewSubheader').hidden=!visible;$('toggleOutline').hidden=!visible;
- const footer=$('reviewSubheader'),host=outlineOpen?$('reviewOutline'):$('canvasShell');if(footer.parentElement!==host)host.append(footer);footer.classList.toggle('outline-footer-floating',!outlineOpen);
- $('toggleOutline').innerHTML=icon(outlineOpen?'collapse':'expand');$('toggleOutline').setAttribute('aria-expanded',String(outlineOpen));$('toggleOutline').setAttribute('aria-label',outlineOpen?'Hide change list':'Show change list');$('toggleOutline').title=outlineOpen?'Hide change list':'Show change list';
+ $('reviewOutline').hidden=!visible;$('reviewSubheader').hidden=!visible;
  $('outlineCount').textContent=items.length?String(items.length):'';
  // Keep focused outline buttons intact as background preparation finishes.
  const html=items.map(item=>`<li class="${item.active?'active':item.reviewed?'reviewed':''}">${item.step?`<button type="button" data-outline-step="${item.step}" ${item.active?'aria-current="step"':''} ${moving||loading.busy()?'disabled':''}>`:'<div class="outline-upcoming">'}<span class="outline-number" aria-hidden="true">${item.number}.</span><span class="outline-description">${esc(item.title)}</span>${item.step?'</button>':'</div>'}</li>`).join('');if(outlineMarkup!==html){list.innerHTML=html;outlineMarkup=html}
 }
-$('toggleOutline').onclick=()=>{outlineOpen=!outlineOpen;renderOutline()};
 $('outlineList').onclick=event=>{const button=event.target.closest('[data-outline-step]');if(button)navigateChange(Number(button.dataset.outlineStep))};
 function savedState(){const exists=pr&&saved.some(item=>item.url.toLowerCase()===pr.url.toLowerCase());$('savePR').innerHTML=icon(exists?'saved':'bookmark');$('savePR').setAttribute('aria-pressed',String(!!exists));$('savePR').title=exists?'Remove saved pull request':'Save pull request';$('savePR').setAttribute('aria-label',$('savePR').title)}
 async function openPR(url,navigate=true){
