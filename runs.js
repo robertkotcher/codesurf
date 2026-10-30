@@ -121,12 +121,15 @@ export async function runEvents(id) {
     .map((line) => JSON.parse(line));
 }
 export async function createRun(owner, source, goal, { token } = {}) {
-  if (
-    starting.has(owner) ||
-    [...live.values()].some((state) => state.run.owner === owner)
-  )
+  const active = [...live.values()].filter(
+    (state) => !terminal.has(state.run.status),
+  );
+  if (starting.has(owner) || active.some((state) => state.run.owner === owner))
     throw issue("Stop the current run before starting another.", 409);
-  if (live.size + starting.size >= Number(process.env.CODESURF_MAX_RUNS || 2))
+  if (
+    active.length + starting.size >=
+    Number(process.env.CODESURF_MAX_RUNS || 2)
+  )
     throw issue("All workspaces are busy. Try again shortly.", 429);
   starting.add(owner);
   try {
@@ -869,27 +872,35 @@ async function cleanupOnce(state) {
   await state.provisioning?.catch(() => {});
   await runDocker(state, ["rm", "-f", state.container]).catch(() => {});
   state.tunnel?.kill();
-  if (state.run.worker)
-    await deleteWorker(state.run.worker).catch((error) =>
-      emit(state, "log", {
-        source: "system",
-        text: "Workspace cleanup needs attention: " + error.message,
-      }),
-    );
   await state.queue;
-  if (cloudEnabled())
-    await backupRun(state.run.id, path.dirname(runPath(state.run.id))).catch(
-      (error) =>
+  const pending = [];
+  if (state.run.worker)
+    pending.push(
+      deleteWorker(state.run.worker).catch((error) =>
         emit(state, "log", {
           source: "system",
-          text: "Evidence backup failed: " + error.message,
+          text: "Workspace cleanup needs attention: " + error.message,
         }),
+      ),
     );
+  if (cloudEnabled())
+    pending.push(
+      backupRun(state.run.id, path.dirname(runPath(state.run.id))).catch(
+        (error) =>
+          emit(state, "log", {
+            source: "system",
+            text: "Evidence backup failed: " + error.message,
+          }),
+      ),
+    );
+  await Promise.all(pending);
+  await state.queue;
   live.delete(state.run.id);
 }
 export async function shutdownRuns() {
   await Promise.all(
     [...live.values()].map((state) => {
+      if (terminal.has(state.run.status)) return cleanup(state);
       state.stopped = true;
       return update(state, {
         status: "blocked",
