@@ -1,0 +1,50 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["summary", "outcome", "startup", "tests", "bugs"],
+  "properties": {
+    "summary": { "type": "string" },
+    "outcome": { "type": "string", "enum": ["passed", "failed", "blocked"] },
+    "startup": { "type": "string" },
+    "tests": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title", "status", "detail", "evidence"],
+        "properties": {
+          "title": { "type": "string" },
+          "status": {
+            "type": "string",
+            "enum": ["passed", "failed", "blocked"]
+          },
+          "detail": { "type": "string" },
+          "evidence": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "bugs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "title",
+          "severity",
+          "steps",
+          "expected",
+          "actual",
+          "evidence"
+        ],
+        "properties": {
+          "title": { "type": "string" },
+          "severity": { "type": "string", "enum": ["low", "medium", "high"] },
+          "steps": { "type": "array", "items": { "type": "string" } },
+          "expected": { "type": "string" },
+          "actual": { "type": "string" },
+          "evidence": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    }
+  }
+}

@@ -1,7 +1,48 @@
-import crypto from 'node:crypto';
-export function seal(value,secret){if(!secret||secret.length<32)throw new Error('SESSION_SECRET must have at least 32 characters');const key=crypto.createHash('sha256').update(secret).digest(),iv=crypto.randomBytes(12),c=crypto.createCipheriv('aes-256-gcm',key,iv);const body=Buffer.concat([c.update(JSON.stringify(value)),c.final()]);return Buffer.concat([iv,c.getAuthTag(),body]).toString('base64url')}
-export function unseal(token,secret){try{if(!secret)return null;const b=Buffer.from(token||'','base64url');const d=crypto.createDecipheriv('aes-256-gcm',crypto.createHash('sha256').update(secret).digest(),b.subarray(0,12));d.setAuthTag(b.subarray(12,28));const v=JSON.parse(Buffer.concat([d.update(b.subarray(28)),d.final()]));return v.exp>Date.now()?v:null}catch{return null}}
-export function parsePR(input){let u;try{u=new URL(input)}catch{throw new Error('Enter a GitHub pull request URL')};const m=u.pathname.match(/^\/([\w.-]+)\/([\w.-]+)\/pull\/(\d+)\/?$/);if(u.protocol!=='https:'||u.hostname!=='github.com'||!m||u.username||u.password)throw new Error('Enter https://github.com/owner/repo/pull/123');return {owner:m[1],repo:m[2],number:Number(m[3])}}
-export function cleanPath(path){if(typeof path!=='string'||path.length>1000||path.startsWith('/')||path.split('/').some(s=>!s||s==='.'||s==='..')||/[\x00-\x1f\\]/.test(path))throw new Error('Invalid file path');return path}
-export const encodePath=path=>cleanPath(path).split('/').map(encodeURIComponent).join('/');
-export function parsePatch(patch=''){let old=0,line=0;const result=[];for(const text of patch.split('\n')){const h=text.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);if(h){old=+h[1];line=+h[2];result.push({kind:'hunk',text});continue}if(!old&&!line)continue;if(text[0]==='+')result.push({kind:'add',line:line++,text:text.slice(1)});else if(text[0]==='-')result.push({kind:'del',old:old++,text:text.slice(1)});else if(text[0]===' '){result.push({kind:'context',old:old++,line:line++,text:text.slice(1)})}}return result}
+import crypto from "node:crypto";
+export function seal(value, secret) {
+  if (!secret || secret.length < 32)
+    throw new Error("SESSION_SECRET must have at least 32 characters");
+  const key = crypto.createHash("sha256").update(secret).digest(),
+    iv = crypto.randomBytes(12),
+    c = crypto.createCipheriv("aes-256-gcm", key, iv);
+  const body = Buffer.concat([c.update(JSON.stringify(value)), c.final()]);
+  return Buffer.concat([iv, c.getAuthTag(), body]).toString("base64url");
+}
+export function unseal(token, secret) {
+  try {
+    if (!secret) return null;
+    const b = Buffer.from(token || "", "base64url");
+    const d = crypto.createDecipheriv(
+      "aes-256-gcm",
+      crypto.createHash("sha256").update(secret).digest(),
+      b.subarray(0, 12),
+    );
+    d.setAuthTag(b.subarray(12, 28));
+    const v = JSON.parse(Buffer.concat([d.update(b.subarray(28)), d.final()]));
+    return v.exp > Date.now() ? v : null;
+  } catch {
+    return null;
+  }
+}
+export function parseSource(input) {
+  let url;
+  try {
+    url = new URL(input);
+  } catch {
+    throw new Error("Enter a GitHub repository or pull request URL.");
+  }
+  const match = url.pathname.match(
+    /^\/([\w.-]+)\/([\w.-]+)(?:\/pull\/([1-9]\d*))?\/?$/,
+  );
+  if (
+    url.origin !== "https://github.com" ||
+    url.username ||
+    url.password ||
+    !match
+  )
+    throw new Error("Enter a GitHub repository or pull request URL.");
+  const number = match[3] ? Number(match[3]) : null;
+  if (number !== null && !Number.isSafeInteger(number))
+    throw new Error("Invalid pull request number.");
+  return { owner: match[1], repo: match[2], number };
+}

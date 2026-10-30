@@ -1,37 +1,251 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>CodeSurf.io</title><link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="preload" href="/fonts/manrope-variable.ttf" as="font" type="font/ttf" crossorigin><link rel="stylesheet" href="/canvas.css"></head>
-<body>
-<header class="canvas-header">
- <a class="brand" href="/" aria-label="CodeSurf home"><svg aria-hidden="true" viewBox="0 0 32 32" fill="none"><path d="M5 12C12 5 20 19 27 12M5 21C12 14 20 28 27 21" stroke="currentColor" stroke-width="4" stroke-linecap="round"/></svg><span>CodeSurf<span class="brand-io">.io</span></span></a>
- <form id="openForm" hidden><input id="url" type="url" aria-label="GitHub pull request URL" placeholder="Paste a GitHub pull request link…" required><button type="submit" class="primary" id="openPR">Open PR</button></form>
- <div class="header-tools"><button class="icon-button" id="savePR" aria-label="Save pull request" title="Save pull request" aria-pressed="false" disabled hidden></button><div class="account"><button id="accountButton" class="icon-button" aria-label="Account menu" aria-expanded="false" aria-controls="accountMenu"></button><div id="accountMenu" class="account-menu" hidden><small id="identity"></small><button id="myPulls">My pull requests</button><button id="savedPulls">Saved pull requests</button><button id="settingsButton">Settings</button><button id="completeReview" disabled>Complete review</button><a id="signInLink" href="/auth/github">Sign in with GitHub</a><button id="signOut" hidden>Sign out</button></div></div></div>
-</header>
-<div id="reviewSurface" class="review-surface" aria-busy="false">
-<div id="canvasShell" class="canvas-shell">
- <aside id="reviewOutline" class="review-outline" aria-labelledby="outlineTitle" hidden>
-  <div class="outline-pr" id="prHeading" hidden><div class="outline-pr-meta"><span id="repo"></span><span id="prNumber" class="outline-pr-number"></span></div><h1 id="prTitle"></h1></div>
-  <header><h2 id="outlineTitle">Changes</h2><span id="outlineCount"></span></header>
-  <nav class="outline-changes" aria-label="Changes in this pull request"><ol id="outlineList"></ol></nav>
-  <footer id="reviewSubheader" class="outline-footer" aria-label="Review change navigation" hidden>
-   <span id="stepCounter" class="step-counter"></span>
-   <nav class="step-navigation" aria-label="Review navigation"><button id="previous" disabled>Previous</button><button id="next" class="primary" disabled>Next</button></nav>
-  </footer>
-  <div id="resizeOutline" class="outline-resizer" role="separator" tabindex="0" aria-label="Resize change sidebar" aria-orientation="vertical" aria-controls="reviewOutline" title="Drag to resize sidebar · Arrow keys to adjust · Double-click to reset"></div>
- </aside>
- <div id="canvasControls" class="canvas-controls" role="toolbar" aria-label="Canvas controls" hidden><button class="icon-button" id="zoomOut" aria-label="Zoom out" title="Zoom out"></button><button class="icon-button" id="zoomIn" aria-label="Zoom in" title="Zoom in"></button><span class="canvas-controls-divider" aria-hidden="true"></span><button class="icon-button" id="fitCanvas" aria-label="Fit canvas" title="Fit canvas"></button><button class="icon-button" id="wrapCode" aria-label="Wrap code lines" title="Wrap code lines" aria-pressed="false"></button></div>
- <main id="canvas" class="review-canvas" aria-label="Pull request change canvas"><div id="canvasState" class="canvas-state"><h1>A better way to review pull requests</h1><button id="selectRepository" class="primary">Select repository</button></div><div id="canvasStage" class="canvas-stage" hidden><div id="canvasWorld" class="canvas-world"></div></div></main>
-</div>
-<div id="reviewLoading" class="review-loading" role="region" aria-label="Review preparation" tabindex="-1" hidden>
- <div class="review-loading-card"><h2>Preparing your review</h2><progress value="0" max="4" aria-label="Review preparation progress"></progress><ol aria-live="polite" aria-atomic="true"></ol><p data-loading-error class="error" role="alert" hidden></p><button data-loading-retry class="primary" hidden>Try again</button></div>
-</div>
-</div>
-<dialog id="connectionDialog" aria-labelledby="connectionTitle"><div class="dialog-heading"><h2 id="connectionTitle">Show callers?</h2><button class="icon-button dialog-close" aria-label="Cancel connection"></button></div><p id="connectionTarget" class="muted"></p><p class="muted">Open connected code beside this change.</p><div class="connection-dialog-actions"><button id="cancelConnection">Cancel</button><button id="confirmConnection" class="primary">Show callers</button></div></dialog>
-<dialog id="emptyConnectionDialog" class="empty-connection-dialog" aria-labelledby="emptyConnectionTitle"><div class="dialog-heading"><h2 id="emptyConnectionTitle">No callees found.</h2><button class="icon-button dialog-close" aria-label="Close connection message"></button></div><div class="connection-dialog-actions"><button id="closeEmptyConnection" class="primary">OK</button></div></dialog>
-<dialog id="repositoryDialog" aria-labelledby="repositoryPickerTitle"><div class="dialog-heading"><h2 id="repositoryPickerTitle">Select repository</h2><button class="icon-button dialog-close" aria-label="Close repository picker"></button></div><button id="repositoryBack" class="text-button" hidden>← All repositories</button><input id="repositoryFilter" type="search" aria-label="Search connected repositories" placeholder="Search connected repositories…"><div id="repositoryChoices" aria-live="polite"></div><button id="repositoryMore" class="text-button" hidden>Show more pull requests</button><div class="repository-picker-actions"><a id="pickerConnect" class="text-button" target="_blank" rel="noopener">Connect repositories</a><button id="pickerRefresh" class="text-button">Refresh</button></div></dialog>
-<dialog id="libraryDialog" aria-labelledby="libraryTitle"><div class="dialog-heading"><h2 id="libraryTitle">My pull requests</h2><button class="icon-button dialog-close" aria-label="Close pull requests"></button></div><p id="libraryStatus" class="muted" role="status"></p><input id="libraryFilter" type="search" aria-label="Filter pull requests" placeholder="Search by repository or title…"><div id="libraryList"></div><button id="showOlder" class="text-button" hidden>Show older pull requests</button></dialog>
-<dialog id="settingsDialog" aria-labelledby="settingsTitle"><div class="dialog-heading"><h2 id="settingsTitle">Connected repositories</h2><button class="icon-button dialog-close" aria-label="Close settings"></button></div><p class="muted">GitHub sign-in and repository access are separate. Connect the repository or organization you want to review.</p><div class="settings-actions"><a id="connectRepositories" class="button primary" href="https://github.com/apps/codesurf-io/installations/new" target="_blank" rel="noopener">Connect repositories</a><button id="refreshRepositories">Refresh</button></div><div id="repositoryList"></div></dialog>
-<dialog id="reviewDialog" aria-labelledby="reviewTitle"><div class="dialog-heading"><h2 id="reviewTitle">Complete review</h2><button class="icon-button dialog-close" aria-label="Close review"></button></div><p id="reviewTarget" class="muted"></p><label for="reviewBody">Review comment</label><textarea id="reviewBody" rows="4" placeholder="Share your feedback…"></textarea><label for="reviewEvent">Submit as</label><select id="reviewEvent"><option value="COMMENT">Comment</option><option value="APPROVE">Approve</option><option value="REQUEST_CHANGES">Request changes</option></select><p id="reviewError" class="error" role="alert"></p><button id="publishReview" class="primary">Submit to GitHub</button><a id="postedReview" target="_blank" rel="noopener" hidden>View review on GitHub</a></dialog>
-<div id="toast" role="status" hidden></div>
-<script type="module" src="/canvas-app.js"></script>
-</body></html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>CodeSurf</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link
+      rel="preload"
+      href="/fonts/manrope-variable.ttf"
+      as="font"
+      type="font/ttf"
+      crossorigin
+    />
+    <link rel="stylesheet" href="/app.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <a class="brand" href="/" aria-label="CodeSurf home"
+        ><svg viewBox="0 0 32 32" aria-hidden="true">
+          <path d="M5 12C12 5 20 19 27 12M5 21C12 14 20 28 27 21" /></svg
+        ><span>CodeSurf</span></a
+      >
+      <div class="header-actions">
+        <span id="runtimeStatus" class="runtime-status"
+          ><span class="status-dot"></span>Checking runner</span
+        ><a id="signIn" class="button subtle" href="/auth/github"
+          ><img src="/github-mark.svg" alt="" width="16" height="16" />Connect
+          GitHub</a
+        ><button
+          id="account"
+          class="subtle"
+          aria-expanded="false"
+          aria-controls="accountMenu"
+          hidden
+        ></button>
+        <div id="accountMenu" class="account-menu" hidden>
+          <a id="connectRepos" target="_blank" rel="noopener"
+            >Manage repositories</a
+          ><button id="signOut">Sign out</button>
+        </div>
+      </div>
+    </header>
+    <div class="app-layout">
+      <aside class="sidebar">
+        <button id="newRun" class="new-run">
+          <span data-icon="plus"></span>New run
+        </button>
+        <div class="sidebar-heading">
+          <span>RECENT RUNS</span><span id="runCount"></span>
+        </div>
+        <nav id="runList" aria-label="Recent runs"></nav>
+      </aside>
+      <main id="home" class="home" hidden>
+        <div class="launch">
+          <form id="runForm">
+            <label for="prUrl">Repository or PR</label>
+            <div class="source-input">
+              <span data-icon="pull"></span
+              ><input
+                id="prUrl"
+                type="url"
+                placeholder="https://github.com/owner/repo"
+                autocomplete="off"
+                required
+              /><button
+                id="chooseRepo"
+                type="button"
+                class="icon-button"
+                aria-label="Choose a connected repository"
+                title="Choose a connected repository"
+              >
+                <span data-icon="repo"></span>
+              </button>
+            </div>
+            <label for="goal">Test focus <span>Optional</span></label
+            ><textarea id="goal" rows="2" maxlength="3000"></textarea
+            ><button id="startRun" class="primary start-run">
+              <span data-icon="play"></span>Run
+            </button>
+            <p id="launchError" class="error" role="alert" hidden></p>
+          </form>
+          <button id="sampleRun" class="text-button" hidden>
+            Sample run <span data-icon="external"></span>
+          </button>
+        </div>
+      </main>
+      <section id="workspace" class="workspace" aria-label="Test run" hidden>
+        <header class="run-header">
+          <div>
+            <div class="run-source">
+              <span data-icon="pull"></span><span id="runRepo"></span
+              ><span id="runCommit" class="commit"></span>
+            </div>
+            <h1 id="runTitle"></h1>
+          </div>
+          <div class="run-actions">
+            <span id="runStatus" class="status-badge"></span
+            ><button id="stopRun" class="subtle">
+              <span data-icon="stop"></span>Stop
+            </button>
+          </div>
+        </header>
+        <div class="run-grid">
+          <div class="browser-column">
+            <section class="browser-panel" aria-label="Live browser">
+              <div class="browser-toolbar">
+                <span data-icon="browser"></span
+                ><span id="browserUrl" class="browser-url"
+                  >Waiting for the application</span
+                ><span id="liveBadge" class="live-badge" hidden
+                  ><span class="status-dot"></span>LIVE</span
+                ><button id="takeControl" class="small-button" disabled>
+                  <span data-icon="control"></span>Take control</button
+                ><button id="showReplay" class="small-button" hidden>
+                  <span data-icon="play"></span>Replay
+                </button>
+              </div>
+              <div id="browserViewport" class="browser-viewport">
+                <div id="browserWaiting" class="browser-waiting">
+                  <h2 id="waitingTitle">Creating a workspace</h2>
+                  <p id="waitingDetail" hidden></p>
+                  <span id="waitingSpinner" class="spinner"></span>
+                </div>
+                <img
+                  id="browserScreen"
+                  alt="The application running in the workspace"
+                  tabindex="0"
+                  hidden
+                /><video
+                  id="replay"
+                  controls
+                  playsinline
+                  preload="metadata"
+                  hidden
+                ></video>
+              </div>
+            </section>
+            <section class="logs-panel" aria-label="Run logs">
+              <header class="panel-header">
+                <h2><span data-icon="terminal"></span>Logs</h2>
+                <input
+                  id="logSearch"
+                  type="search"
+                  placeholder="Search logs…"
+                  aria-label="Search logs"
+                /><select id="logFilter" aria-label="Filter logs">
+                  <option value="all">All output</option>
+                  <option value="terminal">Terminal</option>
+                  <option value="server">App server</option>
+                  <option value="browser">Browser</option>
+                  <option value="network">Network</option>
+                  <option value="agent">Agent</option>
+                  <option value="system">Workspace</option></select
+                ><label class="follow-label"
+                  ><input
+                    id="followLogs"
+                    type="checkbox"
+                    checked
+                  />Follow</label
+                ><a
+                  id="downloadLogs"
+                  class="icon-button"
+                  aria-label="Download logs"
+                  title="Download logs"
+                  ><span data-icon="download"></span
+                ></a>
+              </header>
+              <pre id="logs" tabindex="0" aria-label="Log output"></pre>
+            </section>
+          </div>
+          <aside class="activity-panel">
+            <div class="panel-tabs" role="tablist" aria-label="Run details">
+              <button
+                id="activityTab"
+                role="tab"
+                aria-selected="true"
+                aria-controls="activityContent"
+              >
+                Activity <span id="activityCount">0</span></button
+              ><button
+                id="reportTab"
+                role="tab"
+                aria-selected="false"
+                aria-controls="reportContent"
+              >
+                Report<span id="bugCount" hidden></span>
+              </button>
+            </div>
+            <div
+              id="activityContent"
+              role="tabpanel"
+              aria-labelledby="activityTab"
+            >
+              <ol id="activityList" class="activity-list"></ol>
+            </div>
+            <div
+              id="reportContent"
+              role="tabpanel"
+              aria-labelledby="reportTab"
+              hidden
+            >
+              <div id="reportBody" class="report-body"></div>
+            </div>
+            <footer class="activity-footer">
+              <span id="connectionStatus">Connecting…</span
+              ><span id="elapsed"></span>
+            </footer>
+          </aside>
+        </div>
+      </section>
+    </div>
+    <dialog id="repositoryDialog" aria-labelledby="repositoryTitle">
+      <header>
+        <div>
+          <h2 id="repositoryTitle">Select a repository</h2>
+        </div>
+        <button
+          id="closeRepository"
+          class="icon-button"
+          aria-label="Close repository picker"
+        >
+          <span data-icon="close"></span>
+        </button>
+      </header>
+      <button id="repositoryBack" class="text-button" hidden>
+        <span data-icon="back"></span>Repositories</button
+      ><input
+        id="repositorySearch"
+        type="search"
+        placeholder="Find a repository…"
+        aria-label="Search repositories or pull requests"
+      />
+      <button id="runRepository" class="button subtle" hidden>
+        Run latest commit
+      </button>
+      <div id="repositoryList" class="repository-list"></div>
+      <button id="morePulls" class="text-button" hidden>
+        Show more pull requests
+      </button>
+      <footer>
+        <a id="pickerConnect" target="_blank" rel="noopener"
+          >Connect repositories <span data-icon="external"></span
+        ></a>
+      </footer>
+    </dialog>
+    <div id="toast" role="status" hidden></div>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

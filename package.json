@@ -1,39 +1,18 @@
 {
   "name": "codesurf",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "node --env-file-if-exists=.env.local server.js",
     "start": "node --env-file-if-exists=.env.local server.js",
     "test": "node --test",
-    "build": "esbuild browser/review-editor.js --bundle --format=esm --minify --outfile=public/vendor/review-editor.js && esbuild browser/source-index.js --external:web-tree-sitter --external:node:* --bundle --format=esm --minify --outfile=public/source-index.js && esbuild browser/code-highlighting.js --bundle --format=esm --minify --outfile=public/code-highlighting.js && esbuild canvas-model.js --bundle --format=esm --minify --outfile=public/canvas-model.js && esbuild browser/canvas-icons.js --bundle --format=esm --minify --outfile=public/canvas-icons.js && node scripts/copy-parsers.js",
-    "db:migrate": "node --env-file-if-exists=.env.local scripts/migrate.js"
+    "build": "esbuild browser/icons.js --bundle --format=esm --minify --outfile=public/icons.js",
+    "runner:build": "docker build -t codesurf-runner:local runner"
   },
   "dependencies": {
-    "@codemirror/lang-css": "^6.3.1",
-    "@codemirror/lang-html": "^6.4.12",
-    "@codemirror/lang-javascript": "^6.2.5",
-    "@codemirror/lang-json": "^6.0.2",
-    "@codemirror/lang-markdown": "^6.5.2",
-    "@codemirror/lang-php": "^6.0.2",
-    "@codemirror/lang-python": "^6.2.1",
-    "@codemirror/lang-sql": "^6.10.0",
-    "@codemirror/language": "^6.13.1",
-    "@codemirror/legacy-modes": "^6.5.5",
-    "@codemirror/merge": "^6.12.2",
-    "@lezer/highlight": "^1.2.5",
-    "@lezer/javascript": "^1.5.6",
-    "@lezer/python": "^1.1.19",
-    "codemirror": "^6.0.2",
-    "diff": "^9.0.0",
     "express": "^5.1.0",
-    "lucide": "^1.55.0",
-    "openai": "^6.0.0",
-    "pg": "^8.23.1",
-    "tar-stream": "^3.2.2",
-    "tree-sitter-wasms": "^0.1.13",
-    "web-tree-sitter": "^0.24.7"
+    "lucide": "^1.55.0"
   },
   "devDependencies": {
     "esbuild": "^0.28.2"
