@@ -23,9 +23,7 @@
         ><span>CodeSurf</span></a
       >
       <div class="header-actions">
-        <span id="runtimeStatus" class="runtime-status"
-          ><span class="status-dot"></span>Checking runner</span
-        ><a id="signIn" class="button subtle" href="/auth/github"
+        <a id="signIn" class="button subtle" href="/auth/github"
           ><img src="/github-mark.svg" alt="" width="16" height="16" />Connect
           GitHub</a
         ><button
@@ -42,73 +40,164 @@
         </div>
       </div>
     </header>
-    <div class="app-layout">
-      <aside class="sidebar">
-        <button id="newRun" class="new-run">
-          <span data-icon="plus"></span>New run
-        </button>
-        <div class="sidebar-heading">
-          <span>RECENT RUNS</span><span id="runCount"></span>
+    <main id="home" class="repo-home" hidden>
+      <section id="signedOut" class="sign-in-panel" hidden>
+        <h1>Connect GitHub</h1>
+        <a class="button primary" href="/auth/github"
+          ><img src="/github-mark.svg" alt="" width="18" height="18" />Continue
+          with GitHub</a
+        >
+      </section>
+      <section id="connectedHome" hidden>
+        <div class="home-heading">
+          <h1>Repositories</h1>
+          <a id="manageRepos" class="text-button" target="_blank" rel="noopener"
+            ><span data-icon="plus"></span>Connect repositories</a
+          >
         </div>
-        <nav id="runList" aria-label="Recent runs"></nav>
-      </aside>
-      <main id="home" class="home" hidden>
-        <div class="launch">
-          <form id="runForm">
-            <label for="prUrl">Repository or PR</label>
-            <div class="source-input">
-              <span data-icon="pull"></span
-              ><input
-                id="prUrl"
-                type="url"
-                placeholder="https://github.com/owner/repo"
-                autocomplete="off"
-                required
-              /><button
-                id="chooseRepo"
-                type="button"
-                class="icon-button"
-                aria-label="Choose a connected repository"
-                title="Choose a connected repository"
-              >
-                <span data-icon="repo"></span>
-              </button>
-            </div>
-            <label for="goal">Test focus <span>Optional</span></label
-            ><textarea id="goal" rows="2" maxlength="3000"></textarea
-            ><button id="startRun" class="primary start-run">
-              <span data-icon="play"></span>Run
-            </button>
-            <p id="launchError" class="error" role="alert" hidden></p>
+        <div class="home-tools">
+          <div class="search-field">
+            <span data-icon="search"></span
+            ><input
+              id="repositorySearch"
+              type="search"
+              placeholder="Find a repository…"
+              aria-label="Find a repository"
+            />
+          </div>
+          <form id="openPrForm">
+            <input
+              id="prUrl"
+              type="url"
+              placeholder="Paste a pull request URL"
+              aria-label="Pull request URL"
+              required
+            /><button class="subtle">Open PR</button>
           </form>
-          <button id="sampleRun" class="text-button" hidden>
-            Sample run <span data-icon="external"></span>
-          </button>
         </div>
-      </main>
-      <section id="workspace" class="workspace" aria-label="Test run" hidden>
-        <header class="run-header">
-          <div>
-            <div class="run-source">
-              <span data-icon="pull"></span><span id="runRepo"></span
-              ><span id="runCommit" class="commit"></span>
-            </div>
-            <h1 id="runTitle"></h1>
+        <div
+          id="repositoryList"
+          class="repository-list"
+          aria-live="polite"
+        ></div>
+      </section>
+    </main>
+    <main id="reviewPage" class="review-page" hidden>
+      <header class="review-heading">
+        <a class="back-link" href="/" aria-label="Back to repositories"
+          ><span data-icon="back"></span
+        ></a>
+        <div class="pr-heading">
+          <div class="pr-meta">
+            <span id="reviewRepo"></span><span id="reviewNumber"></span
+            ><span id="reviewCommit" class="commit"></span>
           </div>
-          <div class="run-actions">
-            <span id="runStatus" class="status-badge"></span
-            ><button id="stopRun" class="subtle">
-              <span data-icon="stop"></span>Stop
+          <h1 id="reviewTitle"></h1>
+        </div>
+        <a
+          id="githubPr"
+          class="icon-button"
+          target="_blank"
+          rel="noopener"
+          aria-label="Open pull request on GitHub"
+          title="Open on GitHub"
+          ><span data-icon="external"></span
+        ></a>
+      </header>
+      <section id="reviewLoading" class="center-state" hidden>
+        <div id="reviewSpinner" class="spinner"></div>
+        <h2 id="reviewPhase">Loading pull request…</h2>
+        <p id="reviewError" class="muted" hidden></p>
+        <button id="retryReview" class="subtle" hidden>Try again</button>
+      </section>
+      <div id="revisionBanner" class="revision-banner" role="status" hidden>
+        <span>New commits are available.</span
+        ><button id="loadLatest" class="text-button">
+          Load updated changes
+        </button>
+      </div>
+      <div id="reviewLayout" class="review-layout" hidden>
+        <section
+          id="changePicker"
+          class="change-picker"
+          aria-labelledby="changesHeading"
+        >
+          <div class="changes-heading">
+            <h2 id="changesHeading">Testable changes</h2>
+            <span id="changeCount" class="muted"></span>
+            <button
+              id="unavailableFiles"
+              class="icon-button"
+              aria-label="Files without complete text diffs"
+              hidden
+            >
+              <span data-icon="error"></span>
             </button>
           </div>
-        </header>
-        <div class="run-grid">
-          <div class="browser-column">
+          <div id="changeList" class="change-list"></div>
+          <p id="noChanges" class="muted" hidden>
+            No independently testable changes found.
+          </p>
+        </section>
+        <aside id="changeSidebar" class="change-sidebar" hidden>
+          <div class="sidebar-heading">
+            <h2>Changes</h2>
+            <button
+              id="allChanges"
+              class="icon-button"
+              aria-label="Show all testable changes"
+              title="Show all changes"
+            >
+              <span data-icon="list"></span>
+            </button>
+          </div>
+          <nav id="sidebarChanges" aria-label="Testable changes"></nav>
+        </aside>
+        <section id="workspace" class="workspace" hidden>
+          <section
+            id="codePanel"
+            class="code-panel"
+            aria-label="Code for selected change"
+          >
+            <header class="panel-header code-heading">
+              <div>
+                <h2 id="changeTitle"></h2>
+                <p id="changeDescription"></p>
+              </div>
+              <button
+                id="wrapCode"
+                class="icon-button"
+                aria-label="Wrap code lines"
+                aria-pressed="false"
+                title="Wrap lines"
+              >
+                <span data-icon="wrap"></span>
+              </button>
+            </header>
+            <div id="codeFiles" class="code-files"></div>
+            <footer id="expectedResult" class="expected-result"></footer>
+          </section>
+          <section class="vm-panel" aria-label="Test workspace">
+            <header class="panel-header vm-heading">
+              <h2 id="runTitle">Browser</h2>
+              <div class="run-actions">
+                <span id="runStatus" class="status-badge"></span
+                ><button
+                  id="rerunTest"
+                  class="icon-button"
+                  aria-label="Run this test again"
+                  title="Run again"
+                  hidden
+                >
+                  <span data-icon="retry"></span></button
+                ><button id="stopRun" class="small-button" hidden>
+                  <span data-icon="stop"></span>Stop
+                </button>
+              </div>
+            </header>
             <section class="browser-panel" aria-label="Live browser">
               <div class="browser-toolbar">
-                <span data-icon="browser"></span
-                ><span id="browserUrl" class="browser-url"
-                  >Waiting for the application</span
+                <span id="browserUrl">Waiting for the application</span
                 ><span id="liveBadge" class="live-badge" hidden
                   ><span class="status-dot"></span>LIVE</span
                 ><button id="takeControl" class="small-button" disabled>
@@ -119,13 +208,16 @@
               </div>
               <div id="browserViewport" class="browser-viewport">
                 <div id="browserWaiting" class="browser-waiting">
-                  <h2 id="waitingTitle">Creating a workspace</h2>
+                  <div id="waitingSpinner" class="spinner"></div>
+                  <h3 id="waitingTitle">Starting workspace</h3>
                   <p id="waitingDetail" hidden></p>
-                  <span id="waitingSpinner" class="spinner"></span>
+                  <button id="retryTest" class="subtle" hidden>
+                    Try again
+                  </button>
                 </div>
                 <img
                   id="browserScreen"
-                  alt="The application running in the workspace"
+                  alt="Application running in the workspace"
                   tabindex="0"
                   hidden
                 /><video
@@ -137,114 +229,99 @@
                 ></video>
               </div>
             </section>
-            <section class="logs-panel" aria-label="Run logs">
-              <header class="panel-header">
-                <h2><span data-icon="terminal"></span>Logs</h2>
-                <input
-                  id="logSearch"
-                  type="search"
-                  placeholder="Search logs…"
-                  aria-label="Search logs"
-                /><select id="logFilter" aria-label="Filter logs">
-                  <option value="all">All output</option>
-                  <option value="terminal">Terminal</option>
-                  <option value="server">App server</option>
-                  <option value="browser">Browser</option>
-                  <option value="network">Network</option>
-                  <option value="agent">Agent</option>
-                  <option value="system">Workspace</option></select
-                ><label class="follow-label"
-                  ><input
-                    id="followLogs"
-                    type="checkbox"
-                    checked
-                  />Follow</label
-                ><a
-                  id="downloadLogs"
-                  class="icon-button"
-                  aria-label="Download logs"
-                  title="Download logs"
-                  ><span data-icon="download"></span
-                ></a>
-              </header>
-              <pre id="logs" tabindex="0" aria-label="Log output"></pre>
+            <section class="inspection-panel">
+              <div class="inspection-toolbar">
+                <div
+                  class="panel-tabs"
+                  role="tablist"
+                  aria-label="Test details"
+                >
+                  <button
+                    id="activityTab"
+                    role="tab"
+                    aria-selected="true"
+                    aria-controls="activityContent"
+                  >
+                    Activity<span id="activityCount">0</span></button
+                  ><button
+                    id="logsTab"
+                    role="tab"
+                    aria-selected="false"
+                    aria-controls="logsContent"
+                  >
+                    Logs</button
+                  ><button
+                    id="reportTab"
+                    role="tab"
+                    aria-selected="false"
+                    aria-controls="reportContent"
+                  >
+                    Results<span id="bugCount" hidden></span>
+                  </button>
+                </div>
+                <div class="connection-meta">
+                  <span id="connectionStatus"></span><span id="elapsed"></span>
+                </div>
+              </div>
+              <div
+                id="activityContent"
+                class="inspection-content"
+                role="tabpanel"
+                aria-labelledby="activityTab"
+              >
+                <ol id="activityList" class="activity-list"></ol>
+              </div>
+              <div
+                id="logsContent"
+                class="logs-content"
+                role="tabpanel"
+                aria-labelledby="logsTab"
+                hidden
+              >
+                <div class="log-tools">
+                  <input
+                    id="logSearch"
+                    type="search"
+                    placeholder="Search logs…"
+                    aria-label="Search logs"
+                  /><select id="logFilter" aria-label="Filter logs">
+                    <option value="all">All output</option>
+                    <option value="terminal">Terminal</option>
+                    <option value="server">App server</option>
+                    <option value="browser">Browser</option>
+                    <option value="network">Network</option>
+                    <option value="agent">Agent</option>
+                    <option value="system">Workspace</option></select
+                  ><label class="follow-label"
+                    ><input
+                      id="followLogs"
+                      type="checkbox"
+                      checked
+                    />Follow</label
+                  ><a
+                    id="downloadLogs"
+                    class="icon-button"
+                    aria-label="Download logs"
+                    title="Download logs"
+                    ><span data-icon="download"></span
+                  ></a>
+                </div>
+                <pre id="logs" tabindex="0" aria-label="Log output"></pre>
+              </div>
+              <div
+                id="reportContent"
+                class="inspection-content"
+                role="tabpanel"
+                aria-labelledby="reportTab"
+                hidden
+              >
+                <div id="reportBody" class="report-body"></div>
+              </div>
             </section>
-          </div>
-          <aside class="activity-panel">
-            <div class="panel-tabs" role="tablist" aria-label="Run details">
-              <button
-                id="activityTab"
-                role="tab"
-                aria-selected="true"
-                aria-controls="activityContent"
-              >
-                Activity <span id="activityCount">0</span></button
-              ><button
-                id="reportTab"
-                role="tab"
-                aria-selected="false"
-                aria-controls="reportContent"
-              >
-                Report<span id="bugCount" hidden></span>
-              </button>
-            </div>
-            <div
-              id="activityContent"
-              role="tabpanel"
-              aria-labelledby="activityTab"
-            >
-              <ol id="activityList" class="activity-list"></ol>
-            </div>
-            <div
-              id="reportContent"
-              role="tabpanel"
-              aria-labelledby="reportTab"
-              hidden
-            >
-              <div id="reportBody" class="report-body"></div>
-            </div>
-            <footer class="activity-footer">
-              <span id="connectionStatus">Connecting…</span
-              ><span id="elapsed"></span>
-            </footer>
-          </aside>
-        </div>
-      </section>
-    </div>
-    <dialog id="repositoryDialog" aria-labelledby="repositoryTitle">
-      <header>
-        <div>
-          <h2 id="repositoryTitle">Select a repository</h2>
-        </div>
-        <button
-          id="closeRepository"
-          class="icon-button"
-          aria-label="Close repository picker"
-        >
-          <span data-icon="close"></span>
-        </button>
-      </header>
-      <button id="repositoryBack" class="text-button" hidden>
-        <span data-icon="back"></span>Repositories</button
-      ><input
-        id="repositorySearch"
-        type="search"
-        placeholder="Find a repository…"
-        aria-label="Search repositories or pull requests"
-      />
-      <button id="runRepository" class="button subtle" hidden>
-        Run latest commit
-      </button>
-      <div id="repositoryList" class="repository-list"></div>
-      <button id="morePulls" class="text-button" hidden>
-        Show more pull requests
-      </button>
-      <footer>
-        <a id="pickerConnect" target="_blank" rel="noopener"
-          >Connect repositories <span data-icon="external"></span
-        ></a>
-      </footer>
-    </dialog>
+          </section>
+        </section>
+      </div>
+    </main>
     <div id="toast" role="status" hidden></div>
     <script type="module" src="/app.js"></script>
   </body>

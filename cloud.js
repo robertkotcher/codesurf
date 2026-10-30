@@ -212,3 +212,12 @@ export async function recoverCloudWorkers() {
       zone: worker.zone.split("/").at(-1),
     });
 }
+export async function backupReview(id, filename) {
+  if (!process.env.CODESURF_GCS_BUCKET) return;
+  await gcloud([
+    "storage",
+    "cp",
+    filename,
+    `gs://${process.env.CODESURF_GCS_BUCKET}/reviews/${id}.json`,
+  ]);
+}

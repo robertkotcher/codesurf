@@ -1,4 +1,11 @@
 import { cloudEnabled, recoverCloudWorkers } from "./cloud.js";
+import {
+  ensureReview,
+  getReview,
+  reviewView,
+  startChangeRun,
+} from "./reviews.js";
+import { readFile } from "node:fs/promises";
 import express from "express";
 import crypto from "node:crypto";
 import path from "node:path";
@@ -113,7 +120,18 @@ app.get(
     res.cookie(
       "codesurf_oauth",
       seal(
-        { state, verifier, origin: origin(req), exp: Date.now() + 600000 },
+        {
+          state,
+          verifier,
+          origin: origin(req),
+          returnTo:
+            typeof req.query.returnTo === "string" &&
+            /^\/(?:review\/github\/|runs\/)/.test(req.query.returnTo) &&
+            req.query.returnTo.length < 1000
+              ? req.query.returnTo
+              : "/",
+          exp: Date.now() + 600000,
+        },
         env.SESSION_SECRET,
       ),
       { ...cookieOptions(req), maxAge: 600000 },
@@ -176,7 +194,7 @@ app.get(
       exp: Date.now() + 7 * 864e5,
       user: { login: user.login, name: user.name },
     });
-    res.redirect("/");
+    res.redirect(saved.returnTo || "/");
   }),
 );
 app.post("/auth/logout", (req, res) => {
@@ -252,7 +270,7 @@ app.get(
   "/api/repositories",
   wrap(async (req, res) => {
     if (req.auth.local)
-      throw problem("Connect GitHub to choose a repository.", 401);
+      return res.json({ items: [{ name: "codesurf/sample-newsletter" }] });
     const items = [];
     for (let page = 1; page <= 50; page++) {
       const batch = await github(
@@ -279,9 +297,21 @@ app.get(
 app.get(
   "/api/pulls",
   wrap(async (req, res) => {
-    if (req.auth.local)
-      throw problem("Connect GitHub to choose a pull request.", 401);
     const repo = req.query.repo;
+    if (req.auth.local) {
+      if (repo !== "codesurf/sample-newsletter")
+        throw problem("Connect GitHub to choose a pull request.", 401);
+      return res.json({
+        items: [
+          {
+            title: "Validate newsletter email addresses",
+            number: 1,
+            url: "https://github.com/codesurf/sample-newsletter/pull/1",
+          },
+        ],
+        more: false,
+      });
+    }
     if (
       typeof repo !== "string" ||
       !/^[-\w]+\/[.\w-]+$/.test(repo) ||
@@ -301,6 +331,160 @@ app.get(
       })),
       more: items.length === 30,
     });
+  }),
+);
+async function pullSource(req, url) {
+  let p;
+  try {
+    p = parseSource(url);
+  } catch (error) {
+    throw problem(error.message, 400);
+  }
+  if (!p.number) throw problem("Choose a pull request.", 400);
+  const name = p.owner + "/" + p.repo;
+  if (
+    name === "codesurf/sample-newsletter" &&
+    p.number === 1 &&
+    sampleAllowed(req)
+  )
+    return {
+      url,
+      repo: name,
+      baseRepo: name,
+      head: "sample-v1",
+      base: "sample-base",
+      number: 1,
+      title: "Validate newsletter email addresses",
+      description:
+        "Add a signup form. Valid emails should succeed; empty and malformed emails should show an error.",
+      demo: true,
+    };
+  if (req.auth.local)
+    throw problem("Sign in with GitHub to review a pull request.", 401);
+  const pr = await github(req.auth.token, `/repos/${name}/pulls/${p.number}`);
+  if (!pr.head.repo)
+    throw problem("The PR source repository is unavailable.", 404);
+  return {
+    url: pr.html_url,
+    repo: pr.head.repo.full_name,
+    baseRepo: name,
+    head: pr.head.sha,
+    base: pr.base.sha,
+    number: p.number,
+    title: pr.title,
+    description: pr.body || "",
+  };
+}
+async function verifyReviewSource(req, source) {
+  if (source.demo) return;
+  const current = await github(
+    req.auth.token,
+    `/repos/${source.baseRepo}/pulls/${source.number}`,
+  );
+  if (current.head.sha !== source.head || current.base.sha !== source.base)
+    throw problem(
+      "This pull request has new commits. Reload its testable changes before testing.",
+      412,
+    );
+}
+app.post(
+  "/api/reviews",
+  wrap(async (req, res) => {
+    const source = await pullSource(req, req.body.url);
+    if (req.body.reviewId && !req.body.useLatest) {
+      let saved;
+      try {
+        saved = await getReview(req.auth.user.login, req.body.reviewId);
+      } catch (error) {
+        if (error.status !== 404) throw error;
+      }
+      if (
+        saved &&
+        saved.source.baseRepo === source.baseRepo &&
+        saved.source.number === source.number &&
+        (saved.source.head !== source.head || saved.source.base !== source.base)
+      ) {
+        return res.json({
+          ...(await reviewView(saved)),
+          updateAvailable: true,
+        });
+      }
+    }
+    const review = await ensureReview(
+      req.auth.user.login,
+      source,
+      async () => {
+        if (source.demo) {
+          const code = await readFile(
+            path.join(root, "runner/fixture/server.mjs"),
+            "utf8",
+          );
+          const lines = code.trimEnd().split("\n");
+          return [
+            {
+              filename: "server.mjs",
+              status: "added",
+              additions: lines.length,
+              deletions: 0,
+              patch:
+                `@@ -0,0 +1,${lines.length} @@\n` +
+                lines.map((line) => "+" + line).join("\n"),
+            },
+          ];
+        }
+        const files = [];
+        for (let page = 1; page <= 30; page++) {
+          const batch = await github(
+            req.auth.token,
+            `/repos/${source.baseRepo}/pulls/${source.number}/files?per_page=100&page=${page}`,
+          );
+          files.push(...batch);
+          if (batch.length < 100) break;
+          if (page === 30)
+            throw problem(
+              "This pull request exceeds GitHub's 3,000-file diff limit.",
+              422,
+            );
+        }
+        await verifyReviewSource(req, source);
+        return files;
+      },
+      { retry: req.body.retry === true },
+    );
+    res
+      .status(review.status === "loading" ? 202 : 200)
+      .json(await reviewView(review));
+  }),
+);
+app.get(
+  "/api/reviews/:id",
+  wrap(async (req, res) =>
+    res.json(
+      await reviewView(await getReview(req.auth.user.login, req.params.id)),
+    ),
+  ),
+);
+app.get(
+  "/api/reviews/:id/runs",
+  wrap(async (req, res) => {
+    const review = await getReview(req.auth.user.login, req.params.id);
+    res.json({ runs: (await reviewView(review)).runs });
+  }),
+);
+app.post(
+  "/api/reviews/:id/changes/:changeId/run",
+  wrap(async (req, res) => {
+    const run = await startChangeRun(
+      req.auth.user.login,
+      req.params.id,
+      req.params.changeId,
+      {
+        token: req.auth.token,
+        retry: req.body.retry === true,
+        verifySource: (source) => verifyReviewSource(req, source),
+      },
+    );
+    res.status(202).json(publicRun(run));
   }),
 );
 app.get(
@@ -480,7 +664,7 @@ app.get(
   }),
 );
 app.use(express.static(path.join(root, "public")));
-app.get("/runs/:id", (req, res) =>
+app.get(["/runs/:id", "/review/github/:owner/:repo/pr/:number"], (req, res) =>
   res.sendFile(path.join(root, "public/index.html")),
 );
 app.get("/github/:owner/:repo/pull/:number", (req, res) =>
@@ -502,6 +686,9 @@ app.use((error, req, res, _next) => {
     error: error.status
       ? error.message
       : "The request failed. Check the controller logs and retry.",
+    ...(["WORKSPACE_BUSY", "DAILY_LIMIT"].includes(error.code)
+      ? { code: error.code }
+      : {}),
   });
   if (!error.status) console.error(error.message);
 });

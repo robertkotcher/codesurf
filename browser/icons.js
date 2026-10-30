@@ -20,6 +20,10 @@ import {
   FolderGit2,
   LogOut,
   RefreshCw,
+  ChevronRight,
+  WrapText,
+  ListChecks,
+  FileCode2,
 } from "lucide";
 const icons = {
   plus: Plus,
@@ -42,6 +46,10 @@ const icons = {
   repo: FolderGit2,
   logout: LogOut,
   retry: RefreshCw,
+  chevron: ChevronRight,
+  wrap: WrapText,
+  list: ListChecks,
+  code: FileCode2,
 };
 export const icon = (name) =>
   createElement(icons[name] || Globe, {

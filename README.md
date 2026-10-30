@@ -1,6 +1,6 @@
 # CodeSurf
 
-Run a repository or pull request. Watch an agent get the application running, test the changed behavior, and save the evidence.
+Browse connected repositories and their pull requests. Choose a testable change to inspect its code and watch an agent demonstrate it in an isolated app.
 
 The interface has a live browser, agent activity, searchable logs, and a report with checks, reproducible findings, screenshots, video and a Playwright trace. Pause the agent to interact with the same browser, then resume it. Runs and logs survive a controller restart.
 
@@ -15,7 +15,7 @@ npm run runner:build
 CODESURF_LOCAL=1 npm run dev
 ```
 
-Open http://localhost:5179 and choose **Try a sample run**. This is a real agent run, not a simulated animation: Codex inspects a small repository, discovers `npm start`, launches its server, opens the shared browser and tests a newsletter form with a deliberately missing validation rule.
+Open http://localhost:5179, expand **codesurf/sample-newsletter**, open its pull request, and choose a testable change. This is a real agent run, not a simulated animation: Codex inspects a small repository, discovers `npm start`, launches its server, opens the shared browser and tests a newsletter form with a deliberately missing validation rule.
 
 Put settings in ignored `.env.local`:
 
@@ -29,7 +29,15 @@ GITHUB_CLIENT_SECRET=
 GITHUB_APP_SLUG=codesurf-io
 ```
 
-Use at least 32 random characters for SESSION_SECRET. GitHub credentials are optional for the local sample. `CODESURF_LOCAL=1` enables the sample and local run history only on a loopback connection outside production. Real repositories and PRs require GitHub sign-in. A repository link runs its latest default-branch commit and tests that commit’s diff; a PR link runs the PR head and tests the complete PR diff.
+Use at least 32 random characters for SESSION_SECRET. GitHub credentials are optional for the local sample. `CODESURF_LOCAL=1` exposes a sample repository only on a loopback connection outside production. Real repositories and PRs require GitHub sign-in. The home page lists connected repositories with expandable open pull requests. Reviews use `/review/github/<owner>/<repo>/pr/<number>`.
+
+## Review flow
+
+Opening a PR extracts all independently testable behaviors in one structured OpenAI request. The breakdown and exact diff hunks persist in `.codesurf/reviews/`, keyed by signed-in owner, repository, PR, base SHA, and head SHA. Repeat visits reuse the saved breakdown. Every supplied hunk must be assigned to a behavior or explicitly excluded with a reason; invalid or incomplete results show an error instead of invented fallback changes.
+
+Initially, behaviors appear as centered buttons with a short title and description. Selecting one moves the list into a sidebar and opens code on the left and the recorded app, activity, searchable logs, and results on the right. Each behavior gets an independent isolated run. Finished tests reopen their saved evidence; **Run again** starts a new test. If another test is active, the selected behavior waits for a workspace without blocking code inspection or navigation. Refreshing restores the selected behavior and its existing run. New PR commits prompt the user to load updated changes.
+
+Cloud review metadata is backed up to the private evidence bucket. No schema migration is needed. The older `/api/runs` endpoint remains for existing run links; the main UI starts tests through the review/change endpoint.
 
 ## How it works
 

@@ -21,6 +21,12 @@ const {
   createRun,
 } = await import("../runs.js");
 const { default: app } = await import("../server.js");
+const selectedChange = {
+  id: "change-1",
+  title: "Reject empty signups",
+  instructions: "Submit an empty signup form.",
+  expected: "An error appears without creating a signup.",
+};
 const id = crypto.randomUUID(),
   run = {
     id,
@@ -28,7 +34,11 @@ const id = crypto.randomUUID(),
     status: "passed",
     phase: "Complete",
     created: new Date().toISOString(),
-    source: { repo: "acme/site", title: "Improve signup" },
+    source: {
+      repo: "acme/site",
+      title: "Improve signup",
+      testChange: selectedChange,
+    },
     artifacts: ["screen.png"],
     report: null,
   };
@@ -244,4 +254,39 @@ test("concurrent startup requests reserve one workspace and release it on failur
   } finally {
     if (previous !== undefined) process.env.OPENAI_API_KEY = previous;
   }
+});
+
+test("daily quota failures are distinguishable from temporary workspace capacity", async () => {
+  const runtime = process.env.CODESURF_RUNTIME,
+    daily = process.env.CODESURF_DAILY_RUNS;
+  process.env.CODESURF_RUNTIME = "gce";
+  process.env.CODESURF_DAILY_RUNS = "0";
+  try {
+    await assert.rejects(
+      createRun(
+        "quota-test",
+        { repo: "sample/site", head: "test", testChange: selectedChange },
+        "",
+      ),
+      (error) => error.status === 429 && error.code === "DAILY_LIMIT",
+    );
+  } finally {
+    if (runtime === undefined) delete process.env.CODESURF_RUNTIME;
+    else process.env.CODESURF_RUNTIME = runtime;
+    if (daily === undefined) delete process.env.CODESURF_DAILY_RUNS;
+    else process.env.CODESURF_DAILY_RUNS = daily;
+  }
+});
+
+test("runs require one extracted change instead of falling back to testing the whole PR", async () => {
+  const source = { repo: "acme/site", head: "test" };
+  await assert.rejects(
+    createRun("unscoped", source, "Test the PR"),
+    (error) => error.status === 400,
+  );
+  assert.throws(
+    () => agentPrompt({ source, goal: "Test the PR" }),
+    /Select one extracted/,
+  );
+  assert.deepEqual(await listRuns("unscoped"), []);
 });

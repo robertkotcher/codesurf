@@ -15,6 +15,10 @@
     {
       "source": "/runs/:id",
       "destination": "/index.html"
+    },
+    {
+      "source": "/review/github/:owner/:repo/pr/:number",
+      "destination": "/index.html"
     }
   ],
   "headers": [
@@ -39,7 +43,7 @@
   "redirects": [
     {
       "source": "/github/:owner/:repo/pull/:number",
-      "destination": "/?pr=https://github.com/:owner/:repo/pull/:number",
+      "destination": "/review/github/:owner/:repo/pr/:number",
       "permanent": false
     }
   ]
