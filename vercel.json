@@ -35,5 +35,12 @@
         }
       ]
     }
+  ],
+  "redirects": [
+    {
+      "source": "/github/:owner/:repo/pull/:number",
+      "destination": "/?pr=https://github.com/:owner/:repo/pull/:number",
+      "permanent": false
+    }
   ]
 }
