@@ -321,7 +321,7 @@ app.get(
     const page = Math.max(1, Math.min(100, Number(req.query.page) || 1)),
       items = await github(
         req.auth.token,
-        `/repos/${repo}/pulls?state=open&sort=updated&per_page=30&page=${page}`,
+        `/repos/${repo}/pulls?state=open&sort=created&direction=desc&per_page=30&page=${page}`,
       );
     res.json({
       items: items.map((pr) => ({
