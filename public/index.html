@@ -56,6 +56,21 @@ codesurf --version</code></pre>
 <li>Collapse folders and resize code cards horizontally; card height follows the visible code.</li>
 </ul>
 <figure class="space-y-2"><a href="/images/function-details.jpg"><img class="rounded-box border border-base-300 w-full" src="/images/function-details.jpg" width="1280" height="720" loading="lazy" alt="Actual CodeSurf view with an expanded request function and a tooltip describing its purpose, inputs and return type."></a><figcaption class="text-xs text-base-content/60">Expand a function and inspect its input and return shapes.</figcaption></figure>
+<div class="space-y-3">
+<h3 class="font-semibold">For humans: add this to AGENTS.md</h3>
+<p class="text-sm">Add this instruction to your repository’s <code>AGENTS.md</code> if you want your agent to use CodeSurf when explaining code. For use across repositories, add it to your agent’s global instructions instead.</p>
+<pre class="rounded-box bg-base-200 p-4 overflow-x-auto text-sm"><code>When helping me understand unfamiliar code or explaining an execution flow,
+use CodeSurf to open an interactive visualization alongside your explanation.
+
+Read https://codesurf.io for installation and update instructions.
+If CodeSurf is missing, install it with my permission; reuse my existing
+Codex login. Run it on my local desktop so I can see the window:
+
+codesurf /path/to/repo "The specific flow, inputs, and assumptions to trace"
+
+Use --no-open when no graphical desktop is available and tell me where
+the generated report was saved. Do not upload source reports without asking.</code></pre>
+</div>
 <details class="collapse collapse-arrow border border-base-300 rounded-box"><summary class="collapse-title font-medium">Agent reference</summary><div class="collapse-content text-sm space-y-3">
 <pre class="bg-base-200 p-3 rounded-box overflow-x-auto"><code># Save a report without a window
 codesurf /path/to/repo "Trace checkout" --no-open --out ./checkout.html
