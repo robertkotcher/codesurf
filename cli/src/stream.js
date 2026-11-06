@@ -167,7 +167,14 @@ export async function streamAnswer({
         },
       });
       send({ method: "initialized", params: {} });
+      const catalog = await rpc("model/list", {includeHidden:false, limit:100});
+      const models = (catalog.data || []).filter(model => !model.hidden);
+      const selected = models.find(model => model.isDefault) || models[0];
+      if (!selected?.model) throw new Error("Codex did not return an available model. Update the Codex CLI and check codex login status.");
+      const efforts = selected.supportedReasoningEfforts || [];
+      const effort = efforts.some(e => e.reasoningEffort === "low") ? "low" : selected.defaultReasoningEffort;
       const started = await rpc("thread/start", {
+        model: selected.model,
         cwd: root,
         sandbox: "read-only",
         approvalPolicy: "never",
@@ -180,7 +187,7 @@ export async function streamAnswer({
       await rpc("turn/start", {
         threadId: started.thread.id,
         input: [{ type: "text", text: prompt }],
-        effort: "low",
+        ...(effort ? {effort} : {}),
         summary: "none",
       });
     })().catch(finish);
