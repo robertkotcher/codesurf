@@ -70,5 +70,34 @@ codesurf --help</code></pre>
 <p>Analysis reads source without executing the target application and can miss dynamic runtime behavior. AI investigation may send source to the configured model provider; reports contain source, so review them before sharing.</p>
 </div></details>
 </section>
+<section id="changelog" class="space-y-5 border-t border-base-300 pt-7">
+<h2 class="text-xl font-semibold">Changelog</h2>
+<article class="space-y-2">
+<h3 class="font-semibold">0.3.0 <span class="badge badge-sm badge-outline">Current</span></h3>
+<p class="text-sm">Added Ruby support and separated language indexing into independent adapters.</p>
+<ul class="list-disc pl-5 space-y-1 text-sm">
+<li>Ruby methods, namespaces, class-method calls, parameter shapes, and source locations are indexed with the built-in Ripper parser.</li>
+<li>Choose the Ruby interpreter with <code>CODESURF_RUBY</code>, or select enabled adapters with <code>--languages typescript,python,ruby</code>.</li>
+<li>Parser and runtime failures are isolated so one language does not prevent the others from being indexed.</li>
+<li>Added regression coverage for Ruby, mixed-language repositories, Unicode, and missing runtimes.</li>
+</ul>
+</article>
+<article class="space-y-2">
+<h3 class="font-semibold">0.2.0</h3>
+<p class="text-sm">Updated the desktop viewer and added public installation and update instructions.</p>
+<ul class="list-disc pl-5 space-y-1 text-sm">
+<li>Runs share one window with closable tabs and a full-width title and navigation card.</li>
+<li>Functions start collapsed; expanding shows the full body. Info tooltips explain each function and show input and return shapes.</li>
+<li>Added a flow-level chat and one chat per source line, with follow-ups and streamed answers.</li>
+<li>Improved folder layout, line-number alignment, accurate expansion counts, and mouse-wheel zoom over code.</li>
+<li>Cards resize horizontally and automatically fit their visible code; removed green line highlights and redundant card labels.</li>
+<li>Added <code>--version</code>, the offline <code>--demo</code>, a latest-release download URL, checksums, and agent instructions.</li>
+</ul>
+</article>
+<article class="space-y-2">
+<h3 class="font-semibold">0.1.0</h3>
+<p class="text-sm">Initial public CodeSurf release: natural-language code tracing for Python, TypeScript, and JavaScript/Node.js, with a local desktop graph and downloadable HTML reports.</p>
+</article>
+</section>
 <footer class="border-t border-base-300 pt-4 text-xs text-base-content/60">MIT license · Early release</footer>
 </main></body></html>
