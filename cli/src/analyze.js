@@ -1,8 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
-import { analyze as analyzeTypeScript } from "./typescript.js";
+import { languageAdapters, validateIndex } from "./languages/index.js";
 
 const ignored = new Set([
   "node_modules",
@@ -17,7 +16,7 @@ const ignored = new Set([
   "__pycache__",
   "site-packages",
 ]);
-function sourceFiles(root) {
+function sourceFiles(root, adapters) {
   const files = [];
   for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
     if (
@@ -25,103 +24,48 @@ function sourceFiles(root) {
       !entry.name.startsWith(".") &&
       !ignored.has(entry.name)
     )
-      files.push(...sourceFiles(path.join(root, entry.name)));
-    else if (entry.isFile() && /\.(?:[cm]?[jt]sx?|pyi?|pyw)$/.test(entry.name))
+      files.push(...sourceFiles(path.join(root, entry.name), adapters));
+    else if (entry.isFile() && adapters.some(adapter => adapter.matches(entry.name)))
       files.push(path.join(root, entry.name));
   }
   return files;
 }
 
-function pythonRuntime() {
-  const pythonOverride =
-    process.env.CODESURF_PYTHON || process.env.CODETRAIL_PYTHON;
-  const candidates = new Set(pythonOverride ? [pythonOverride] : ["python3"]);
-  if (!pythonOverride)
-    for (const dir of (process.env.PATH || "").split(path.delimiter)) {
-      try {
-        for (const name of fs.readdirSync(dir))
-          if (/^python3\.\d+$/.test(name)) candidates.add(path.join(dir, name));
-      } catch {}
-    }
-  const available = [];
-  for (const executable of candidates) {
-    try {
-      const version = JSON.parse(
-        execFileSync(
-          executable,
-          [
-            "-I",
-            "-S",
-            "-c",
-            "import sys,json;print(json.dumps(list(sys.version_info[:3])))",
-          ],
-          {
-            encoding: "utf8",
-            timeout: 5000,
-            stdio: ["ignore", "pipe", "ignore"],
-          },
-        ),
-      );
-      if (version[0] === 3 && version[1] >= 10)
-        available.push({ executable, version });
-    } catch {}
-  }
-  available.sort(
-    (a, b) => b.version[1] - a.version[1] || b.version[2] - a.version[2],
-  );
-  if (!available.length)
-    throw new Error(
-      "Python source requires Python 3.10+ on PATH. Set CODESURF_PYTHON to the interpreter that supports your project's syntax.",
-    );
-  return available[0];
-}
 
 export function analyze(
   roots,
   question,
-  { entry, depth = 4, limit = 36, catalog = false } = {},
+  { entry, depth = 4, limit = 36, catalog = false, languages } = {},
 ) {
   roots = roots.map((r) => fs.realpathSync(r));
-  const files = roots.flatMap(sourceFiles),
-    pythonFiles = files.filter((f) => /\.py[wi]?$/.test(f));
-  const jsFiles = files.filter(
-    (f) => /\.[cm]?[jt]sx?$/.test(f) && !f.endsWith(".d.ts"),
-  );
-  if (!pythonFiles.length && !jsFiles.length)
-    throw new Error("No Python, JavaScript, or TypeScript source files found.");
-  const js = jsFiles.length
-    ? analyzeTypeScript(roots, question, { depth, limit, catalog: true })
-    : null;
-  let py = null;
-  if (pythonFiles.length) {
-    const runtime = pythonRuntime();
-    py = JSON.parse(
-      execFileSync(
-        runtime.executable,
-        [
-          "-I",
-          "-S",
-          fileURLToPath(new URL("./python_index.py", import.meta.url)),
-        ],
-        {
-          input: JSON.stringify({ roots, files: pythonFiles }),
-          encoding: "utf8",
-          maxBuffer: 128 * 1024 * 1024,
-          timeout: 120000,
-        },
-      ),
-    );
-    py.runtime = `${runtime.executable} (${runtime.version.join(".")})`;
+  const adapters = languages ? languages.map(id => {
+    const adapter = languageAdapters.find(a => a.id === id);
+    if (!adapter) throw new Error(`Unknown language adapter: ${id}`);
+    return adapter;
+  }) : languageAdapters;
+  const files = roots.flatMap(root => sourceFiles(root, adapters));
+  if (!files.length) throw new Error("No supported source files found (" + adapters.flatMap(a => a.names).join(", ") + ").");
+  const indexes = [], diagnostics = [];
+  for (const adapter of adapters) {
+    const selected = files.filter(file => adapter.matches(file));
+    if (!selected.length) continue;
+    try {
+      const result = adapter.index({roots,files:selected,question,depth,limit});
+      validateIndex(adapter.id, result);
+      indexes.push({adapter,result});
+      diagnostics.push(...result.diagnostics);
+    } catch (error) {
+      diagnostics.push(`${adapter.id} adapter: ${error.message}`);
+    }
   }
-  const definitions = [...(js?.definitions || []), ...(py?.definitions || [])];
-  const sources = { ...js?.sources, ...py?.sources };
-  const diagnostics = [...(js?.diagnostics || []), ...(py?.diagnostics || [])];
+  const definitions = indexes.flatMap(({result}) => result.definitions);
+  const sources = Object.assign({}, ...indexes.map(({result}) => result.sources));
   if (!definitions.length)
     throw new Error(
       "No traceable function definitions found." +
         (diagnostics.length ? "\n" + diagnostics.join("\n") : ""),
     );
-  if (py)
+  for (const {adapter, result} of indexes.filter(({adapter}) => adapter.id !== "typescript"))
     for (const root of roots) {
       try {
         const diff = execFileSync(
@@ -135,9 +79,7 @@ export function analyze(
             "--no-color",
             "--unified=0",
             "--",
-            "*.py",
-            "*.pyi",
-            "*.pyw",
+            ...files.filter(file => adapter.matches(file) && file.startsWith(root + path.sep)).map(file => path.relative(root,file)),
           ],
           { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
         );
@@ -146,7 +88,7 @@ export function analyze(
           if (line.startsWith("+++ b/")) file = path.join(root, line.slice(6));
           const match = /^@@ .* \+(\d+)(?:,(\d+))? @@/.exec(line);
           if (match)
-            for (const n of py.definitions.filter((n) => n.absolute === file))
+            for (const n of result.definitions.filter((n) => n.absolute === file))
               for (
                 let l = Math.max(n.start, Number(match[1]));
                 l < Number(match[1]) + Number(match[2] ?? 1) && l <= n.end;
@@ -157,13 +99,13 @@ export function analyze(
       } catch {}
     }
   function getSymbolData(selectedFiles) {
-    const data = js?.getSymbolData(selectedFiles) || {
-      symbolRefs: {},
-      symbolDefinitions: {},
-    };
-    for (const file of selectedFiles)
-      if (py?.symbolRefs[file]) data.symbolRefs[file] = py.symbolRefs[file];
-    Object.assign(data.symbolDefinitions, py?.symbolDefinitions);
+    const data = {symbolRefs:{},symbolDefinitions:{}};
+    for (const {result} of indexes) {
+      const symbols = result.getSymbolData?.(selectedFiles) || result;
+      for (const file of selectedFiles)
+        if (symbols.symbolRefs?.[file]) data.symbolRefs[file] = symbols.symbolRefs[file];
+      Object.assign(data.symbolDefinitions,symbols.symbolDefinitions);
+    }
     return data;
   }
   const index = {
@@ -177,14 +119,8 @@ export function analyze(
     symbols: definitions.length,
     depth,
     limit,
-    languages: [
-      ...(js ? ["JavaScript", "TypeScript"] : []),
-      ...(py ? ["Python"] : []),
-    ],
-    parsers: {
-      ...(js ? { typescript: js.parserVersion } : {}),
-      ...(py ? { python: py.runtime } : {}),
-    },
+    languages: indexes.flatMap(({adapter}) => adapter.names),
+    parsers: Object.fromEntries(indexes.map(({adapter,result}) => [adapter.id,result.version || result.parserVersion || "unknown"])),
   };
   if (catalog) return index;
   const terms = question
@@ -258,6 +194,6 @@ export function analyze(
     ...getSymbolData([...selected.values()].map((n) => n.file)),
     mode: "static",
     generated: new Date().toISOString(),
-    note: "Static source relationships, not runtime observations. Dynamic dispatch, framework callbacks, and Python/Node HTTP or process boundaries are not inferred. Syntax diagnostics are reported explicitly.",
+    note: "Static source relationships, not runtime observations. Dynamic dispatch, framework callbacks, and cross-language HTTP or process boundaries are not inferred. Syntax diagnostics are reported explicitly.",
   };
 }

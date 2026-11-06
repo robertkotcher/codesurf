@@ -2,15 +2,15 @@
 <html lang="en" data-theme="light">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="Install CodeSurf from your AI agent to explore Python and TypeScript code in an interactive source graph.">
+<meta name="description" content="Install CodeSurf from your AI agent to explore Ruby, Python and TypeScript code in an interactive source graph.">
 <title>CodeSurf — install and use</title><link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/docs.css">
 </head>
 <body class="bg-base-100 text-base-content">
 <main class="mx-auto max-w-4xl px-5 py-10 sm:py-14 space-y-9">
-<header class="flex items-center gap-3"><img src="/favicon.svg" width="32" height="32" alt=""><h1 class="text-3xl font-bold tracking-tight">CodeSurf</h1><span class="badge badge-outline badge-sm">0.2.0</span></header>
+<header class="flex items-center gap-3"><img src="/favicon.svg" width="32" height="32" alt=""><h1 class="text-3xl font-bold tracking-tight">CodeSurf</h1><span class="badge badge-outline badge-sm">0.3.0</span></header>
 <section id="note" class="space-y-3">
 <h2 class="text-xl font-semibold">1. A note for humans and AI agents</h2>
-<p>CodeSurf is a local tool your AI agent installs and calls to show you how Python, TypeScript, or JavaScript code works in an interactive graph. Agents: follow the installation steps below, then pass a repository path and the human’s question to open a separate window they can explore.</p>
+<p>CodeSurf is a local tool your AI agent installs and calls to show you how Ruby, Python, TypeScript, or JavaScript code works in an interactive graph. Agents: follow the installation steps below, then pass a repository path and the human’s question to open a separate window they can explore.</p>
 </section>
 <section id="install" class="space-y-3">
 <h2 class="text-xl font-semibold">2. How to Install</h2>
@@ -23,6 +23,7 @@ codesurf --version</code></pre>
 codex login</code></pre>
 <p class="text-sm">The human completes sign-in once; reuse their existing login. No separate CodeSurf account or private GitHub access is needed.</p>
 <ul class="list-disc pl-5 space-y-1 text-sm">
+<li>Ruby projects need an installed Ruby interpreter with Ripper that supports their syntax; set <code>CODESURF_RUBY</code> to select it. Methods, lexical namespaces and explicit class-method calls are indexed; Rails DSL routes, metaprogramming and unknown instance receivers are not inferred.</li>
 <li>Python projects need Python 3.10+ with support for the project’s syntax; set <code>CODESURF_PYTHON</code> to choose an interpreter.</li>
 <li>The viewer requires a graphical desktop. Run locally for a visible window; an agent running on a remote server should use <code>--no-open</code> and transfer the report to the human.</li>
 <li>macOS is tested. Windows and desktop Linux use the same npm package but have not yet been verified; Linux needs Electron’s system libraries.</li>
@@ -30,7 +31,7 @@ codex login</code></pre>
 </ul>
 <p class="text-sm">Check installation without AI or a repository:</p>
 <pre class="rounded-box bg-base-200 p-4 overflow-x-auto text-sm"><code>codesurf --demo</code></pre>
-<p class="text-xs text-base-content/60">Current release: <a class="link" href="/downloads/codesurf-cli-0.2.0.tgz">0.2.0 package</a> · <a class="link" href="/downloads/codesurf-cli-0.2.0.tgz.sha256">SHA-256</a> · <a class="link" href="/downloads/latest.json">release metadata</a> · <a class="link" href="/llms.txt">plain-text agent instructions</a></p>
+<p class="text-xs text-base-content/60">Current release: <a class="link" href="/downloads/codesurf-cli-0.3.0.tgz">0.3.0 package</a> · <a class="link" href="/downloads/codesurf-cli-0.3.0.tgz.sha256">SHA-256</a> · <a class="link" href="/downloads/latest.json">release metadata</a> · <a class="link" href="/llms.txt">plain-text agent instructions</a></p>
 </section>
 <section id="update" class="space-y-3">
 <h2 class="text-xl font-semibold">3. How to Update</h2>

@@ -27,11 +27,13 @@ const help = `CodeSurf — code-backed execution maps
   --limit <1..150>    Maximum functions (default: 36)
   --out <file.html>   Report destination (JSON saved alongside it)
   --no-open          Save without opening a window
+  --languages <ids>  Enable adapters: typescript,python,ruby (comma-separated)
   --static           Skip LLM investigation; use keyword matching
 
-Python / TypeScript / JavaScript (Node ESM and CommonJS).
+Ruby / Python / TypeScript / JavaScript (Node ESM and CommonJS).
 Uses your logged-in Codex CLI to investigate source.
 Python: newest Python 3.10+ on PATH, or CODESURF_PYTHON.
+Ruby: Ruby with Ripper on PATH, or CODESURF_RUBY; runtime must support project syntax.
 --demo opens the bundled offline example. --static works offline.
 Example:
   codesurf ~/my-app "What happens when a user submits an empty title?"
@@ -59,11 +61,12 @@ try {
       staticMode = true;
       continue;
     }
-    if (!["--repo", "--entry", "--depth", "--limit", "--out"].includes(flag))
+    if (!["--repo", "--entry", "--depth", "--limit", "--out", "--languages"].includes(flag))
       throw new Error(`Unknown option: ${flag}`);
     const value = args.shift();
     if (!value || value.startsWith("--"))
       throw new Error(`Missing value for ${flag}`);
+    if (flag === "--languages") opts.languages = value.split(",").map(id => id.trim());
     if (flag === "--repo") roots.push(value);
     if (flag === "--entry") opts.entry = value;
     if (flag === "--out") out = path.resolve(value);

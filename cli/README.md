@@ -79,3 +79,5 @@ Virtual environments, dependency directories, caches, and build output are skipp
 ## Update
 
 Quit CodeSurf, then run `npm install -g https://codesurf.io/downloads/codesurf-cli-latest.tgz --prefer-online`. Check `codesurf --version`. Use `codesurf --demo` for a bundled offline example.
+
+Ruby: requires Ruby with built-in Ripper; set CODESURF_RUBY for recent syntax. Dynamic dispatch, Rails DSL routes and metaprogramming are not inferred. Use --languages typescript,python to disable Ruby.

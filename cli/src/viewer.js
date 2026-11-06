@@ -111,7 +111,7 @@ function highlighted(line, n, number) {
     const target = ref?.target || call?.target;
     const kind = /^['"`]/.test(text)
       ? "str"
-      : /^(?:export|async|await|function|return|const|let|if|else|try|catch|throw|new|import|from|null|true|false|Number|String|def|class|elif|except|raise|with|as|None|True|False|match|case|yield|lambda)$/.test(
+      : /^(?:export|async|await|function|return|const|let|if|else|try|catch|throw|new|import|from|null|true|false|Number|String|def|class|elif|except|raise|with|as|None|True|False|match|case|yield|lambda|module|end|do|unless|elsif|rescue|ensure|nil|self|begin|super)$/.test(
             text,
           )
         ? "kw"
