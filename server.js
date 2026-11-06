@@ -28,6 +28,11 @@ import {
 const app = express(),
   env = process.env,
   root = path.dirname(fileURLToPath(import.meta.url));
+const securityPolicy = JSON.parse(
+  await readFile(path.join(root, "vercel.json"), "utf8"),
+)
+  .headers.flatMap((rule) => rule.headers)
+  .find((header) => header.key === "Content-Security-Policy").value;
 const wrap = (fn) => (req, res, next) =>
   Promise.resolve(fn(req, res, next)).catch(next);
 const local = (req) =>
@@ -75,10 +80,7 @@ app.use(express.json({ limit: "32kb" }));
 app.use((req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("Referrer-Policy", "no-referrer");
-  res.setHeader(
-    "Content-Security-Policy",
-    "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self'; media-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://github.com",
-  );
+  res.setHeader("Content-Security-Policy", securityPolicy);
   if (req.path.startsWith("/api/") || req.path.startsWith("/auth/"))
     res.setHeader("Cache-Control", "no-store");
   next();
@@ -665,7 +667,7 @@ app.get(
 );
 app.use(express.static(path.join(root, "public")));
 app.get(["/runs/:id", "/review/github/:owner/:repo/pr/:number"], (req, res) =>
-  res.sendFile(path.join(root, "public/index.html")),
+  res.sendFile(path.join(root, "public/app.html")),
 );
 app.get("/github/:owner/:repo/pull/:number", (req, res) =>
   res.redirect(

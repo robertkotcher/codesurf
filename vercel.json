@@ -14,11 +14,11 @@
     },
     {
       "source": "/runs/:id",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/review/github/:owner/:repo/pr/:number",
-      "destination": "/index.html"
+      "destination": "/app.html"
     }
   ],
   "headers": [
@@ -35,7 +35,7 @@
         },
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self'; media-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://github.com"
+          "value": "default-src 'self'; script-src 'self' 'sha256-T44U4yrbkPYKLj8uDpQ0NulRfmrTuGDKTiThBGdY4NA='; style-src 'self' 'sha256-2gFscCFcm/bVc9daBLLDBJMkV1WtsAALAaQOBvZva+0='; img-src 'self' data: blob:; connect-src 'self'; media-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://github.com"
         }
       ]
     }

@@ -15,4 +15,6 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      - run: npm ci --prefix cli
+      - run: npm test --prefix cli
       - run: npm run build

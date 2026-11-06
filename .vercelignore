@@ -15,3 +15,7 @@ runs.js
 server.js
 lib.js
 reviews.js
+
+cli/node_modules/
+cli/reports/
+cli/work/
