@@ -1,73 +1,73 @@
 <!doctype html>
 <html lang="en" data-theme="light">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="CodeSurf CLI: visualize Python and TypeScript execution paths from a repository and a question.">
-  <title>CodeSurf</title>
-  <link rel="stylesheet" href="/docs.css">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Install CodeSurf from your AI agent to explore Python and TypeScript code in an interactive source graph.">
+<title>CodeSurf — install and use</title><link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/docs.css">
 </head>
 <body class="bg-base-100 text-base-content">
-<main class="mx-auto max-w-3xl px-5 py-10 sm:py-16 space-y-9">
-  <header class="space-y-4">
-    <div class="flex items-center gap-3"><h1 class="text-3xl font-bold tracking-tight">CodeSurf</h1><span class="badge badge-outline badge-sm">0.1.0</span></div>
-    <p>A CLI that turns a repository and a natural-language question into an interactive code graph.</p>
-    <p class="text-sm text-base-content/65">Python · TypeScript · JavaScript / Node.js</p>
-  </header>
-
-  <section id="install" class="space-y-3">
-    <h2 class="text-xl font-semibold">Install</h2>
-    <p class="text-sm">Requires Node.js 22.12+ and a desktop session. Python projects also need a Python 3.10+ interpreter that supports their syntax.</p>
-    <pre class="rounded-box bg-base-200 p-4 overflow-x-auto text-sm"><code>npm install -g https://codesurf.io/downloads/codesurf-cli-0.1.0.tgz
-
-# Required for AI analysis, if not already set up
-npm install -g @openai/codex
+<main class="mx-auto max-w-4xl px-5 py-10 sm:py-14 space-y-9">
+<header class="flex items-center gap-3"><img src="/favicon.svg" width="32" height="32" alt=""><h1 class="text-3xl font-bold tracking-tight">CodeSurf</h1><span class="badge badge-outline badge-sm">0.2.0</span></header>
+<section id="note" class="space-y-3">
+<h2 class="text-xl font-semibold">1. A note for humans and AI agents</h2>
+<p>CodeSurf is a local tool your AI agent installs and calls to show you how Python, TypeScript, or JavaScript code works in an interactive graph. Agents: follow the installation steps below, then pass a repository path and the human’s question to open a separate window they can explore.</p>
+</section>
+<section id="install" class="space-y-3">
+<h2 class="text-xl font-semibold">2. How to Install</h2>
+<p class="text-sm">Agent: run these commands on the human’s computer, in their desktop session.</p>
+<pre class="rounded-box bg-base-200 p-4 overflow-x-auto text-sm"><code>node --version  # Requires Node.js 22.12+ (Node 24 LTS recommended)
+npm install -g https://codesurf.io/downloads/codesurf-cli-latest.tgz
+codesurf --version</code></pre>
+<p class="text-sm">For natural-language tracing and chat, CodeSurf uses a signed-in Codex CLI. If it is not already installed:</p>
+<pre class="rounded-box bg-base-200 p-4 overflow-x-auto text-sm"><code>npm install -g @openai/codex
 codex login</code></pre>
-    <div class="flex flex-wrap gap-2"><a class="btn btn-sm btn-outline" href="/downloads/codesurf-cli-0.1.0.tgz">Download package</a><a class="btn btn-sm btn-ghost" href="/downloads/codesurf-cli-0.1.0.tgz.sha256">SHA-256</a></div>
-  </section>
+<p class="text-sm">The human completes sign-in once; reuse their existing login. No separate CodeSurf account or private GitHub access is needed.</p>
+<ul class="list-disc pl-5 space-y-1 text-sm">
+<li>Python projects need Python 3.10+ with support for the project’s syntax; set <code>CODESURF_PYTHON</code> to choose an interpreter.</li>
+<li>The viewer requires a graphical desktop. Run locally for a visible window; an agent running on a remote server should use <code>--no-open</code> and transfer the report to the human.</li>
+<li>macOS is tested. Windows and desktop Linux use the same npm package but have not yet been verified; Linux needs Electron’s system libraries.</li>
+<li>If global npm installation is denied, configure a user-owned npm prefix and add its executable directory to PATH; avoid installing as root.</li>
+</ul>
+<p class="text-sm">Check installation without AI or a repository:</p>
+<pre class="rounded-box bg-base-200 p-4 overflow-x-auto text-sm"><code>codesurf --demo</code></pre>
+<p class="text-xs text-base-content/60">Current release: <a class="link" href="/downloads/codesurf-cli-0.2.0.tgz">0.2.0 package</a> · <a class="link" href="/downloads/codesurf-cli-0.2.0.tgz.sha256">SHA-256</a> · <a class="link" href="/downloads/latest.json">release metadata</a> · <a class="link" href="/llms.txt">plain-text agent instructions</a></p>
+</section>
+<section id="update" class="space-y-3">
+<h2 class="text-xl font-semibold">3. How to Update</h2>
+<p class="text-sm">Agent: quit the open CodeSurf application, then reinstall from the latest URL and check the installed version. This preserves saved reports and chat histories.</p>
+<pre class="rounded-box bg-base-200 p-4 overflow-x-auto text-sm"><code>npm install -g https://codesurf.io/downloads/codesurf-cli-latest.tgz --prefer-online
+codesurf --version</code></pre>
+<p class="text-sm">Use the versioned package URL above to pin a release. <code>npm update codesurf-cli</code> is not the update method for this direct-download package.</p>
+</section>
+<section id="use" class="space-y-4">
+<h2 class="text-xl font-semibold">4. How to use</h2>
+<p class="text-sm"><strong>Human:</strong> tell your agent what you want to understand. <strong>Agent:</strong> call CodeSurf with the repository path and a specific question, including relevant inputs or assumptions.</p>
+<pre class="rounded-box bg-base-200 p-4 overflow-x-auto text-sm"><code>codesurf /path/to/repo \
+  "Trace a request with an expired access token. Assume refresh succeeds."</code></pre>
+<p class="text-sm">The command opens a left-to-right graph; further runs become tabs in the same window. The example below traces a request, a rejected access token, a token refresh, and a retry using the bundled example source.</p>
+<figure class="space-y-2"><a href="/images/code-flow.jpg"><img class="rounded-box border border-base-300 w-full" src="/images/code-flow.jpg" width="1280" height="720" alt="Actual CodeSurf report with a beginner explanation chat, collapsed functions, folder groups, and call arrows."></a><figcaption class="text-xs text-base-content/60">Actual report view from the bundled token-refresh example. Click to enlarge.</figcaption></figure>
+<ul class="list-disc pl-5 space-y-1 text-sm">
+<li>Scroll to zoom; drag empty canvas to pan. Use Fit to see the whole trace.</li>
+<li>Expand ▸ to read a full function; click ⓘ for its explanation, inputs, and return type.</li>
+<li>Hover a line to follow its call path. Click a line or token to open a chat and type your question.</li>
+<li>Ask broader follow-ups in the introductory chat. Each source line has one chat.</li>
+<li>Collapse folders and resize code cards horizontally; card height follows the visible code.</li>
+</ul>
+<figure class="space-y-2"><a href="/images/function-details.jpg"><img class="rounded-box border border-base-300 w-full" src="/images/function-details.jpg" width="1280" height="720" loading="lazy" alt="Actual CodeSurf view with an expanded request function and a tooltip describing its purpose, inputs and return type."></a><figcaption class="text-xs text-base-content/60">Expand a function and inspect its input and return shapes.</figcaption></figure>
+<details class="collapse collapse-arrow border border-base-300 rounded-box"><summary class="collapse-title font-medium">Agent reference</summary><div class="collapse-content text-sm space-y-3">
+<pre class="bg-base-200 p-3 rounded-box overflow-x-auto"><code># Save a report without a window
+codesurf /path/to/repo "Trace checkout" --no-open --out ./checkout.html
 
-  <section id="usage" class="space-y-3">
-    <h2 class="text-xl font-semibold">Usage</h2>
-    <pre class="rounded-box bg-base-200 p-4 overflow-x-auto text-sm"><code>codesurf /path/to/repo "What happens when a session expires?"</code></pre>
-    <p class="text-sm">Opens a zoomable desktop graph with source code and call paths. Each file has one panel; selected functions are shown in full.</p>
-    <ul class="list-disc pl-5 space-y-1 text-sm">
-      <li>Hover or pin a line to follow downstream calls.</li>
-      <li>Collapse folders, resize files, and toggle line wrapping.</li>
-      <li>Click a token to ask a question using repository context and web lookup.</li>
-    </ul>
-  </section>
+# Add another repository
+codesurf /path/to/frontend "Trace login" --repo /path/to/backend
 
-  <section id="agents" class="space-y-3">
-    <h2 class="text-xl font-semibold">Calling from an agent</h2>
-    <p class="text-sm">Any agent with shell access can invoke the CLI. Include the inputs and branch you want to explain.</p>
-    <pre class="rounded-box bg-base-200 p-4 overflow-x-auto text-sm"><code>codesurf "$PWD" \
-  "Trace a request with an expired token. Assume refresh succeeds." \
-  --out ./artifacts/session-flow.html</code></pre>
-    <p class="text-sm">Writes an HTML map and a JSON source snapshot. Add <code>--no-open</code> on a headless machine. Exit status is zero on successful report generation.</p>
-  </section>
+# Offline analysis with a known entry point
+codesurf /path/to/repo "Trace login" --static --entry src/auth.ts#login
 
-  <section id="options" class="space-y-3">
-    <h2 class="text-xl font-semibold">Options</h2>
-    <div class="overflow-x-auto border border-base-300 rounded-box"><table class="table table-sm">
-      <thead><tr><th>Flag</th><th>Purpose</th></tr></thead>
-      <tbody>
-        <tr><td><code>--repo &lt;path&gt;</code></td><td>Add a repository; repeatable</td></tr>
-        <tr><td><code>--entry &lt;file#function&gt;</code></td><td>Set the starting function</td></tr>
-        <tr><td><code>--depth &lt;0–12&gt;</code></td><td>Call depth; default 4</td></tr>
-        <tr><td><code>--limit &lt;1–150&gt;</code></td><td>Maximum functions; default 36</td></tr>
-        <tr><td><code>--out &lt;file.html&gt;</code></td><td>Report destination</td></tr>
-        <tr><td><code>--no-open</code></td><td>Generate without opening a window</td></tr>
-        <tr><td><code>--static</code></td><td>Use offline symbol matching instead of AI</td></tr>
-      </tbody>
-    </table></div>
-  </section>
-
-  <section class="space-y-3">
-    <h2 class="text-xl font-semibold">How it works</h2>
-    <p class="text-sm">TypeScript compiler APIs and Python AST parsing index definitions and calls. The Codex CLI selects source relevant to your question. Electron displays the resulting graph.</p>
-    <p class="text-sm">Analysis is static and can miss dynamic dispatch or runtime behavior. AI analysis sends selected source to your configured model provider. Reports contain source code; review them before sharing.</p>
-  </section>
-  <footer class="border-t border-base-300 pt-4 text-xs text-base-content/60">MIT license · Early release</footer>
-</main>
-</body>
-</html>
+codesurf --help</code></pre>
+<p>Reports are self-contained HTML with a JSON snapshot alongside them. Zero exit status means report generation succeeded. Chat requires the CodeSurf desktop viewer and Codex sign-in.</p>
+<p>Analysis reads source without executing the target application and can miss dynamic runtime behavior. AI investigation may send source to the configured model provider; reports contain source, so review them before sharing.</p>
+</div></details>
+</section>
+<footer class="border-t border-base-300 pt-4 text-xs text-base-content/60">MIT license · Early release</footer>
+</main></body></html>

@@ -2,10 +2,10 @@
 
 Ask a natural-language question about a repository and explore the answer as a left-to-right graph of source snippets. Edges start at the actual call lines and end at function definitions.
 
-Requires Node 22.12+, the Codex CLI, and `codex login`. Python repositories additionally need a Python 3.10+ interpreter that understands their syntax. The first desktop launch downloads Electron. The default investigation uses your Codex account and sends the source it reads to the configured model service. `--static` uses local compiler analysis only.
+Requires Node 22.12+, the Codex CLI, and `codex login`. Python repositories additionally need a Python 3.10+ interpreter that understands their syntax. npm downloads the Electron desktop runtime during installation. The default investigation uses your Codex account and sends the source it reads to the configured model service. `--static` uses local compiler analysis only.
 
 ```sh
-npm install -g https://codesurf.io/downloads/codesurf-cli-0.1.0.tgz
+npm install -g https://codesurf.io/downloads/codesurf-cli-latest.tgz
 # If needed, install Codex and let the human sign in once.
 npm install -g @openai/codex
 codex login
@@ -75,3 +75,7 @@ CODESURF_PYTHON=/path/to/project/.venv/bin/python codesurf ~/python-project "Tra
 ```
 
 Virtual environments, dependency directories, caches, and build output are skipped. Python syntax/encoding errors identify the file and selected parser version in the terminal and report info panel. Successfully parsed files remain available; an all-unparseable repository fails explicitly. Mixed Python/Node repositories do not automatically imply verified HTTP or subprocess edges between languages.
+
+## Update
+
+Quit CodeSurf, then run `npm install -g https://codesurf.io/downloads/codesurf-cli-latest.tgz --prefer-online`. Check `codesurf --version`. Use `codesurf --demo` for a bundled offline example.

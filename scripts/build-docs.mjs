@@ -78,3 +78,7 @@ fs.writeFileSync(archive + ".sha256", sha + "  " + release.filename + "\n");
 console.log(
   `Prepared ${release.filename}: ${release.files.length} source files, ${release.size} bytes.`,
 );
+
+fs.copyFileSync(archive, path.join(output, "codesurf-cli-latest.tgz"));
+fs.writeFileSync(path.join(output, "codesurf-cli-latest.tgz.sha256"), sha + "  codesurf-cli-latest.tgz\n");
+fs.writeFileSync(path.join(output, "latest.json"), JSON.stringify({version:release.version, url:`https://codesurf.io/downloads/${release.filename}`, sha256:sha}, null, 2) + "\n");

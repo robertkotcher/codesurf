@@ -42,6 +42,18 @@ def descriptor(unit, node, name, function=False):
     d = dict(id=key, name=name, file=unit['file'], absolute=str(unit['path']), start=node.lineno,
              end=end, lines=unit['lines'][node.lineno-1:end], calls=[], changed=[], language='Python')
     if function:
+        args = node.args
+        positional = args.posonlyargs + args.args
+        default_start = len(positional) - len(args.defaults)
+        d['inputs'] = [dict(name=a.arg, type=ast.unparse(a.annotation) if a.annotation else 'unknown',
+                            optional=i >= default_start, inferred=not bool(a.annotation))
+                       for i, a in enumerate(positional)]
+        for a, default in zip(args.kwonlyargs, args.kw_defaults):
+            d['inputs'].append(dict(name=a.arg, type=ast.unparse(a.annotation) if a.annotation else 'unknown', optional=default is not None, inferred=not bool(a.annotation)))
+        for a, prefix in [(args.vararg, '*'), (args.kwarg, '**')]:
+            if a:
+                d['inputs'].append(dict(name=prefix+a.arg, type=ast.unparse(a.annotation) if a.annotation else 'unknown', inferred=not bool(a.annotation)))
+        d['output'] = dict(type=ast.unparse(node.returns) if node.returns else 'unknown', inferred=not bool(node.returns))
         definitions.append(d)
     else:
         symbol_defs[key] = d

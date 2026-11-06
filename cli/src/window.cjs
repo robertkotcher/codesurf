@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell, ipcMain } = require("electron");
+const { app, BrowserWindow, WebContentsView, shell, ipcMain } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
 const os = require("node:os");
@@ -8,32 +8,53 @@ app.setName("CodeSurf");
 // Retain local question histories from the original desktop app profile.
 const legacyProfile = path.join(app.getPath("appData"), "CodeTrail");
 if (fs.existsSync(legacyProfile)) app.setPath("userData", legacyProfile);
-app.whenReady().then(() => {
-  const report = process.argv[2];
-  if (!report || !path.isAbsolute(report)) {
-    app.quit();
-    return;
-  }
-  let snapshot = JSON.parse(
-    fs.readFileSync(report.replace(/\.html$/, "") + ".json", "utf8"),
-  );
+// All invocations share one desktop process and retain each run's renderer state.
+const handlers = new Map();
+for (const channel of ["trace", "inspect-token"])
+  ipcMain.handle(channel, (event, value) => {
+    const handler = handlers.get(event.sender.id)?.[channel];
+    if (!handler) throw new Error("Unknown run.");
+    return handler(event, value);
+  });
+let host, active, writeReport, serial = 0;
+const runs = new Map();
+function resize() {
+  if (!host || host.isDestroyed()) return;
+  const [width, height] = host.getContentSize();
+  for (const run of runs.values()) run.view.setBounds({x: 220, y: 0, width: Math.max(1, width - 220), height});
+}
+function publish() {
+  host.webContents.send("runs", {active, runs: [...runs.values()].map(r => ({id:r.id, title:r.title, question:r.question}))});
+}
+function select(id) {
+  if (!runs.has(id)) return;
+  active = id;
+  for (const run of runs.values()) run.view.setVisible(run.id === id);
+  resize(); publish();
+}
+function addRun(report) {
+  if (!report || !path.isAbsolute(report) || !fs.existsSync(report)) return;
+  const existing = [...runs.values()].find(r => r.report === report);
+  if (existing) { select(existing.id); host.show(); host.focus(); return; }
+  let snapshot = JSON.parse(fs.readFileSync(report.replace(/\.html$/, "") + ".json", "utf8"));
   let investigation = null;
   const explanations = new Set();
-  const window = new BrowserWindow({
-    width: 1080,
-    height: 760,
-    minWidth: 580,
-    minHeight: 420,
-    title: "CodeSurf",
-    backgroundColor: "#ffffff",
-    autoHideMenuBar: true,
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      sandbox: true,
-      preload: path.join(__dirname, "preload.cjs"),
-    },
-  });
+  const view = new WebContentsView({webPreferences:{nodeIntegration:false, contextIsolation:true, sandbox:true, preload:path.join(__dirname,"preload.cjs")}});
+  const id = String(++serial);
+  const run = {id, report, view, title:snapshot.title || snapshot.question || "New run", question:snapshot.question || ""};
+  runs.set(id,run);
+  host.contentView.addChildView(view);
+  const window = {
+    webContents: view.webContents,
+    isDestroyed: () => view.webContents.isDestroyed(),
+    loadFile: file => view.webContents.loadFile(file),
+    on: (name, callback) => { if (name === "closed") run.dispose = callback; },
+  };
+  const register = (channel, callback) => {
+    const map = handlers.get(view.webContents.id) || {};
+    map[channel] = callback;
+    handlers.set(view.webContents.id,map);
+  };
   // Only explicit editor links leave this local, sandboxed report window.
   window.webContents.on("will-navigate", (event, url) => {
     event.preventDefault();
@@ -41,7 +62,7 @@ app.whenReady().then(() => {
       shell.openExternal(url);
   });
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
-  ipcMain.handle("trace", async (event, question) => {
+  register("trace", async (event, question) => {
     if (
       event.sender !== window.webContents ||
       typeof question !== "string" ||
@@ -88,13 +109,10 @@ app.whenReady().then(() => {
       });
     });
     if (!window.isDestroyed()) {
-      snapshot = JSON.parse(
-        fs.readFileSync(destination.replace(/\.html$/, "") + ".json", "utf8"),
-      );
-      await window.loadFile(destination);
+      addRun(destination);
     }
   });
-  ipcMain.handle("inspect-token", async (event, selection) => {
+  register("inspect-token", async (event, selection) => {
     if (
       event.sender !== window.webContents ||
       !selection ||
@@ -226,6 +244,42 @@ app.whenReady().then(() => {
     investigation?.kill();
     for (const child of explanations) child.kill();
   });
+  writeReport(snapshot, report);
   window.loadFile(report);
-});
+  select(id);
+  host.show(); host.focus();
+}
+function closeRun(id) {
+  const run = runs.get(id);
+  if (!run) return;
+  run.dispose?.();
+  handlers.delete(run.view.webContents.id);
+  host.contentView.removeChildView(run.view);
+  run.view.webContents.close();
+  runs.delete(id);
+  if (active === id) active = [...runs.keys()].at(-1);
+  if (active) select(active); else publish();
+}
+const locked = app.requestSingleInstanceLock({report:process.argv[2]});
+if (!locked) app.quit();
+else {
+  const pending = [];
+  app.on("second-instance", (_event, argv, _cwd, data) => {
+    const report = data?.report || argv.find(value => path.isAbsolute(value) && value.endsWith(".html"));
+    if (host) addRun(report); else pending.push(report);
+  });
+  app.whenReady().then(async () => {
+    ({writeReport} = await import("./report.js"));
+    app.dock?.setIcon(path.join(__dirname, "logo.png"));
+    host = new BrowserWindow({width:1280,height:800,minWidth:760,minHeight:420,title:"CodeSurf",icon:path.join(__dirname,"logo.png"),backgroundColor:"#ffffff",autoHideMenuBar:true,webPreferences:{nodeIntegration:false,contextIsolation:true,sandbox:true,preload:path.join(__dirname,"shell-preload.cjs")}});
+    ipcMain.handle("runs-ready", event => { if(event.sender === host.webContents) publish(); });
+    ipcMain.handle("select-run", (event,id) => {if(event.sender === host.webContents) select(id);});
+    ipcMain.handle("close-run", (event,id) => {if(event.sender === host.webContents) closeRun(id);});
+    host.on("resize",resize);
+    host.on("closed",() => {for (const run of runs.values()) {run.dispose?.();run.view.webContents.close();} runs.clear();});
+    host.loadFile(path.join(__dirname,"shell.html"));
+    addRun(process.argv[2]);
+    for (const report of pending) addRun(report);
+  });
+}
 app.on("window-all-closed", () => app.quit());

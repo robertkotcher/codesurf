@@ -9,6 +9,14 @@ import { planTrace } from "./planner.js";
 import { writeReport } from "./report.js";
 
 const args = process.argv.slice(2);
+if (args.includes("--version")) {
+  console.log(JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.url))).version);
+  process.exit(0);
+}
+if (args[0] === "--demo") args.splice(0, 1,
+  fileURLToPath(new URL("../examples/auth-refresh", import.meta.url)),
+  "Trace an authenticated request that gets a 401, refreshes the token, and retries once.",
+  "--static", "--entry", "api/client.ts#request");
 const help = `CodeSurf — code-backed execution maps
 
   codesurf <repository> ["natural-language scenario"] [options]
@@ -24,7 +32,7 @@ const help = `CodeSurf — code-backed execution maps
 Python / TypeScript / JavaScript (Node ESM and CommonJS).
 Uses your logged-in Codex CLI to investigate source.
 Python: newest Python 3.10+ on PATH, or CODESURF_PYTHON.
-Omit the question to type it in the desktop window. --static works offline.
+--demo opens the bundled offline example. --static works offline.
 Example:
   codesurf ~/my-app "What happens when a user submits an empty title?"
 `;

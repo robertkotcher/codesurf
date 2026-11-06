@@ -40,6 +40,8 @@ test("resolves aliased imports, preserves line numbers, bounds traversal, and ma
   const root = fixture(t);
   const r = analyze([root], "Trace POST", { entry: "src/route.ts#POST" });
   assert.equal(r.nodes.length, 2);
+  assert.deepEqual(r.nodes[0].inputs, []);
+  assert.equal(r.nodes[0].output.type, "string");
   assert.equal(r.nodes[0].calls[0].target, r.nodes[1].id);
   assert.equal(r.nodes[0].calls[0].line, 6);
   assert.equal(r.nodes[1].calls[0].kind, "boundary");
@@ -103,6 +105,7 @@ test("graph expands source, anchors edges to row sides, opens token questions, a
   });
   t.after(() => dom.window.close());
   const d = dom.window.document;
+  for (const id of [...d.querySelectorAll("[data-function-toggle]")].map(b => b.dataset.functionToggle)) d.querySelector(`[data-function-toggle="${id}"]`).click();
   const nextFrame = () =>
     new Promise((resolve) => dom.window.requestAnimationFrame(resolve));
   await nextFrame();
@@ -116,7 +119,7 @@ test("graph expands source, anchors edges to row sides, opens token questions, a
       button.textContent === "find" && button.dataset.tokenLine === "6",
   );
   link.click();
-  assert.equal(d.querySelectorAll(".chat").length, 1);
+  assert.equal(d.querySelectorAll(".chat:not(.overview-chat)").length, 1);
   assert.equal(d.querySelector("#token-definition"), null);
   const cards = [...d.querySelectorAll("article")];
   assert.ok(parseFloat(cards[1].style.left) > parseFloat(cards[0].style.left));
@@ -211,7 +214,7 @@ test("LLM plan validates selected code, rejects invented lines, and preserves om
   );
 });
 
-test("question form submits natural language through the desktop bridge", async (t) => {
+test("graph view has no follow-up request bar", async (t) => {
   const root = fixture(t),
     out = path.join(root, "welcome.html");
   // Welcome generation needs no source analysis or LLM; disable desktop opening via a generated static report fixture.
@@ -242,13 +245,8 @@ test("question form submits natural language through the desktop bridge", async 
     },
   });
   t.after(() => dom.window.close());
-  dom.window.document.querySelector("#question-input").value =
-    "What happens if someone sends an empty value?";
-  dom.window.document
-    .querySelector("#ask")
-    .dispatchEvent(new dom.window.Event("submit", { cancelable: true }));
-  await Promise.resolve();
-  assert.equal(question, "What happens if someone sends an empty value?");
+  assert.equal(dom.window.document.querySelector("#ask"), null);
+  assert.equal(dom.window.document.querySelector("#question-input"), null);
 });
 
 test("token questions stream into independent persistent panels and fade on click-away", async (t) => {
@@ -286,11 +284,12 @@ test("token questions stream into independent persistent panels and fade on clic
   });
   t.after(() => dom.window.close());
   const d = dom.window.document;
+  for (const id of [...d.querySelectorAll("[data-function-toggle]")].map(b => b.dataset.functionToggle)) d.querySelector(`[data-function-toggle="${id}"]`).click();
   const token = [...d.querySelectorAll("[data-token]")].find(
     (b) => b.textContent === "find" && b.dataset.tokenLine === "6",
   );
   token.click();
-  const first = d.querySelector(".chat");
+  const first = d.querySelector(".chat:not(.overview-chat)");
   first.querySelector("input").value = "What does this do?";
   first
     .querySelector("form")
@@ -315,8 +314,8 @@ test("token questions stream into independent persistent panels and fade on clic
     text: "up a value.",
   });
   assert.match(first.textContent, /It looks up a value/);
-  token.click();
-  const second = d.querySelectorAll(".chat")[1];
+  d.querySelector('[data-file="src/route.ts"][data-line="7"] .token').click();
+  const second = d.querySelectorAll(".chat:not(.overview-chat)")[1];
   assert.ok(first.classList.contains("inactive"));
   second.querySelector("input").value = "What about empty input?";
   second
@@ -338,18 +337,18 @@ test("token questions stream into independent persistent panels and fade on clic
     p.resolve({ answer: "[Reference](https://example.com/docs)" });
   }
   await new Promise((resolve) => dom.window.requestAnimationFrame(resolve));
-  assert.equal(d.querySelectorAll(".chat").length, 2);
+  assert.equal(d.querySelectorAll(".chat:not(.overview-chat)").length, 2);
   assert.equal(first.querySelector("a").href, "https://example.com/docs");
   d.querySelector("#viewport").click();
   assert.ok(
-    [...d.querySelectorAll(".chat")].every((c) =>
+    [...d.querySelectorAll(".chat:not(.overview-chat)")].every((c) =>
       c.classList.contains("inactive"),
     ),
   );
   assert.ok(dom.window.localStorage.length > 0);
 });
 
-test("middle gaps are muted non-interactive markers and only context controls expand source", (t) => {
+test("selected functions show every line even when the plan selects sparse evidence", (t) => {
   const root = fixture(t),
     out = path.join(root, "report.html");
   execFileSync(process.execPath, [
@@ -394,11 +393,14 @@ test("middle gaps are muted non-interactive markers and only context controls ex
   });
   t.after(() => dom.window.close());
   const d = dom.window.document;
+  for (const id of [...d.querySelectorAll("[data-function-toggle]")].map(b => b.dataset.functionToggle)) d.querySelector(`[data-function-toggle="${id}"]`).click();
   assert.equal(d.querySelectorAll("[data-gap], [data-expand]").length, 0);
-  assert.ok(d.querySelector(".fold"));
+  assert.equal(d.querySelector(".fold"), null);
+  const route = d.querySelector('[data-file="src/route.ts"]').closest("article");
+  assert.deepEqual([...route.querySelectorAll(".line")].map(row => Number(row.dataset.line)), [2, 3, 4, 5, 6, 7, 8]);
   assert.equal(d.querySelectorAll(".folder").length, 1);
   assert.match(d.querySelector(".folder").textContent, /src/);
-  assert.equal(d.querySelector(".fold").tagName, "DIV");
+
   d.querySelector("[data-below]").click();
   assert.match(
     d.querySelector("article .snippet").textContent,
@@ -437,11 +439,8 @@ test("question and response live in the graph, reserve their own lane, and conne
   const overview = d.querySelector("#trace-overview");
   assert.equal(overview.parentElement.id, "world");
   assert.equal(d.querySelector(".summary"), null);
-  assert.equal(
-    d.querySelector("#overview-question").textContent,
-    report.question,
-  );
-  assert.equal(d.querySelector("#summary").textContent, report.summary);
+  assert.equal(d.querySelector("#overview-question"), null);
+  assert.match(overview.querySelector(".chat-messages").textContent, new RegExp(report.summary));
   const overviewRight = parseFloat(overview.style.left) + 350;
   for (const element of d.querySelectorAll(".node,.folder"))
     assert.ok(parseFloat(element.style.left) > overviewRight);
@@ -454,4 +453,75 @@ test("question and response live in the graph, reserve their own lane, and conne
   assert.equal(d.querySelector(".overview-edge").dataset.toFolder, "src");
   assert.equal(d.querySelectorAll(".node:not([hidden])").length, 0);
   assert.deepEqual(errors, []);
+});
+
+test("line whitespace opens an empty chat for a user question", async (t) => {
+  const root = fixture(t), out = path.join(root, 'line.html');
+  writeReport(analyze([root], 'POST', {entry:'src/route.ts#POST'}), out);
+  const pending = [];
+  const dom = new JSDOM(fs.readFileSync(out,'utf8'), {
+    runScripts:'dangerously', pretendToBeVisual:true,
+    beforeParse(w) {
+      w.ResizeObserver = class {observe(){} disconnect(){}};
+      w.codesurf = {onInspect(){}, inspect: selection => new Promise(resolve => pending.push({selection,resolve}))};
+    }
+  });
+  t.after(()=>dom.window.close());
+  const d=dom.window.document;
+  for (const id of [...d.querySelectorAll("[data-function-toggle]")].map(b => b.dataset.functionToggle)) d.querySelector(`[data-function-toggle="${id}"]`).click();
+  d.querySelector('[data-file="src/route.ts"][data-line="6"] .source-text').click();
+  d.querySelector('[data-file="src/route.ts"][data-line="6"] .token').click();
+  d.querySelector('[data-file="src/route.ts"][data-line="6"] .source-text').click();
+  assert.equal(d.querySelectorAll('.chat:not(.overview-chat)').length, 1);
+  assert.equal(pending.length,0);
+  assert.equal(d.querySelector('.line-explanation .chat-messages').textContent, '');
+  d.querySelector('.line-explanation input').value='What does this line do?';
+  d.querySelector('.line-explanation form').dispatchEvent(new dom.window.Event('submit',{cancelable:true}));
+  assert.equal(pending.length,1);
+  assert.equal(pending[0].selection.question,'What does this line do?');
+  assert.equal(pending[0].selection.text,"  const result = find('hello');");
+  assert.ok(d.querySelector('.line-explanation .chat-progress.busy'));
+  pending[0].resolve({answer:'Looks up the value.'});
+  await new Promise(resolve=>setTimeout(resolve,0));
+  assert.equal(d.querySelector('.chat-progress.busy'),null);
+  assert.match(d.querySelector('.line-explanation .chat-messages').textContent,/Looks up the value/);
+  d.querySelector('.line-explanation input').value='Why?';
+  d.querySelector('.line-explanation form').dispatchEvent(new dom.window.Event('submit',{cancelable:true}));
+  assert.equal(pending.length,2);
+  assert.equal(pending[1].selection.history.length,2);
+  pending[1].resolve({answer:'For the request.'});
+});
+
+test('functions initially collapse and their info buttons show descriptions', t => {
+  const root=fixture(t), out=path.join(root,'collapsed.html');
+  const report=analyze([root],'POST',{entry:'src/route.ts#POST'});
+  report.nodes[0].description='Looks up the requested value and returns it.';
+  writeReport(report,out);
+  const dom=new JSDOM(fs.readFileSync(out,'utf8'),{runScripts:'dangerously',pretendToBeVisual:true,beforeParse(w){w.ResizeObserver=class{observe(){} disconnect(){}};}});
+  t.after(()=>dom.window.close());
+  const d=dom.window.document;
+  assert.equal(d.querySelector('[data-file="src/route.ts"][data-line="6"]'),null);
+  d.querySelector('[data-function-info]').click();
+  assert.match(d.querySelector('[role="tooltip"]').textContent,/Looks up/);
+  d.querySelector('[data-function-toggle]').click();
+  assert.ok(d.querySelector('[data-file="src/route.ts"][data-line="6"]'));
+});
+
+test('introductory card supports follow-ups with the walkthrough in context', async t => {
+  const root=fixture(t), out=path.join(root,'intro-chat.html');
+  const report=analyze([root],'POST',{entry:'src/route.ts#POST'});
+  report.summary='The handler looks up a value and returns it.';
+  writeReport(report,out);
+  let selection;
+  const dom=new JSDOM(fs.readFileSync(out,'utf8'),{runScripts:'dangerously',pretendToBeVisual:true,beforeParse(w){w.ResizeObserver=class{observe(){} disconnect(){}};w.codesurf={onInspect(){},inspect:async s=>{selection=s;return {answer:'It returns the lookup result.'};}};}});
+  t.after(()=>dom.window.close());
+  const card=dom.window.document.querySelector('.overview-chat');
+  assert.ok(card);
+  assert.match(card.textContent,/handler looks up/);
+  card.querySelector('input').value='What is returned?';
+  card.querySelector('form').dispatchEvent(new dom.window.Event('submit',{cancelable:true}));
+  await new Promise(resolve=>setTimeout(resolve,0));
+  assert.equal(selection.question,'What is returned?');
+  assert.equal(selection.history[0].text,report.summary);
+  assert.match(card.textContent,/returns the lookup result/);
 });

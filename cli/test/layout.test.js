@@ -50,3 +50,16 @@ test("resizing a card grows the containing folders and preserves column separati
   assert.ok(api.width > 700);
   assert.ok(api.height > 450);
 });
+
+test('sibling folders in separate columns align at the top', () => {
+  const result = layoutFolders([
+    {id:'entry',file:'api/client.ts',level:0},
+    {id:'tokens',file:'session/tokens.ts',level:1},
+    {id:'http',file:'transport/http.ts',level:1},
+  ],new Map([['entry',{width:340,height:600}]]),new Set());
+  const api=result.folders.find(f=>f.key==='api');
+  const session=result.folders.find(f=>f.key==='session');
+  const transport=result.folders.find(f=>f.key==='transport');
+  assert.equal(api.y,session.y);
+  assert.ok(transport.y >= session.y+session.height+24);
+});

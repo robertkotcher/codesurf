@@ -144,6 +144,7 @@ test("merged file panels render loop arrows, transitive hover focus, pinned focu
   const d = dom.window.document,
     frame = () =>
       new Promise((resolve) => dom.window.requestAnimationFrame(resolve));
+  for (const id of [...d.querySelectorAll("[data-function-toggle]")].map(b => b.dataset.functionToggle)) d.querySelector(`[data-function-toggle="${id}"]`).click();
   await frame();
   assert.equal(d.querySelectorAll(".node").length, 2);
   assert.equal(d.querySelectorAll(".self-loop").length, 3);

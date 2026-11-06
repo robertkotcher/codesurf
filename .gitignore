@@ -12,3 +12,6 @@ node_modules/
 # Generated public release archive (rebuilt from cli source).
 public/downloads/*.tgz
 public/downloads/*.sha256
+
+public/downloads/latest.json
+public/docs.css

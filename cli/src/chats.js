@@ -32,6 +32,7 @@ function restoreChats() {
     );
     for (const c of saved)
       if (c.id && nodes.has(c.selection?.nodeId) && Array.isArray(c.messages)) {
+        if (!c.overview && [...chats.values()].some(saved => !saved.overview && saved.file === c.file && saved.selection.line === c.selection.line)) continue;
         chats.set(c.id, c);
         renderChat(c);
       }
@@ -45,6 +46,7 @@ function activateChat(id) {
 function positionChats() {
   if (!folderLayout) return;
   for (const c of chats.values()) {
+    if (c.overview) continue;
     const p = endpoint(c.selection.nodeId),
       element = $("chat-" + c.id);
     if (!p || !element) continue;
@@ -56,10 +58,17 @@ function positionChats() {
     element.style.top = c.y * scale + ty + "px";
   }
 }
-function openChat(button) {
+function openChat(button, explainLine = false) {
   const n = nodes.get(button.dataset.tokenNode),
     line = Number(button.dataset.tokenLine),
     column = Number(button.dataset.token);
+  const existing = [...chats.values()].find(c => !c.overview && c.file === n.file && c.selection.line === line);
+  if (existing) {
+    activateChat(existing.id);
+    positionChats();
+    $("chat-" + existing.id)?.querySelector("input")?.focus();
+    return;
+  }
   const ref = report.symbolRefs?.[n.file]?.find(
     (r) => r.line === line && r.column === column,
   );
@@ -77,6 +86,7 @@ function openChat(button) {
       module: ref?.module || "",
     },
     file: n.file,
+    explainLine,
     messages: [],
     stack,
     manual: false,
@@ -114,11 +124,17 @@ function renderChat(c) {
   if (!element) {
     element = document.createElement("section");
     element.id = "chat-" + c.id;
-    element.className = "chat inactive";
+    element.className = "chat inactive" + (c.explainLine ? " line-explanation" : "");
     element.dataset.chat = c.id;
     element.setAttribute("aria-label", "Questions about " + c.selection.text);
-    element.innerHTML = `<header class="chat-head" data-drag-chat="${c.id}"><div><strong>${esc(c.selection.text)}</strong><small>${esc(c.file)}:${c.selection.line}</small></div><button type="button" data-close-chat="${c.id}" aria-label="Close question panel">×</button></header><div class="chat-messages"></div><div class="chat-progress" role="status"></div><form class="chat-compose"><input aria-label="Ask a question about ${esc(c.selection.text)}" placeholder="Ask a question about this token…"><button type="submit">Ask</button></form>`;
-    $("chats").append(element);
+    element.innerHTML = `<header class="chat-head" data-drag-chat="${c.id}"><div><strong>${esc(c.explainLine ? "Line " + c.selection.line : c.selection.text)}</strong><small>${esc(c.file)}:${c.selection.line}</small></div><button type="button" data-close-chat="${c.id}" aria-label="Close question panel">×</button></header><div class="chat-messages"></div><div class="chat-progress" role="status"></div><form class="chat-compose"><input aria-label="Ask a question about ${esc(c.selection.text)}" placeholder="Ask a follow-up question…"><button type="submit">Ask</button></form>`;
+    if (c.overview) {
+      element.classList.add("overview-chat");
+      $("trace-overview").replaceChildren(element);
+      element.querySelector("strong").textContent = "About this flow";
+      element.querySelector("small").textContent = "Ask about any part of this trace";
+      element.querySelector("[data-close-chat]").hidden = true;
+    } else $("chats").append(element);
     element.addEventListener("pointerdown", () => activateChat(c.id));
     element.addEventListener("focusin", () => activateChat(c.id));
     element.querySelector("form").addEventListener("submit", (e) => {
@@ -138,7 +154,7 @@ function renderChat(c) {
     element
       .querySelector("[data-drag-chat]")
       .addEventListener("pointerdown", (e) => {
-        if (e.target.closest("button") || e.button !== 0) return;
+        if (c.overview || e.target.closest("button") || e.button !== 0) return;
         e.preventDefault();
         const start = { x: e.clientX, y: e.clientY, cx: c.x, cy: c.y };
         c.manual = true;
@@ -169,6 +185,7 @@ function renderChat(c) {
     )
     .join("");
   const last = c.messages.at(-1);
+  element.querySelector(".chat-progress").classList.toggle("busy", last?.status === "running");
   element.querySelector(".chat-progress").textContent =
     last?.status === "running"
       ? last.progress || "Starting agent…"
@@ -242,3 +259,16 @@ function applyInspectEvent(event) {
 window.codesurf?.onInspect?.(applyInspectEvent);
 
 window.addEventListener("blur", () => activateChat(null));
+
+function initializeOverviewChat() {
+  if (chats.has("overview")) return;
+  const entry = nodes.get(report.entry);
+  if (!entry) return;
+  const text = (report.sources?.[entry.file]?.[entry.start - 1] || entry.lines[0] || "").slice(0, 1000);
+  if (!text) return;
+  const c = {id:"overview", overview:true, file:entry.file,
+    selection:{nodeId:entry.id,line:entry.start,column:0,text},
+    messages:[{role:"assistant",text:$("summary").textContent,status:"completed"}], stack:0};
+  chats.set(c.id,c);
+  renderChat(c);
+}

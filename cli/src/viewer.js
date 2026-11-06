@@ -26,6 +26,7 @@ const panels = graph.panels;
 let hoveredLine = null,
   pinnedLine = null;
 const ranges = new Map();
+const expandedFunctions = new Set();
 const positions = new Map();
 let scale = 1,
   tx = 0,
@@ -36,14 +37,13 @@ let graphWidth = 1,
   busy = false,
   framePending = false;
 
+$("run-title").textContent = report.title || report.question || "New run";
+$("run-title").title = report.title || report.question || "New run";
 $("repo").textContent = report.roots.map((r) => r.split("/").pop()).join(" + ");
-$("question-input").value = report.question;
-$("overview-question").textContent = report.question;
-$("title").textContent = report.title || report.question;
 $("summary").textContent =
   report.summary ||
   (nodes.size
-    ? "Compiler-resolved calls · expand the source above or below any snippet."
+    ? `Start with ${nodes.get(report.entry)?.name || "the first function"}, the piece of code where this flow begins, and follow the arrows to see which pieces it asks to do work. Open a function with ▸ to read its steps, or click ⓘ for a plain-language explanation.`
     : "");
 document.title = "CodeSurf" + (report.title ? " · " + report.title : "");
 $("welcome").hidden = nodes.size > 0;
@@ -85,18 +85,13 @@ function shown(panel) {
     return [...ranges.get(panel.id)].sort((a, b) => a - b);
   const set = new Set();
   for (const fn of panel.members) {
-    set.add(fn.start);
-    for (const l of fn.relevantLines || []) set.add(l);
-    for (const call of fn.calls)
-      if (nodes.has(call.target) && !call.excluded) set.add(call.line);
-    if (!fn.relevantLines) {
-      const own = new Set([fn.start]);
-      for (const c of fn.calls) if (own.size < 6) own.add(c.line);
-      for (let l = fn.start; l <= fn.end && own.size < 5; l++)
-        if (source(panel)[l - 1]?.trim()) own.add(l);
-      for (const l of own) set.add(l);
-    }
+    // Relevance chooses functions; show their complete bodies for readable context.
+    for (let line = fn.start; line <= fn.end; line++) set.add(line);
   }
+  const ordered = [...set].sort((a, b) => a - b);
+  for (let i = 1; i < ordered.length; i++)
+    if (ordered[i] - ordered[i - 1] <= 9)
+      for (let line = ordered[i - 1] + 1; line < ordered[i]; line++) set.add(line);
   return [...set]
     .filter((l) => l > 0 && l <= source(panel).length)
     .sort((a, b) => a - b);
@@ -129,15 +124,22 @@ function highlighted(line, n, number) {
 }
 function lineHTML(n, l) {
   const calls = allCalls(n).filter((c) => c.line === l);
-  return `<div class="line ${calls.some((c) => definitions.has(c.target)) ? "hit" : ""} ${n.changed.includes(l) ? "changed" : ""}" data-line="${l}" data-file="${esc(n.file)}"><span class="ln"><button class="line-pin" type="button" aria-label="Pin execution path at ${esc(n.file)} line ${l}" aria-pressed="false">${l}</button></span><span class="source-text">${highlighted(source(n)[l - 1] || "", n, l)}</span></div>`;
+  const fn = n.members.find(fn => fn.start === l);
+  const info = fn ? `<button class="function-info" data-function-info="${esc(fn.id)}" aria-label="About ${esc(fn.name)}">ⓘ</button><button class="function-toggle" data-function-toggle="${esc(fn.id)}" aria-expanded="${expandedFunctions.has(fn.id)}" aria-label="${expandedFunctions.has(fn.id) ? "Collapse" : "Expand"} ${esc(fn.name)}">${expandedFunctions.has(fn.id) ? "▾" : "▸"}</button>` : "";
+  return `<div class="line ${calls.some((c) => definitions.has(c.target)) ? "hit" : ""} ${n.changed.includes(l) ? "changed" : ""}" data-line="${l}" data-file="${esc(n.file)}"><span class="function-controls">${info}</span><span class="ln"><button class="line-pin" type="button" aria-label="Pin execution path at ${esc(n.file)} line ${l}" aria-pressed="false">${l}</button></span><span class="source-text">${highlighted(source(n)[l - 1] || "", n, l)}</span></div>`;
 }
 function snippet(n) {
   const lines = shown(n);
   let html = "";
+  let previous = null;
   lines.forEach((l, i) => {
-    if (i && l > lines[i - 1] + 1)
-      html += `<div class="fold" aria-label="${l - lines[i - 1] - 1} omitted source lines">⋯</div>`;
+    const hidden = n.members.some(fn => !expandedFunctions.has(fn.id) && l > fn.start && l <= fn.end);
+    if (hidden) return;
+    const collapsedBetween = n.members.some(fn => !expandedFunctions.has(fn.id) && previous >= fn.start && previous <= fn.end);
+    if (previous !== null && l > previous + 1 && !collapsedBetween)
+      html += `<button class="fold" data-gap="${esc(n.id)}" data-from="${lines[i - 1] + 1}" data-to="${l - 1}">Show ${l - lines[i - 1] - 1} hidden lines (${lines[i - 1] + 1}–${l - 1})</button>`;
     html += lineHTML(n, l);
+    previous = l;
   });
   return html;
 }
@@ -157,7 +159,7 @@ function render() {
         local = n.calls.filter(
           (c) => nodes.has(c.target) && !c.excluded,
         ).length;
-      return `<article data-node-id="${esc(n.id)}" style="width:${sizes.get(n.id)?.width || 340}px;height:${sizes.get(n.id)?.height || 280}px" class="node ${n.members.some((fn) => fn.id === report.entry) ? "selected" : ""}" id="node-${n.id}" aria-label="${esc(n.name)} in ${esc(n.file)}"><div class="node-head"><div class="node-title"><span class="index">${String(i + 1).padStart(2, "0")}</span><button data-select="${n.id}">${esc(n.name)}</button>${n.members.some((fn) => fn.id === report.entry) ? '<span class="badge">ENTRY</span>' : ""}</div><div class="path">${esc(n.file)}:${n.start}–${n.end}</div><div class="reason">${n.members.map((fn) => esc(fn.name)).join(" · ")}</div></div><div class="context"><button data-above="${n.id}" ${lines[0] <= 1 && !hasGaps ? "disabled" : ""}>↑ More above</button></div><div class="snippet ${wrapping.has(n.id) ? "wrap" : ""}">${snippet(n)}</div><div class="context"><button data-below="${n.id}" ${lines.at(-1) >= source(n).length && !hasGaps ? "disabled" : ""}>↓ More below</button></div><div class="node-foot"><button data-wrap="${esc(n.id)}" aria-pressed="${wrapping.has(n.id)}" aria-label="Toggle line wrapping for ${esc(n.name)}">↵ Wrap</button><span>${local} open call${local === 1 ? "" : "s"} · ${n.members.reduce((sum, fn) => sum + (fn.skippedCalls?.length || 0), 0)} omitted</span><a href="vscode://file/${encodeURI(n.absolute).replaceAll("#", "%23")}:${n.start}">Editor ↗</a></div></article>`;
+      return `<article data-node-id="${esc(n.id)}" style="width:${sizes.get(n.id)?.width || 340}px;height:auto" class="node ${n.members.some((fn) => fn.id === report.entry) ? "selected" : ""}" id="node-${n.id}" aria-label="${esc(n.name)} in ${esc(n.file)}"><div class="node-head"><div class="node-title"><button data-select="${n.id}">${esc(n.name)}</button></div><div class="path">${esc(n.file)}:${n.start}–${n.end}</div></div><div class="context"><button data-above="${n.id}" ${lines[0] <= 1 ? "disabled" : ""}>↑ ${Math.min(20, lines[0] - 1) > 0 ? `Show ${Math.min(20, lines[0] - 1)} line${Math.min(20, lines[0] - 1) === 1 ? "" : "s"} above` : "No lines above"}</button></div><div class="snippet ${wrapping.has(n.id) ? "wrap" : ""}">${snippet(n)}</div><div class="context"><button data-below="${n.id}" ${lines.at(-1) >= source(n).length ? "disabled" : ""}>↓ ${Math.min(20, source(n).length - lines.at(-1)) > 0 ? `Show ${Math.min(20, source(n).length - lines.at(-1))} line${Math.min(20, source(n).length - lines.at(-1)) === 1 ? "" : "s"} below` : "No lines below"}</button></div><div class="node-foot"><button data-wrap="${esc(n.id)}" aria-pressed="${wrapping.has(n.id)}" aria-label="Toggle line wrapping for ${esc(n.name)}">↵ Wrap</button><a href="vscode://file/${encodeURI(n.absolute).replaceAll("#", "%23")}:${n.start}">Editor ↗</a></div></article>`;
     })
     .join("");
   document.querySelectorAll(".node").forEach((card) => {
@@ -168,6 +170,7 @@ function render() {
       snippet.scrollTop = saved.top;
     }
     snippet.addEventListener("scroll", scheduleEdges);
+    sizes.set(card.dataset.nodeId, {width: card.offsetWidth || 340, height: card.offsetHeight || 280});
     sizeObserver.observe(card);
   });
   layout();
@@ -275,6 +278,8 @@ function endpoint(id) {
   return p ? { ...p, key: "node:" + panelId, id: panelId } : null;
 }
 function rowPoint(end, line, side) {
+  const owner = panels.get(end.id)?.members.find(fn => line >= fn.start && line <= fn.end);
+  if (owner && !expandedFunctions.has(owner.id)) line = owner.start;
   if (end.folder)
     return {
       x: end.x + (side === "right" ? end.width : 0),
@@ -461,9 +466,40 @@ document.addEventListener("keydown", (e) => {
   }
 });
 document.addEventListener("click", (e) => {
+  const toggle = e.target.closest("[data-function-toggle]");
+  if (toggle) {
+    const id = toggle.dataset.functionToggle;
+    expandedFunctions.has(id) ? expandedFunctions.delete(id) : expandedFunctions.add(id);
+    render(); return;
+  }
+  const info = e.target.closest("[data-function-info]");
+  if (info) {
+    const fn = nodes.get(info.dataset.functionInfo);
+    document.querySelector(".function-tooltip")?.remove();
+    const tooltip = document.createElement("div");
+    tooltip.className = "function-tooltip";
+    tooltip.setAttribute("role", "tooltip");
+    const names = [...new Set(fn.calls.map(c => definitions.get(c.target)?.name).filter(Boolean))];
+    tooltip.textContent = fn.description || fn.reason || (names.length ? `${fn.name} coordinates calls to ${names.join(", ")}.` : `${fn.name} computes its result using the operations in its body.`);
+    const shapes = document.createElement("div");
+    shapes.className = "function-shapes";
+    const inputs = fn.inputs?.length ? fn.inputs.map(p => `${p.rest ? "..." : ""}${p.name}${p.optional ? "?" : ""}: ${p.type}${p.inferred ? " (inferred)" : ""}`).join("\n") : fn.inputs ? "No arguments" : "Not available in this snapshot";
+    for (const [label, text] of [["Inputs", inputs], ["Returns", fn.output ? `${fn.output.type}${fn.output.inferred ? " (inferred)" : ""}` : "Not available in this snapshot"]]) {
+      const heading = document.createElement("strong"); heading.textContent = label;
+      const code = document.createElement("pre"); code.textContent = text;
+      shapes.append(heading, code);
+    }
+    tooltip.append(shapes);
+    const rect = info.getBoundingClientRect();
+    tooltip.style.left = Math.min(rect.left, window.innerWidth - 330) + "px";
+    tooltip.style.top = rect.bottom + 8 + "px";
+    document.body.append(tooltip); return;
+  }
+  document.querySelector(".function-tooltip")?.remove();
   const token = e.target.closest("[data-token]"),
     folder = e.target.closest("[data-folder]"),
     wrap = e.target.closest("[data-wrap]"),
+    gap = e.target.closest("[data-gap]"),
     above = e.target.closest("[data-above]"),
     below = e.target.closest("[data-below]"),
     select = e.target.closest("[data-select]"),
@@ -487,6 +523,14 @@ document.addEventListener("click", (e) => {
     openChat(token);
     return;
   }
+  if (row) {
+    const panel = [...panels.values()].find(p => p.file === row.dataset.file);
+    const line = Number(row.dataset.line);
+    const fn = panel.members.find(fn => line >= fn.start && line <= fn.end) || panel.members[0];
+    const text = source(panel)[line - 1] || "";
+    if (text.trim()) openChat({dataset:{tokenNode:fn.id, tokenLine:String(line), token:"0"},textContent:text}, true);
+    return;
+  }
   if (!e.target.closest(".chat")) activateChat(null);
   if (folder) {
     const key = folder.dataset.folder;
@@ -502,14 +546,16 @@ document.addEventListener("click", (e) => {
     render();
     return;
   }
-  if (above) {
+  if (gap) {
+    expandRange(gap.dataset.gap, Number(gap.dataset.from), Number(gap.dataset.to));
+  } else if (above) {
     const id = above.dataset.above,
       lines = shown(panels.get(id));
-    expandRange(id, lines[0] - 8, lines.at(-1));
+    expandRange(id, lines[0] - 20, lines[0] - 1);
   } else if (below) {
     const id = below.dataset.below,
       lines = shown(panels.get(id));
-    expandRange(id, lines[0], lines.at(-1) + 8);
+    expandRange(id, lines.at(-1) + 1, lines.at(-1) + 20);
   } else if (select) {
     const panel = panels.get(select.dataset.select);
     const fn =
@@ -517,9 +563,7 @@ document.addEventListener("click", (e) => {
     pinnedLine = { file: panel.file, line: fn.start };
     hoveredLine = null;
     applyFocus();
-  } else if (example) {
-    $("question-input").value = example.dataset.example;
-    $("question-input").focus();
+
   }
   if (!e.target.closest(".chat")) activateChat(null);
 });
@@ -532,42 +576,10 @@ $("info-button").onclick = () => {
 $("close-info").onclick = () => {
   $("info").hidden = true;
 };
-$("ask").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  if (busy) return;
-  const question = $("question-input").value.trim();
-  if (!question) return;
-  $("status").hidden = true;
-  if (!window.codesurf?.trace) {
-    $("status").hidden = false;
-    $("status").textContent =
-      "To ask a new question, open CodeSurf from the CLI. This saved report supports graph exploration.";
-    return;
-  }
-  busy = true;
-  $("loading").hidden = false;
-  $("trace-button").disabled = true;
-  $("progress").textContent =
-    "Reading repository source and selecting relevant code.";
-  try {
-    await window.codesurf.trace(question);
-  } catch (error) {
-    $("loading").hidden = true;
-    $("status").hidden = false;
-    $("status").textContent = "Trace failed: " + error.message;
-    $("status").classList.add("error");
-  } finally {
-    busy = false;
-    $("trace-button").disabled = false;
-  }
-});
-window.codesurf?.onProgress((message) => {
-  $("progress").textContent = message;
-});
 $("viewport").addEventListener(
   "wheel",
   (e) => {
-    if (e.target.closest(".snippet,.chat")) return;
+    if (e.target.closest(".chat")) return;
     e.preventDefault();
     if (e.shiftKey) {
       tx -= e.deltaX;
@@ -615,6 +627,7 @@ $("viewport").addEventListener("keydown", (e) => {
   e.preventDefault();
 });
 restoreChats();
+initializeOverviewChat();
 new ResizeObserver(() => layout()).observe($("trace-overview"));
 new ResizeObserver(() => {
   layout();

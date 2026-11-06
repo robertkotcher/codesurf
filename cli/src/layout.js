@@ -90,9 +90,24 @@ export function layoutFolders(nodes, sizes, collapsed) {
         a.key.localeCompare(b.key),
     );
     for (const child of children) {
-      const box = place(child, y);
+      const firstFolder = folders.length;
+      const childMembers = descendants(child);
+      const box = place(child, top + (folder.key ? 40 : 0));
+      let targetY = box.y;
+      for (const occupied of bounds) {
+        const overlapsX = box.x < occupied.x + occupied.width + 24 &&
+          box.x + box.width + 24 > occupied.x;
+        if (overlapsX) targetY = Math.max(targetY, occupied.y + occupied.height + 24);
+      }
+      const delta = targetY - box.y;
+      if (delta) {
+        for (const member of childMembers) {
+          const position = nodePositions.get(member.id);
+          if (position) position.y += delta;
+        }
+        for (const region of folders.slice(firstFolder)) region.y += delta;
+      }
       bounds.push(box);
-      y = box.y + box.height + 24;
     }
     if (!bounds.length) return { x: 0, y: top, width: 0, height: 0 };
     const left = Math.min(...bounds.map((b) => b.x)) - (folder.key ? 18 : 0),

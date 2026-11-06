@@ -113,6 +113,17 @@ export function analyze(
           start,
           end,
           lines: sf.text.split(/\r?\n/).slice(start - 1, end),
+          inputs: n.parameters.map(p => ({
+            name: p.name.getText(sf),
+            type: checker.typeToString(checker.getTypeAtLocation(p), p, ts.TypeFormatFlags.NoTruncation),
+            optional: Boolean(p.questionToken || p.initializer),
+            rest: Boolean(p.dotDotDotToken),
+            inferred: !p.type,
+          })),
+          output: (() => {
+            const signature = checker.getSignatureFromDeclaration(n);
+            return {type: signature ? checker.typeToString(checker.getReturnTypeOfSignature(signature), n, ts.TypeFormatFlags.NoTruncation) : "unknown", inferred: !n.type};
+          })(),
           calls: [],
           changed: [],
           ast: n,
