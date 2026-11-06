@@ -12,7 +12,7 @@ codex login
 codesurf /path/to/repo "What happens when a session expires?"
 ```
 
-Any agent with shell access can run the last command using the existing Codex login. For a headless environment, add `--no-open --out ./artifacts/trace.html`; this writes HTML plus a JSON source snapshot without starting a desktop window.
+Any agent with shell access can run the last command using the existing Codex login. For a headless environment, add `--html-only --out ./artifacts/trace.html`; this writes HTML plus a JSON source snapshot without starting a desktop window.
 
 Source development: run `npm ci` and `npm link` from this `cli/` directory. `npm run demo` traces the bundled illustrative source under `examples/auth-refresh`; it does not execute those HTTP requests.
 
@@ -38,12 +38,12 @@ Reports are self-contained HTML snapshots plus JSON at `~/.codesurf/reports/`. S
 ## Options
 
 ```sh
-codesurf ~/app "What happens when the user submits an empty title?" --no-open --out ./empty-title.html
+codesurf ~/app "What happens when the user submits an empty title?" --html-only --out ./empty-title.html
 codesurf ~/app "Trace a checkout" --repo ~/backend --limit 15
 codesurf ~/app "login" --static --entry src/api/login.ts#POST --depth 4
 ```
 
-`--repo` adds a repository root. `--limit` caps initially selected functions (default 36). `--entry` optionally fixes the entry; natural-language selection does not require it. `--static` skips Codex and uses keyword-based entry selection and a bounded call traversal; `--depth` applies to that traversal. `--no-open` writes a report without starting Electron. `CODESURF_CODEX` can select a Codex executable when it is not on PATH.
+`--repo` adds a repository root. `--limit` caps initially selected functions (default 36). `--entry` optionally fixes the entry; natural-language selection does not require it. `--static` skips Codex and uses keyword-based entry selection and a bounded call traversal; `--depth` applies to that traversal. `--html-only` writes a report without starting Electron. `CODESURF_CODEX` can select a Codex executable when it is not on PATH.
 
 ## Implementation
 

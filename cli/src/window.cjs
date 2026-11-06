@@ -81,7 +81,7 @@ function addRun(report) {
     for (const root of snapshot.roots.slice(1)) args.push("--repo", root);
     if (Number.isInteger(snapshot.limit))
       args.push("--limit", String(snapshot.limit));
-    args.push("--no-open", "--out", destination);
+    args.push("--html-only", "--out", destination);
     await new Promise((resolve, reject) => {
       investigation = spawn(process.execPath, args, {
         env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },

@@ -26,7 +26,7 @@ const help = `CodeSurf — code-backed execution maps
   --depth <0..12>     Call depth (default: 4)
   --limit <1..150>    Maximum functions (default: 36)
   --out <file.html>   Report destination (JSON saved alongside it)
-  --no-open          Save without opening a window
+  --html-only        Export HTML + JSON instead of opening Electron
   --languages <ids>  Enable adapters: typescript,python,ruby (comma-separated)
   --static           Skip LLM investigation; use keyword matching
 
@@ -53,7 +53,7 @@ try {
     staticMode = false;
   while (args.length) {
     const flag = args.shift();
-    if (flag === "--no-open") {
+    if (flag === "--html-only") {
       open = false;
       continue;
     }
@@ -79,9 +79,10 @@ try {
       opts[flag.slice(2)] = n;
     }
   }
+  if (out && open) throw new Error("--out requires --html-only; omit --out to open the Electron app.");
   let report;
   if (!question) {
-    if (!open) throw new Error("Supply a question when using --no-open.");
+    if (!open) throw new Error("Supply a question when using --html-only.");
     report = {
       question: "",
       roots: roots.map((r) => fs.realpathSync(r)),
@@ -119,14 +120,14 @@ try {
   out ||= path.join(
     os.homedir(),
     ".codesurf",
-    "reports",
+    open ? "sessions" : "reports",
     `trace-${Date.now()}.html`,
   );
   writeReport(report, out);
   for (const diagnostic of report.diagnostics || [])
     console.error(`Source diagnostic: ${diagnostic}`);
   console.log(
-    `${report.scanned} files · ${report.symbols} functions indexed · ${report.nodes.length} in this map\n${out}`,
+    `${report.scanned} files · ${report.symbols} functions indexed · ${report.nodes.length} in this map${open ? "\nOpening CodeSurf desktop…" : "\n" + out}`,
   );
   if (open) {
     const { default: electron } = await import("electron");

@@ -14,9 +14,9 @@ macOS tested; Windows/Linux not yet verified. Linux requires Electron desktop li
 Use:
   codesurf /absolute/path/to/repo "Specific scenario with inputs and assumptions"
   codesurf --demo
-  codesurf /path/to/repo "Scenario" --no-open --out ./flow.html
+  codesurf /path/to/repo "Scenario" --html-only --out ./flow.html
   codesurf --help
-Run on the local desktop to make the window visible. Remote/headless agents use --no-open.
+Run on the local desktop to make the window visible. Remote/headless agents use --html-only.
 Runs reuse one window with tabs. HTML and JSON reports contain source snapshots. Chat needs desktop viewer.
 Static source analysis does not execute the target application or guarantee runtime behavior.
 AI tracing sends source to the configured model provider. Do not publish private reports without authorization.

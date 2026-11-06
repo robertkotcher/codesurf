@@ -87,7 +87,7 @@ test("graph expands source, anchors edges to row sides, opens token questions, a
     "--static",
     "--out",
     out,
-    "--no-open",
+    "--html-only",
   ]);
   const errors = [],
     console = new VirtualConsole();
@@ -225,7 +225,7 @@ test("graph view has no follow-up request bar", async (t) => {
     "--static",
     "--out",
     out,
-    "--no-open",
+    "--html-only",
   ]);
   let question;
   const dom = new JSDOM(fs.readFileSync(out, "utf8"), {
@@ -259,7 +259,7 @@ test("token questions stream into independent persistent panels and fade on clic
     "--static",
     "--out",
     out,
-    "--no-open",
+    "--html-only",
   ]);
   const pending = [];
   let onInspect;
@@ -358,7 +358,7 @@ test("selected functions show every line even when the plan selects sparse evide
     "--static",
     "--out",
     out,
-    "--no-open",
+    "--html-only",
   ]);
   const report = JSON.parse(
     fs.readFileSync(out.replace(".html", ".json"), "utf8"),
