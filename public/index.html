@@ -7,7 +7,7 @@
 </head>
 <body class="bg-base-100 text-base-content">
 <main class="mx-auto max-w-4xl px-5 py-10 sm:py-14 space-y-9">
-<header class="flex items-center gap-3"><img src="/favicon.svg" width="32" height="32" alt=""><h1 class="text-3xl font-bold tracking-tight">CodeSurf</h1><span class="badge badge-outline badge-sm">0.3.1</span></header>
+<header class="flex items-center gap-3"><img src="/favicon.svg" width="32" height="32" alt=""><h1 class="text-3xl font-bold tracking-tight">CodeSurf</h1><span class="badge badge-outline badge-sm">0.4.0</span></header>
 <section id="note" class="space-y-3">
 <h2 class="text-xl font-semibold">1. A note for humans and AI agents</h2>
 <p>CodeSurf is a local tool your AI agent installs and calls to show you how Ruby, Python, TypeScript, or JavaScript code works in an interactive graph. Agents: follow the installation steps below, then pass a repository path and the human’s question to open a separate window they can explore.</p>
@@ -31,7 +31,7 @@ codex login</code></pre>
 </ul>
 <p class="text-sm">Check installation without AI or a repository:</p>
 <pre class="rounded-box bg-base-200 p-4 overflow-x-auto text-sm"><code>codesurf --demo</code></pre>
-<p class="text-xs text-base-content/60">Current release: <a class="link" href="/downloads/codesurf-cli-0.3.1.tgz">0.3.1 package</a> · <a class="link" href="/downloads/codesurf-cli-0.3.1.tgz.sha256">SHA-256</a> · <a class="link" href="/downloads/latest.json">release metadata</a> · <a class="link" href="/llms.txt">plain-text agent instructions</a></p>
+<p class="text-xs text-base-content/60">Current release: <a class="link" href="/downloads/codesurf-cli-0.4.0.tgz">0.4.0 package</a> · <a class="link" href="/downloads/codesurf-cli-0.4.0.tgz.sha256">SHA-256</a> · <a class="link" href="/downloads/latest.json">release metadata</a> · <a class="link" href="/llms.txt">plain-text agent instructions</a></p>
 </section>
 <section id="update" class="space-y-3">
 <h2 class="text-xl font-semibold">3. How to Update</h2>
@@ -51,6 +51,7 @@ codesurf --version</code></pre>
 <li>Scroll to zoom; drag empty canvas to pan. Use Fit to see the whole trace.</li>
 <li>Expand ▸ to read a full function; click ⓘ for its explanation, inputs, and return type.</li>
 <li>Hover a line to follow its call path. Click a line or token to open a chat and type your question.</li>
+<li>Ask any chat to open a different flow or view to generate a new visualization tab.</li>
 <li>Ask broader follow-ups in the introductory chat. Each source line has one chat.</li>
 <li>Collapse folders and resize code cards horizontally; card height follows the visible code.</li>
 </ul>
@@ -73,7 +74,10 @@ codesurf --help</code></pre>
 <section id="changelog" class="space-y-5 border-t border-base-300 pt-7">
 <h2 class="text-xl font-semibold">Changelog</h2>
 <article class="space-y-2">
-<h3 class="font-semibold">0.3.1 <span class="badge badge-sm badge-outline">Current</span></h3>
+<h3 class="font-semibold">0.4.0 <span class="badge badge-sm badge-outline">Current</span></h3>
+<p class="text-sm">Ask any chat to open another flow or a different view: CodeSurf recognizes the request, carries over the relevant context, and opens a new visualization tab while preserving the current run.</p>
+</article><article class="space-y-2">
+<h3 class="font-semibold">0.3.1</h3>
 <p class="text-sm">Fixed chat failures caused by an unsupported configured Codex model: chats now select Codex’s advertised default model and a supported reasoning setting.</p>
 </article>
 <article class="space-y-2">

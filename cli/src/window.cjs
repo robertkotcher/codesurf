@@ -62,7 +62,7 @@ function addRun(report) {
       shell.openExternal(url);
   });
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
-  register("trace", async (event, question) => {
+  register("trace", async (event, question, onProgress) => {
     if (
       event.sender !== window.webContents ||
       typeof question !== "string" ||
@@ -89,8 +89,10 @@ function addRun(report) {
       });
       let errors = "";
       investigation.stdout.on("data", (data) => {
-        if (!window.isDestroyed())
+        if (!window.isDestroyed()) {
           window.webContents.send("trace-progress", data.toString().trim());
+          onProgress?.(data.toString().trim());
+        }
       });
       investigation.stderr.on("data", (data) => {
         errors = (errors + data).slice(-3000);
@@ -185,7 +187,7 @@ function addRun(report) {
           .join("\n"),
       },
     };
-    return await new Promise((resolve, reject) => {
+    const result = await new Promise((resolve, reject) => {
       const child = spawn(
         process.execPath,
         [path.join(__dirname, "inspect.js")],
@@ -207,8 +209,8 @@ function addRun(report) {
           try {
             const update = JSON.parse(line);
             if (update.type === "done")
-              result = { answer: update.answer, sources: [], caveats: [] };
-            if (!window.isDestroyed())
+              result = { answer: update.answer, traceQuestion:update.traceQuestion, sources: [], caveats: [] };
+            if (!window.isDestroyed() && !(update.type === "done" && update.traceQuestion))
               window.webContents.send("inspect-progress", {
                 ...update,
                 requestId: selection.requestId,
@@ -239,6 +241,15 @@ function addRun(report) {
       child.stdin.on("error", () => {});
       child.stdin.end(JSON.stringify(context));
     });
+    if (result.traceQuestion) {
+      const progress = message => {
+        if (!window.isDestroyed()) window.webContents.send("inspect-progress", {type:"progress",requestId:selection.requestId,message});
+      };
+      progress("Building your new flow…");
+      await handlers.get(view.webContents.id).trace(event, result.traceQuestion, progress);
+      return {answer:"Opened the requested flow in a new tab."};
+    }
+    return result;
   });
   window.on("closed", () => {
     investigation?.kill();
