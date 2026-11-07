@@ -560,7 +560,8 @@ test('symbol chats show definitions, scale with the canvas, and hide with files 
  const token=[...d.querySelectorAll('[data-token]')].find(b=>b.textContent==='find');
  token.click();
  const chat=d.querySelector('.chat:not(.overview-chat)');
- assert.match(chat.querySelector('.chat-definition .definition-origin').textContent,/service.ts/);
+ assert.match(chat.querySelector('.chat-definition .definition-origin').textContent,/Defined in src\/service.ts:1/);
+ assert.equal(chat.querySelector('.definition-line-number').textContent,'1');
  assert.match(chat.querySelector('.chat-definition pre').textContent,/id.trim/);
  assert.equal(chat.querySelector('.chat-definition a'),null);
  const before=chat.style.transform;d.querySelector('#plus').click();assert.notEqual(chat.style.transform,before);

@@ -223,11 +223,17 @@ function renderChat(c) {
     if (definition) {
       const origin=document.createElement("div");
       origin.className="definition-origin";
-      origin.textContent=definition.file;
+      origin.textContent=`Defined in ${definition.file}:${definition.start}`;
       const code=document.createElement("pre");
       const fullSource=report.sources?.[definition.file];
       const context=definition.contextLines || (fullSource ? fullSource.slice(Math.max(0,definition.start-2),definition.start+1) : definition.lines?.slice(0,2)) || [];
-      code.textContent=context.join("\n");
+      const contextStart=definition.contextLines || fullSource ? Math.max(1,definition.start-1) : definition.start;
+      context.forEach((text,index)=>{
+        const row=document.createElement("span");row.className="definition-code-line";
+        const number=document.createElement("span");number.className="definition-line-number";number.textContent=String(contextStart+index);
+        const content=document.createElement("span");content.textContent=text;
+        row.append(number,content);code.append(row);
+      });
       const eye=document.createElement("button");eye.className="definition-eye";eye.innerHTML='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>';eye.setAttribute("aria-label","Reveal definition in code");eye.onclick=()=>revealDefinition(definition);
       detail.append(origin,eye,code);
     } else if (!definition && c.selection.module) {
