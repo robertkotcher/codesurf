@@ -1,0 +1,1067 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>CodeSurf</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #26392f;
+        --muted: #7d8b82;
+        --green: #278568;
+        --border: #dce5df;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: #fff;
+        color: var(--ink);
+        font:
+          13px/1.5 -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+        overflow: hidden;
+      }
+      button,
+      input {
+        font: inherit;
+      }
+      button {
+        cursor: pointer;
+        background: white;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 6px 10px;
+        color: var(--ink);
+      }
+      button:hover {
+        background: #eef6f0;
+      }
+      button:focus-visible,
+      input:focus-visible,
+      a:focus-visible,
+      [tabindex]:focus-visible {
+        outline: 2px solid var(--green);
+        outline-offset: 2px;
+      }
+      header {
+        height: 62px;
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        padding: 10px 20px;
+        border-bottom: 1px solid var(--border);
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 18px;
+        font-weight: 650;
+        letter-spacing: -0.5px;
+      }
+
+      .meta {
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .repo {
+        margin-left: auto;
+      }
+      .tools {
+        position: absolute;
+        right: 16px;
+        top: 142px;
+        z-index: 4;
+        display: flex;
+        align-items: center;
+        background: white;
+        padding: 3px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        box-shadow: 0 3px 15px #203e2908;
+      }
+      .run-title-card {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        position: absolute;
+        top: 16px;
+        left: 16px;
+        right: 16px;
+        z-index: 4;
+        min-height: 48px;
+        padding: 12px 16px;
+        background: white;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        box-shadow: 0 3px 15px #203e2908;
+        font-size: 14px;
+        font-weight: 600;
+        line-height: 22px;
+      }
+      #run-title { flex: 1; min-width: 0; }
+      .run-title-card .tools {
+        position: static;
+        flex: none;
+        margin-left: auto;
+        border: 0;
+        box-shadow: none;
+        padding: 0;
+      }
+      .tools button {
+        border: 0;
+      }
+      .tools output {
+        min-width: 38px;
+        text-align: center;
+        font-size: 11px;
+        color: var(--muted);
+      }
+      #viewport {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        cursor: grab;
+        touch-action: none;
+        background: #fff radial-gradient(#e1e9e3 0.7px, transparent 0.7px);
+        background-size: 18px 18px;
+      }
+      #viewport.dragging {
+        cursor: grabbing;
+      }
+      #world {
+        position: absolute;
+        transform-origin: 0 0;
+      }
+      .edges {
+        position: absolute;
+        inset: 0;
+        overflow: visible;
+        pointer-events: none;
+        z-index: 2;
+      }
+      .edge {
+        stroke: #9bb8a5;
+        stroke-width: 1.4;
+        fill: none;
+      }
+      .edge.active {
+        stroke: var(--green);
+        stroke-width: 1.8;
+      }
+      .node {
+        position: absolute;
+        width: 410px;
+        background: white;
+        border: 1px solid #d8e3db;
+        border-radius: 10px;
+        box-shadow: 0 4px 14px #23463209;
+        cursor: default;
+        z-index: 1;
+      }
+      .node.selected {
+        border-color: #6d9f84;
+        box-shadow:
+          0 0 0 2px #2785680a,
+          0 5px 18px #2346320b;
+      }
+      .node.dim {
+        opacity: 0.4;
+      }
+      .node-head {
+        padding: 12px 14px 10px;
+        border-bottom: 1px solid #edf1ee;
+      }
+      .node-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        font-weight: 600;
+      }
+      .node-title button {
+        border: 0;
+        padding: 0;
+        background: none;
+        font-weight: 600;
+      }
+      .index {
+        font: 10px monospace;
+        color: #899c90;
+      }
+      .badge {
+        margin-left: auto;
+        background: #eaf4ff;
+        color: var(--green);
+        font-size: 9px;
+        font-weight: 500;
+        padding: 2px 6px;
+        border-radius: 4px;
+      }
+      .path {
+        font:
+          10px/1.7 ui-monospace,
+          SFMono-Regular,
+          monospace;
+        color: #829087;
+        overflow-wrap: anywhere;
+        margin-top: 3px;
+      }
+      .reason {
+        font-size: 11px;
+        color: #6f8276;
+        margin-top: 6px;
+      }
+      .snippet {
+        padding: 9px 0;
+        font:
+          11px/19px ui-monospace,
+          SFMono-Regular,
+          Consolas,
+          monospace;
+        tab-size: 2;
+      }
+      .line {
+        display: flex;
+        position: relative;
+        padding: 0 15px 0 0;
+        min-height: 19px;
+        align-items: baseline;
+      }
+      .ln {
+        flex: 0 0 42px;
+        text-align: right;
+        color: #9baaa0;
+        padding-right: 12px;
+        user-select: none;
+        font-size: 10px;
+      }
+      .source-text {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        min-width: 0;
+        flex: 1;
+      }
+      .line.hit {
+        background: transparent;
+      }
+      .line.changed {
+        border-left: 0;
+        background: transparent;
+      }
+      .kw {
+        color: #8b60a6;
+      }
+      .str {
+        color: #367e5e;
+      }
+      .call-link {
+        color: #267758;
+        text-decoration: underline;
+        text-decoration-color: #b9d5c5;
+        text-underline-offset: 3px;
+      }
+      .source-port {
+        display: inline-block;
+        width: 5px;
+        height: 5px;
+        margin-left: 6px;
+        border-radius: 50%;
+        background: white;
+        border: 1px solid #69a184;
+        vertical-align: middle;
+      }
+      .context {
+        padding: 3px 12px 3px 42px;
+        display: flex;
+        gap: 12px;
+      }
+      .context button {
+        border: 0;
+        padding: 1px 0;
+        color: #819589;
+        background: none;
+        font-size: 10px;
+      }
+      .node-foot {
+        border-top: 1px solid #edf1ee;
+        padding: 7px 12px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        font-size: 10px;
+        color: #8b978f;
+      }
+      .node-foot button {
+        padding: 0;
+        border: 0;
+        background: none;
+        color: var(--green);
+        font-size: 10px;
+      }
+      .node-foot a {
+        font-size: 10px;
+        color: #80958a;
+      }
+      .welcome {
+        position: absolute;
+        left: 50%;
+        top: 44%;
+        transform: translate(-50%, -50%);
+        text-align: center;
+        width: min(550px, 85%);
+        color: var(--muted);
+        cursor: default;
+      }
+      .welcome h2 {
+        color: var(--ink);
+        font-size: 20px;
+        font-weight: 500;
+      }
+      .welcome button {
+        margin: 6px;
+        font-size: 12px;
+      }
+      .info {
+        position: absolute;
+        z-index: 5;
+        bottom: 12px;
+        left: 14px;
+        width: min(560px, calc(100% - 28px));
+        max-height: 55%;
+        overflow: auto;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 16px;
+        background: white;
+        box-shadow: 0 10px 40px #193d241a;
+        font-size: 12px;
+      }
+      .info[hidden] {
+        display: none;
+      }
+      .info h2 {
+        font-size: 14px;
+        margin: 0 0 8px;
+      }
+      .info li {
+        margin: 5px 0;
+      }
+      .info button {
+        float: right;
+      }
+      .loading {
+        position: absolute;
+        inset: 0;
+        z-index: 8;
+        background: #fff;
+        display: grid;
+        place-content: center;
+        text-align: center;
+        gap: 12px;
+        color: var(--muted);
+      }
+      .loading[hidden] {
+        display: none;
+      }
+      .loading strong {
+        color: var(--ink);
+        font-size: 17px;
+        font-weight: 500;
+      }
+      .error {
+        color: #a34132;
+      }
+      @media (max-width: 650px) {
+        .repo {
+          display: none;
+        }
+        header {
+          padding-left: 12px;
+          padding-right: 12px;
+        }
+        .tools {
+          right: 10px;
+        }
+      }
+
+      #regions {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        z-index: 0;
+      }
+      .region {
+        position: absolute;
+        background: #fffdf3;
+        border: 1px solid #f1ecd8;
+        border-radius: 17px;
+      }
+      .region-label {
+        position: absolute;
+        top: 12px;
+        left: 18px;
+        font-size: 11px;
+        font-weight: 550;
+        letter-spacing: 0.2px;
+        color: #a2986f;
+      }
+      .region-description {
+        font-size: 10px;
+        font-weight: 400;
+        margin-left: 10px;
+        color: #b0a88d;
+      }
+      .token {
+        font: inherit;
+        line-height: inherit;
+        white-space: pre-wrap;
+        color: inherit;
+        background: none;
+        border: 0;
+        border-radius: 2px;
+        padding: 0;
+        display: inline;
+        vertical-align: baseline;
+      }
+      .token:hover {
+        background: #eaf4ff;
+        text-decoration: underline;
+        text-decoration-color: #a2b7a8;
+        text-underline-offset: 3px;
+      }
+      .token.kw {
+        color: #8b60a6;
+      }
+      .token.str {
+        color: #367e5e;
+      }
+      .token.call-link {
+        text-decoration: none;
+        color: #267758;
+      }
+      .token-menu {
+        position: fixed;
+        z-index: 12;
+        width: 310px;
+        padding: 13px;
+        background: white;
+        border: 1px solid var(--border);
+        border-radius: 11px;
+        box-shadow: 0 9px 35px #243f3020;
+        cursor: default;
+      }
+      .token-menu[hidden] {
+        display: none;
+      }
+      .token-menu h2 {
+        font:
+          12px ui-monospace,
+          monospace;
+        margin: 0 0 6px;
+        overflow-wrap: anywhere;
+      }
+      .token-location {
+        font-size: 10px;
+        color: var(--muted);
+        overflow-wrap: anywhere;
+        margin-bottom: 10px;
+      }
+      .token-actions {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .token-actions button {
+        font-size: 11px;
+      }
+      .token-menu form {
+        display: flex;
+        gap: 6px;
+        margin-top: 10px;
+      }
+      .token-menu input {
+        width: 100%;
+        min-width: 0;
+        font-size: 11px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 7px;
+      }
+      .token-menu form button {
+        font-size: 11px;
+      }
+      .token-menu .dismiss {
+        float: right;
+        border: 0;
+        padding: 0 3px;
+        color: var(--muted);
+      }
+      .explanation {
+        position: absolute;
+        z-index: 7;
+        right: 12px;
+        top: 191px;
+        bottom: 12px;
+        width: min(425px, calc(100% - 24px));
+        background: white;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        box-shadow: 0 10px 45px #203e2920;
+        overflow: auto;
+        padding: 18px;
+        cursor: default;
+      }
+      .explanation[hidden] {
+        display: none;
+      }
+      .explanation h2 {
+        font-size: 14px;
+        font-weight: 550;
+        margin: 0 30px 12px 0;
+        overflow-wrap: anywhere;
+      }
+      .explanation .close {
+        position: absolute;
+        right: 12px;
+        top: 12px;
+        border: 0;
+      }
+      .answer {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        font-size: 12px;
+        line-height: 1.7;
+      }
+      .answer-sources {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-top: 18px;
+      }
+      .answer-sources a {
+        font-size: 11px;
+        color: var(--green);
+        overflow-wrap: anywhere;
+      }
+      .answer-caveats {
+        font-size: 11px;
+        color: var(--muted);
+        margin-top: 14px;
+      }
+      .edge.reference {
+        stroke-dasharray: 4 4;
+        opacity: 0.7;
+      }
+      .fold {
+        display: block;
+        width: 100%;
+        text-align: left;
+        border: 0;
+        background: #fbfbfb;
+        color: #ccc;
+        border-radius: 0;
+        font: 10px/1.5 ui-monospace, monospace;
+        padding: 6px 12px 6px 42px;
+        cursor: pointer;
+      }
+      .fold:hover, .fold:focus-visible { background: #f1f1f1; color: #888; }
+
+      .node {
+        width: 340px;
+        height: auto;
+        min-width: 240px;
+        min-height: 190px;
+        resize: horizontal;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
+      .node[hidden] {
+        display: none;
+      }
+      .node-head {
+        flex: none;
+        padding: 9px 12px;
+      }
+      .reason {
+        max-height: 32px;
+        overflow: hidden;
+        font-size: 10px;
+      }
+      .snippet {
+        flex: none;
+        min-height: 0;
+        overflow: auto;
+        padding: 4px 0;
+        overscroll-behavior: contain;
+      }
+      .line {
+        width: max-content;
+        min-width: 100%;
+        align-items: center;
+        min-height: 19px;
+        padding-right: 12px;
+      }
+      .source-text {
+        flex: none;
+        white-space: pre;
+        overflow-wrap: normal;
+      }
+      .token {
+        white-space: pre;
+      }
+      .snippet.wrap .line {
+        width: 100%;
+        align-items: baseline;
+      }
+      .snippet.wrap .source-text {
+        flex: 1;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+      .snippet.wrap .token {
+        white-space: pre-wrap;
+      }
+      .context {
+        flex: none;
+        padding-top: 0;
+        padding-bottom: 0;
+      }
+      .node-foot {
+        flex: none;
+        padding-right: 17px;
+      }
+      .node-foot button {
+        border: 0;
+        padding: 0;
+        font-size: 10px;
+      }
+      .node-foot button[aria-pressed="true"] {
+        color: #245c3b;
+        font-weight: 600;
+      }
+      .ln {
+        position: sticky;
+        left: 0;
+        background: #fff;
+        align-self: stretch;
+        z-index: 1;
+      }
+      .line.hit .ln {
+        background: transparent;
+      }
+      #regions {
+        pointer-events: none;
+        z-index: 0;
+      }
+      .folder {
+        position: absolute;
+        border: 1px solid #e9e1b9;
+        border-radius: 12px;
+        pointer-events: none;
+      }
+      .folder-label {
+        position: absolute;
+        left: 10px;
+        top: 6px;
+        pointer-events: auto;
+        border: 0;
+        background: transparent;
+        padding: 3px 6px;
+        color: #8e8051;
+        font-size: 11px;
+      }
+      .folder-label small {
+        font-size: 10px;
+        font-weight: 400;
+        color: #a29369;
+      }
+      .folder.collapsed {
+        border-style: dashed;
+      }
+      .folder.collapsed .folder-label {
+        top: 17px;
+      }
+      .edges {
+        z-index: 3;
+      }
+      .edge {
+        stroke-width: 1.3;
+      }
+      #map {
+        position: relative;
+        z-index: 1;
+      }
+      #chats {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        z-index: 8;
+      }
+      .chat {
+        position: absolute;
+        width: 340px;
+        height: 290px;
+        min-width: 270px;
+        min-height: 200px;
+        resize: both;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        pointer-events: auto;
+        background: white;
+        border: 1px solid #b9cdbf;
+        border-radius: 10px;
+        box-shadow: 0 8px 30px #1b39241c;
+        opacity: 1;
+        transition: opacity 0.18s;
+      }
+      .chat.inactive {
+        opacity: 0.28;
+      }
+      .chat.inactive:hover {
+        opacity: 0.85;
+      }
+      .chat-head {
+        height: auto;
+        min-height: 48px;
+        padding: 8px 12px;
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        cursor: move;
+        border-bottom: 1px solid #e5ece7;
+        flex: none;
+      }
+      .chat-head strong {
+        font:
+          12px ui-monospace,
+          monospace;
+        display: block;
+        max-width: 270px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .chat-head small {
+        display: block;
+        font-size: 9px;
+        color: #87988c;
+        max-width: 270px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .chat-head button {
+        border: 0;
+        padding: 0 3px;
+        color: #8b9c91;
+      }
+      .chat-messages {
+        flex: 1;
+        min-height: 45px;
+        overflow: auto;
+        padding: 10px 12px;
+        cursor: text;
+        overscroll-behavior: contain;
+      }
+      .chat-message {
+        font-size: 11px;
+        line-height: 1.65;
+        margin-bottom: 12px;
+      }
+      .chat-speaker {
+        font-size: 9px;
+        color: #90a095;
+        display: block;
+        margin-bottom: 2px;
+      }
+      .chat-message.user {
+        color: #46604f;
+      }
+      .chat-text {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+      .chat-text a {
+        color: #278568;
+      }
+      .chat-progress {
+        font-size: 10px;
+        color: #83958a;
+        padding: 0 12px 5px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        flex: none;
+      }
+      .chat-compose {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        border-top: 1px solid #e5ece7;
+        padding: 8px 12px;
+        flex: none;
+      }
+      .chat-compose input {
+        font-size: 11px;
+        min-width: 0;
+        flex: 1;
+        border: 1px solid #dce5df;
+        border-radius: 5px;
+        padding: 6px;
+      }
+      .chat-compose button {
+        font-size: 11px;
+        padding: 5px 8px;
+      }
+      .chat-message.assistant:empty {
+        display: none;
+      }
+      .overview {
+        position: absolute;
+        width: 350px;
+        padding: 18px;
+        background: white;
+        border: 1px solid #cbdad0;
+        border-radius: 10px;
+        box-shadow: 0 4px 14px #23463209;
+        z-index: 1;
+        cursor: default;
+      }
+      .overview[hidden] {
+        display: none;
+      }
+      .overview-label {
+        font-size: 10px;
+        letter-spacing: 0.8px;
+        text-transform: uppercase;
+        color: #87988c;
+        margin-bottom: 7px;
+      }
+      .overview p {
+        font-size: 12px;
+        line-height: 1.7;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        margin: 0;
+        color: #53685a;
+      }
+      .overview h1 {
+        font-size: 15px;
+        line-height: 1.5;
+        font-weight: 550;
+        margin: 0 0 8px;
+        overflow-wrap: anywhere;
+        color: var(--ink);
+      }
+      .overview-response {
+        border-top: 1px solid #e7eee9;
+        padding-top: 14px;
+        margin-top: 14px;
+      }
+      .trace-notice {
+        position: absolute;
+        top: 132px;
+        left: 16px;
+        right: 16px;
+        z-index: 12;
+        margin: 0;
+        padding: 10px 14px;
+        background: white;
+        border: 1px solid #e5d7d1;
+        border-radius: 8px;
+        font-size: 12px;
+        color: #a34132;
+      }
+      .line-pin {
+        font: inherit;
+        line-height: 19px;
+        width: 100%;
+        text-align: right;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        color: inherit;
+        padding: 0;
+      }
+      .line {
+        transition: opacity 0.12s;
+      }
+      .line.path-muted {
+        opacity: 0.23;
+      }
+      .line.path-active {
+        opacity: 1;
+      }
+      .line.path-origin {
+        background: #eaf4ff;
+      }
+      .line.path-origin .ln {
+        background: #eaf4ff;
+        color: #397450;
+      }
+      .edge {
+        opacity: 0.22;
+        transition:
+          opacity 0.12s,
+          stroke 0.12s;
+      }
+      .overview-edge {
+        opacity: 0.35;
+      }
+      .edge.path-active {
+        opacity: 1;
+        stroke: #527e60;
+        stroke-width: 1.8;
+      }
+      .edge.path-muted {
+        opacity: 0.045;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .line,
+        .edge {
+          transition: none;
+        }
+      }
+      .chat.line-explanation { width: 320px; height: 240px; }
+      .chat-progress.busy::before { content: ""; display: inline-block; width: 11px; height: 11px; border: 2px solid #dce5df; border-top-color: #63756b; border-radius: 50%; margin-right: 7px; vertical-align: middle; animation: spin .8s linear infinite; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      .function-info, .function-toggle { flex: none; border: 0; padding: 0 3px; font-size: 11px; color: #73877a; background: transparent; }
+      .function-tooltip { position: fixed; z-index: 100; width: 310px; padding: 12px; background: white; border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 6px 24px #26392f22; font-size: 12px; }
+      .overview-response { border-top: 0; margin-top: 0; padding-top: 0; }
+      .function-controls { flex: 0 0 30px; width: 30px; display: inline-flex; align-items: center; justify-content: center; align-self: stretch; position: sticky; left: 0; background: white; z-index: 2; }
+      .line .ln { flex: 0 0 34px; width: 34px; padding-right: 10px; left: 30px; }
+      .overview:has(.overview-chat) { padding: 0; overflow: hidden; }
+      .overview-chat.chat { position: static; width: 100%; height: 350px; min-height: 0; border: 0; box-shadow: none; resize: none; opacity: 1; }
+      .overview-chat .chat-head { cursor: default; }
+      .function-tooltip { max-height: 65vh; overflow: auto; }
+      .function-shapes { margin-top: 12px; font-size: 11px; }
+      .function-shapes pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 4px 0 10px; padding: 7px; background: #f6f8f6; border-radius: 4px; }
+      .flow-spinner { width: 23px; height: 23px; margin: 0 auto 4px; border: 2px solid #ededed; border-top-color: #8b80b4; border-radius: 50%; animation: spin .9s linear infinite; }
+      body:not(.flow-ready) #world { visibility: hidden; }
+      @media (prefers-reduced-motion: reduce) { .flow-spinner { animation: none; } }
+      .token.symbol-highlight { background: #ffe4b3; border-radius: 2px; }
+      .chat[hidden] { display: none; }
+      .chat-definition { font-size: 10px; padding: 4px 12px; color: #829086; overflow-wrap: anywhere; }
+      .chat-definition:empty { display: none; }
+      .file-collapsed > :not(.node-head) { display: none; }
+      .node.file-collapsed { min-height: 0; }
+      .chat.symbol-related { opacity: 1; border-color: #e3ba7a; box-shadow: 0 0 0 2px #ffe4b344; }
+      .chat-text p { margin: 0 0 8px; }
+      .chat-text p:last-child { margin-bottom: 0; }
+      .chat-text ul, .chat-text ol { margin: 6px 0; padding-left: 20px; }
+      .chat-text pre { overflow: auto; background: #f6f6f6; padding: 9px; border-radius: 4px; white-space: pre; }
+      .chat-text code { font: 11px/1.6 ui-monospace, monospace; background: #f5f5f5; }
+      .chat-text blockquote { border-left: 2px solid #ddd; padding-left: 8px; margin: 8px 0; }
+      .chat-text { white-space: normal; }
+      .chat-text table { border-collapse: collapse; font-size: 11px; }
+      .chat-text td, .chat-text th { border: 1px solid #ddd; padding: 4px; }
+      #chat-direction { position: absolute; transform: translate(-50%,-50%); background: #fff8ec; color: #8b6a35; border: 1px solid #ecd7b4; border-radius: 6px; padding: 5px 9px; font-size: 11px; pointer-events: none; z-index: 20; }
+      #chat-direction[hidden] { display: none; }
+      .chat-definition:not(:empty) { flex: none; padding: 8px 12px; background: #fafafa; border-bottom: 1px solid #eee; }
+      .definition-origin { color: #929a95; font-size: 10px; margin-bottom: 4px; }
+      .chat-definition pre { margin: 0; max-height: 110px; overflow: auto; color: #526257; font: 10px/1.6 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre; }
+      .file-tools { display: flex; margin-left: auto; gap: 2px; flex: none; }
+      .file-tools button { padding: 2px 5px; font-size: 13px; }
+      .definition-eye { float: right; border: 0; padding: 1px 5px; background: none; }
+      .definition-code-line { display: flex; gap: 10px; }
+      .definition-line-number { flex: 0 0 30px; color: #a6aaa8; text-align: right; user-select: none; }
+    </style>
+  </head>
+  <body>
+
+    <div class="run-title-card"><span id="run-title"></span>
+    <div class="tools" role="toolbar" aria-label="Graph controls">
+      <button id="minus" aria-label="Zoom out">−</button
+      ><output id="zoom">100%</output
+      ><button id="plus" aria-label="Zoom in">+</button
+      ><button id="fit">Fit</button
+      ><button id="info-button" aria-label="Scenario assumptions and omissions">
+        ⓘ
+      </button>
+    </div>
+    </div>
+    <div
+      id="viewport"
+      tabindex="0"
+      role="region"
+      aria-label="Left-to-right source graph. Drag to pan, scroll to zoom. Plus and minus zoom, zero fits, arrows pan."
+    >
+      <div id="world">
+        <section
+          id="trace-overview"
+          class="overview"
+          aria-label="Trace response"
+        >
+          <div class="overview-response">
+            <p id="summary"></p>
+          </div>
+        </section>
+        <svg
+          class="edges"
+          aria-label="Calls from source lines to function definitions"
+        >
+          <defs>
+            <marker
+              id="arrow"
+              markerWidth="9"
+              markerHeight="8"
+              refX="8"
+              refY="4"
+              markerUnits="userSpaceOnUse"
+              orient="auto"
+            >
+              <path d="M0 0 L8 4 L0 8 Z" fill="#789e85" stroke="none" />
+            </marker>
+          </defs>
+          <g id="edges"></g>
+        </svg>
+        <div id="regions" aria-label="Repository folders"></div>
+        <div id="map"></div>
+      </div>
+      <div id="chats" aria-label="Token question panels"></div>
+      <div class="welcome" id="welcome" hidden>
+        <h2>Describe something you want to follow.</h2>
+        <p>
+          Include the action and any values that matter.<br />CodeSurf reads
+          the code and chooses what to show.
+        </p>
+        <button
+          data-example="A logged-in user requests sticky notes with boardId=not-a-number. Show why the request is rejected. Focus on parameter validation and assume authentication succeeded."
+        >
+          Try an invalid board ID →
+        </button>
+      </div>
+    </div>
+    <section class="info" id="info" aria-label="Scenario details" hidden>
+      <button id="close-info">Close</button>
+      <h2>How this trace was chosen</h2>
+      <div id="info-content"></div>
+    </section>
+    <div class="loading" id="loading" role="status" aria-live="polite">
+      <span class="flow-spinner" aria-hidden="true"></span>
+      <strong>Constructing your flow…</strong>
+      <span id="progress">Just a moment while we connect the code.</span>
+    </div>
+    <p id="status" class="trace-notice" role="alert" hidden></p>
+    <script>
+      window.addEventListener("error", event => {
+        const loading=document.getElementById("loading");
+        if (!loading || loading.hidden) return;
+        loading.querySelector("strong").textContent="Couldn’t open this flow";
+        document.getElementById("progress").textContent=event.message + ". Update CodeSurf and reopen the report.";
+        loading.querySelector(".flow-spinner")?.remove();
+      });
+      const report = /*__REPORT__*/ null;
+      /*__VIEWER__*/
+    </script>
+  </body>
+</html>

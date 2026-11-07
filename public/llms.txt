@@ -1,0 +1,31 @@
+# CodeSurf
+Local CLI for AI agents to open interactive code graphs for humans. Ruby, Python, TypeScript, JavaScript/Node.js.
+
+Install on the human's machine (Node >=22.12, graphical desktop):
+  npm install -g https://codesurf.io/downloads/codesurf-cli-latest.tgz
+  codesurf --version
+Natural-language investigation/chat requires installed Codex CLI and human sign-in:
+  npm install -g @openai/codex
+  codex login
+Reuse existing login. Never request or copy credentials. Human completes interactive sign-in.
+Python repositories require an interpreter >=3.10 supporting their syntax; override with CODESURF_PYTHON.
+macOS tested; Windows/Linux not yet verified. Linux requires Electron desktop libraries.
+
+Use:
+  codesurf /absolute/path/to/repo "Specific scenario with inputs and assumptions"
+  codesurf --demo
+  codesurf /path/to/repo "Scenario" --html-only --out ./flow.html
+  codesurf --help
+Run on the local desktop to make the window visible. Remote/headless agents use --html-only.
+Runs reuse one window with tabs. HTML and JSON reports contain source snapshots. Chat needs desktop viewer.
+Static source analysis does not execute the target application or guarantee runtime behavior.
+AI tracing sends source to the configured model provider. Do not publish private reports without authorization.
+
+Update: ask the human to quit CodeSurf, then run:
+  npm install -g https://codesurf.io/downloads/codesurf-cli-latest.tgz --prefer-online
+  codesurf --version
+No private repo access required. Not published on npm registry; use the direct package URL, not npm update codesurf-cli.
+Latest version and immutable URL: https://codesurf.io/downloads/latest.json
+Full instructions and real screenshots: https://codesurf.io/
+
+Ruby: requires Ruby with built-in Ripper; set CODESURF_RUBY for recent syntax. Dynamic dispatch, Rails DSL routes and metaprogramming are not inferred. Use --languages typescript,python to disable Ruby.

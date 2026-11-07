@@ -1,0 +1,32 @@
+{
+  "name": "codesurf-cli",
+  "version": "0.6.1",
+  "type": "module",
+  "bin": {
+    "codesurf": "src/cli.js"
+  },
+  "scripts": {
+    "test": "node --test",
+    "demo": "node src/cli.js examples/auth-refresh \"Trace an authenticated request that gets a 401, refreshes the token, and retries once. Assume refresh succeeds.\""
+  },
+  "dependencies": {
+    "electron": "^45.2.3",
+    "markdown-it": "^15.0.3",
+    "typescript": "^6.0.3"
+  },
+  "devDependencies": {
+    "jsdom": "^27.0.1"
+  },
+  "description": "A CLI for agents to open source-backed code maps that help humans learn unfamiliar repositories.",
+  "license": "MIT",
+  "homepage": "https://codesurf.io",
+  "files": [
+    "src",
+    "examples",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}

@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "node --env-file-if-exists=.env.local server.js",
     "start": "node --env-file-if-exists=.env.local server.js",
-    "test": "node --test",
-    "build": "esbuild browser/icons.js --bundle --format=esm --minify --outfile=public/icons.js",
+    "test": "node --test test/*.test.js",
+    "build": "esbuild browser/icons.js --bundle --format=esm --minify --outfile=public/icons.js && tailwindcss -i browser/docs.css -o public/docs.css --minify && node scripts/build-docs.mjs",
     "runner:build": "docker build -t codesurf-runner:local runner"
   },
   "dependencies": {
@@ -15,6 +15,9 @@
     "lucide": "^1.55.0"
   },
   "devDependencies": {
-    "esbuild": "^0.28.2"
+    "@tailwindcss/cli": "^4.3.5",
+    "daisyui": "^5.7.50",
+    "esbuild": "^0.28.2",
+    "tailwindcss": "^4.3.5"
   }
 }
