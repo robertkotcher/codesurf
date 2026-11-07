@@ -93,7 +93,7 @@ input['files'].each do |file|
         signature_owner = singleton && constant(node[1]) ? constant(node[1]) : owner
         definition = {id:id,name:name[1],file:relative,absolute:file,start:start,end:finish,
           lines:sources[relative][start-1..finish-1],calls:[],changed:[],language:'Ruby',
-          inputs:inputs.uniq { |p| p[:name] },output:{type:'unknown',inferred:true}}
+          contextLines:sources[relative][[0,start-2].max..start],inputs:inputs.uniq { |p| p[:name] },output:{type:'unknown',inferred:true}}
         definitions << definition
         internals << {definition:definition,owner:signature_owner,singleton:singleton,body:body}
         # Nested method definitions are indexed independently.

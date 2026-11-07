@@ -7,7 +7,7 @@
 </head>
 <body class="bg-base-100 text-base-content">
 <main class="mx-auto max-w-4xl px-5 py-10 sm:py-14 space-y-9">
-<header class="flex items-center gap-3"><img src="/favicon.svg" width="32" height="32" alt=""><h1 class="text-3xl font-bold tracking-tight">CodeSurf</h1><span class="badge badge-outline badge-sm">0.5.0</span></header>
+<header class="flex items-center gap-3"><img src="/favicon.svg" width="32" height="32" alt=""><h1 class="text-3xl font-bold tracking-tight">CodeSurf</h1><span class="badge badge-outline badge-sm">0.6.0</span></header>
 <section id="note" class="space-y-3">
 <h2 class="text-xl font-semibold">1. A note for humans and AI agents</h2>
 <p>CodeSurf is a local tool your AI agent installs and calls to show you how Ruby, Python, TypeScript, or JavaScript code works in an interactive graph. Agents: follow the installation steps below, then pass a repository path and the human’s question to open a separate window they can explore.</p>
@@ -31,7 +31,7 @@ codex login</code></pre>
 </ul>
 <p class="text-sm">Check installation without AI or a repository:</p>
 <pre class="rounded-box bg-base-200 p-4 overflow-x-auto text-sm"><code>codesurf --demo</code></pre>
-<p class="text-xs text-base-content/60">Current release: <a class="link" href="/downloads/codesurf-cli-0.5.0.tgz">0.5.0 package</a> · <a class="link" href="/downloads/codesurf-cli-0.5.0.tgz.sha256">SHA-256</a> · <a class="link" href="/downloads/latest.json">release metadata</a> · <a class="link" href="/llms.txt">plain-text agent instructions</a></p>
+<p class="text-xs text-base-content/60">Current release: <a class="link" href="/downloads/codesurf-cli-0.6.0.tgz">0.6.0 package</a> · <a class="link" href="/downloads/codesurf-cli-0.6.0.tgz.sha256">SHA-256</a> · <a class="link" href="/downloads/latest.json">release metadata</a> · <a class="link" href="/llms.txt">plain-text agent instructions</a></p>
 </section>
 <section id="update" class="space-y-3">
 <h2 class="text-xl font-semibold">3. How to Update</h2>
@@ -46,16 +46,16 @@ codesurf --version</code></pre>
 <pre class="rounded-box bg-base-200 p-4 overflow-x-auto text-sm"><code>codesurf /path/to/repo \
   "Trace a request with an expired access token. Assume refresh succeeds."</code></pre>
 <p class="text-sm">By default, the command opens the Electron desktop app with a left-to-right graph; further runs become tabs in the same window. The example below traces a request, a rejected access token, a token refresh, and a retry using the bundled example source.</p>
-<figure class="space-y-2"><a href="/images/code-flow.jpg"><img class="rounded-box border border-base-300 w-full" src="/images/code-flow.jpg" width="1280" height="720" alt="Actual CodeSurf report with a beginner explanation chat, collapsed functions, folder groups, and call arrows."></a><figcaption class="text-xs text-base-content/60">Actual report view from the bundled token-refresh example. Click to enlarge.</figcaption></figure>
+<figure class="space-y-2"><a href="/images/code-flow.jpg"><img class="rounded-box border border-base-300 w-full" src="/images/code-flow.jpg" width="1280" height="720" alt="Actual CodeSurf report with focused source snippets, per-file undo and redo, a beginner explanation chat, and folder groups."></a><figcaption class="text-xs text-base-content/60">Actual report view from the bundled token-refresh example. Click to enlarge.</figcaption></figure>
 <ul class="list-disc pl-5 space-y-1 text-sm">
 <li>Scroll to zoom; drag empty canvas to pan. Use Fit to see the whole trace.</li>
-<li>Expand ▸ to read a full function; click ⓘ for its explanation, inputs, and return type.</li>
-<li>Hover a line to follow its call path. Click a line or token to open a chat and type your question.</li>
+<li>Expand hidden sections as needed; use per-file undo and redo to restore line visibility. Click ⓘ for a function’s explanation, inputs, and return type.</li>
+<li>Hover a line to follow its call path. Click a line or token to open a chat and type your question; its definition preview has an eye button to reveal that source.</li>
 <li>Ask any chat to open a different flow or view to generate a new visualization tab.</li>
 <li>Ask broader follow-ups in the introductory chat. Each source line has one chat.</li>
 <li>Collapse folders and resize code cards horizontally; card height follows the visible code.</li>
 </ul>
-<figure class="space-y-2"><a href="/images/function-details.jpg"><img class="rounded-box border border-base-300 w-full" src="/images/function-details.jpg" width="1280" height="720" loading="lazy" alt="Actual CodeSurf view with an expanded request function and a tooltip describing its purpose, inputs and return type."></a><figcaption class="text-xs text-base-content/60">Expand a function and inspect its input and return shapes.</figcaption></figure>
+<figure class="space-y-2"><a href="/images/function-details.jpg"><img class="rounded-box border border-base-300 w-full" src="/images/function-details.jpg" width="1280" height="720" loading="lazy" alt="Actual CodeSurf view with a symbol chat and a three-line definition preview."></a><figcaption class="text-xs text-base-content/60">Open a symbol chat to inspect its definition preview and reveal it explicitly.</figcaption></figure>
 <div class="space-y-3">
 <h3 class="font-semibold">For humans: add this to AGENTS.md</h3>
 <p class="text-sm">Add this instruction to your repository’s <code>AGENTS.md</code> if you want your agent to use CodeSurf when explaining code. For use across repositories, add it to your agent’s global instructions instead.</p>
@@ -89,7 +89,19 @@ codesurf --help</code></pre>
 <section id="changelog" class="space-y-5 border-t border-base-300 pt-7">
 <h2 class="text-xl font-semibold">Changelog</h2>
 <article class="space-y-2">
-<h3 class="font-semibold">0.5.0 <span class="badge badge-sm badge-outline">Current</span></h3>
+<h3 class="font-semibold">0.6.0 <span class="badge badge-sm badge-outline">Current</span></h3>
+<p class="text-sm">Focused source snippets, reversible line expansion, and chats connected to the code.</p>
+<ul class="list-disc pl-5 space-y-1 text-sm">
+<li>Initial views show question-relevant lines rather than entire functions, with subtle gray expandable gaps.</li>
+<li>Per-file undo and redo restore line visibility; wider cards keep Wrap alongside those controls. Removed Show full functions.</li>
+<li>Symbol chats show a three-line definition preview; an eye button explicitly reveals it in the graph. Hover never expands code.</li>
+<li>Symbol and chat highlighting work both ways. Chats scale and pan with the canvas, hide with collapsed sources, and show directional hints when offscreen.</li>
+<li>Chat replies render Markdown links, lists and code. Execution paths use light blue.</li>
+<li>Added a centered loading message, readable startup errors, a README-style empty state, path-only card titles, and a Graphs sidebar label.</li>
+<li>Fixed a stale-process Markdown startup failure, trimmed report snapshots, and indexed symbol references for faster rendering.</li>
+<li>The Editor button opens the repository and selected file in VS Code; requires its code command on PATH.</li>
+</ul>
+</article><article class="space-y-2"><h3 class="font-semibold">0.5.0</h3>
 <p class="text-sm">Electron is the default experience. Use <code>--html-only</code> to explicitly export HTML; <code>--out</code> requires that flag. Replaces <code>--no-open</code>.</p>
 </article><article class="space-y-2"><h3 class="font-semibold">0.4.0</h3>
 <p class="text-sm">Ask any chat to open another flow or a different view: CodeSurf recognizes the request, carries over the relevant context, and opens a new visualization tab while preserving the current run.</p>

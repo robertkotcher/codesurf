@@ -41,6 +41,7 @@ def descriptor(unit, node, name, function=False):
     end = node.end_lineno if function else min(node.end_lineno, node.lineno + 39)
     d = dict(id=key, name=name, file=unit['file'], absolute=str(unit['path']), start=node.lineno,
              end=end, lines=unit['lines'][node.lineno-1:end], calls=[], changed=[], language='Python')
+    d['contextLines'] = unit['lines'][max(0,node.lineno-2):node.lineno+1]
     if function:
         args = node.args
         positional = args.posonlyargs + args.args

@@ -15,6 +15,7 @@ const definitions = new Map(
   ].map((n) => [n.id, n]),
 );
 const collapsedFolders = new Set();
+const collapsedFiles = new Set();
 const sizes = new Map();
 const wrapping = new Set();
 const scrolls = new Map();
@@ -26,7 +27,48 @@ const panels = graph.panels;
 let hoveredLine = null,
   pinnedLine = null;
 const ranges = new Map();
-const expandedFunctions = new Set();
+const visibilityHistory = new Map();
+function visibilityState(panel) {return {range:ranges.has(panel.id)?[...ranges.get(panel.id)]:null,expanded:panel.members.filter(fn=>expandedFunctions.has(fn.id)).map(fn=>fn.id),revealed:[...(revealedDefinitionLines.get(panel.file)||[])],collapsed:collapsedFiles.has(panel.id)};}
+function rememberVisibility(panel) {
+ const history=visibilityHistory.get(panel.id)||{undo:[],redo:[]};
+ history.undo.push(visibilityState(panel));history.redo=[];visibilityHistory.set(panel.id,history);
+}
+function restoreVisibility(id, direction) {
+ const panel=panels.get(id),history=visibilityHistory.get(id);
+ if(!history?.[direction].length)return;
+ const state=history[direction].pop();history[direction==='undo'?'redo':'undo'].push(visibilityState(panel));
+ state.range?ranges.set(id,new Set(state.range)):ranges.delete(id);
+ for(const fn of panel.members)expandedFunctions.delete(fn.id);
+ for(const fn of state.expanded)expandedFunctions.add(fn);
+ revealedDefinitionLines.set(panel.file,new Set(state.revealed));
+ state.collapsed?collapsedFiles.add(id):collapsedFiles.delete(id);render();
+}
+function revealDefinition(definition) {
+ let panel=[...panels.values()].find(p=>p.file===definition.file);
+ if(!panel){
+  if(!report.sources[definition.file]) {
+    const sourceLines=Array(Math.max(definition.start+1,definition.end)).fill("");
+    (definition.lines || []).forEach((text,i)=>sourceLines[definition.start-1+i]=text);
+    if(definition.contextLines)definition.contextLines.forEach((text,i)=>sourceLines[Math.max(0,definition.start-2)+i]=text);
+    report.sources[definition.file]=sourceLines;
+  }
+  nodes.set(definition.id,{...definition,relevantLines:[definition.start],level:1});
+  const next=buildFileGraph([...nodes.values()],report.sources);panels.clear();for(const [id,p]of next.panels)panels.set(id,p);
+  graph.functions=next.functions;graph.panelForFunction=next.panelForFunction;graph.edges=next.edges;
+  panel=panels.get(next.panelForFunction.get(definition.id));
+ }
+ rememberVisibility(panel);
+ const lines=new Set(shown(panel)), revealed=new Set(revealedDefinitionLines.get(panel.file)||[]);
+ for(let line=Math.max(1,definition.start-1);line<=definition.start+1 && line<=source(panel).length;line++){lines.add(line);revealed.add(line);}
+ ranges.set(panel.id,lines);revealedDefinitionLines.set(panel.file,revealed);collapsedFiles.delete(panel.id);
+ for(const folder of [...collapsedFolders])if(panel.file.startsWith(folder+'/'))collapsedFolders.delete(folder);
+ render();
+ const row=$("node-"+panel.id)?.querySelector(`[data-line="${definition.start}"]`);
+ if(row){const r=row.getBoundingClientRect(),b=bounds();if(r.top<b.top||r.bottom>b.bottom||r.left>b.right||r.right<b.left){tx+=b.left+b.width/2-r.left;ty+=b.top+b.height/2-r.top;transform();}}
+}
+
+const revealedDefinitionLines = new Map();
+const expandedFunctions = new Set(report.nodes.filter(fn => fn.relevantLines?.length).map(fn => fn.id));
 const positions = new Map();
 let scale = 1,
   tx = 0,
@@ -39,7 +81,7 @@ let graphWidth = 1,
 
 $("run-title").textContent = report.title || report.question || "New run";
 $("run-title").title = report.title || report.question || "New run";
-$("repo").textContent = report.roots.map((r) => r.split("/").pop()).join(" + ");
+
 $("summary").textContent =
   report.summary ||
   (nodes.size
@@ -72,30 +114,41 @@ function source(n) {
 function callKey(c) {
   return `${c.line}:${c.column ?? 0}:${c.target}`;
 }
+const callCache = new WeakMap();
 function allCalls(n) {
+  if (callCache.has(n)) return callCache.get(n);
   const map = new Map();
   // Expanding outside this definition also makes calls in the surrounding file navigable.
   for (const d of definitions.values())
     if (d.file === n.file) for (const c of d.calls) map.set(callKey(c), c);
   for (const c of n.calls) map.set(callKey(c), c);
-  return [...map.values()];
+  const result = [...map.values()];
+  callCache.set(n,result);
+  return result;
 }
 function shown(panel) {
   if (ranges.has(panel.id))
     return [...ranges.get(panel.id)].sort((a, b) => a - b);
   const set = new Set();
   for (const fn of panel.members) {
-    // Relevance chooses functions; show their complete bodies for readable context.
-    for (let line = fn.start; line <= fn.end; line++) set.add(line);
+    set.add(fn.start);
+    if (!fn.relevantLines?.length) set.add(fn.end);
+    const evidence = fn.relevantLines?.length ? fn.relevantLines :
+      fn.end - fn.start < 25 ? Array.from({length:fn.end-fn.start+1},(_,i)=>fn.start+i) :
+      [fn.start, ...fn.calls.filter(c => nodes.has(c.target) && !c.excluded).map(c=>c.line)].slice(0,8);
+    for (const line of evidence)
+      set.add(line);
   }
   const ordered = [...set].sort((a, b) => a - b);
   for (let i = 1; i < ordered.length; i++)
-    if (ordered[i] - ordered[i - 1] <= 9)
+    if (!panel.members.some(fn => fn.relevantLines?.length) && ordered[i] - ordered[i - 1] <= 4)
       for (let line = ordered[i - 1] + 1; line < ordered[i]; line++) set.add(line);
   return [...set]
     .filter((l) => l > 0 && l <= source(panel).length)
     .sort((a, b) => a - b);
 }
+const referenceIndex = new Map(Object.entries(report.symbolRefs || {}).map(([file,refs]) =>
+  [file,new Map(refs.map(ref=>[`${ref.line}:${ref.column}`,ref]))]));
 function highlighted(line, n, number) {
   const pattern =
     /(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|\/\/.*$|[\p{L}_$][\p{L}\p{N}_$]*|\d+(?:\.\d+)?|[^\s])/gu;
@@ -106,7 +159,7 @@ function highlighted(line, n, number) {
   for (const match of line.matchAll(pattern)) {
     const text = match[0],
       column = match.index;
-    const ref = refs.find((r) => r.line === number && r.column === column);
+    const ref = referenceIndex.get(n.file)?.get(`${number}:${column}`);
     const call = calls.find((c) => c.column === column && c.target);
     const target = ref?.target || call?.target;
     const kind = /^['"`]/.test(text)
@@ -117,7 +170,7 @@ function highlighted(line, n, number) {
         ? "kw"
         : "";
     result += esc(line.slice(at, column));
-    result += `<button class="token ${kind} ${target ? "call-link" : ""}" data-token="${column}" data-token-line="${number}" data-token-node="${esc((n.members.find((fn) => number >= fn.start && number <= fn.end) || n.members[0]).id)}" ${target ? `data-target="${esc(target)}"` : ""} aria-label="Actions for ${esc(text)}">${esc(text)}</button>`;
+    result += `<button class="token ${kind} ${target ? "call-link" : ""}" data-symbol-key="${esc(target || n.file + ":" + text)}" data-token="${column}" data-token-line="${number}" data-token-node="${esc((n.members.find((fn) => number >= fn.start && number <= fn.end) || n.members[0]).id)}" ${target ? `data-target="${esc(target)}"` : ""} aria-label="Actions for ${esc(text)}">${esc(text)}</button>`;
     at = column + text.length;
   }
   return result + esc(line.slice(at));
@@ -134,10 +187,10 @@ function snippet(n) {
   let previous = null;
   lines.forEach((l, i) => {
     const hidden = n.members.some(fn => !expandedFunctions.has(fn.id) && l > fn.start && l <= fn.end);
-    if (hidden) return;
+    if (hidden && !revealedDefinitionLines.get(n.file)?.has(l)) return;
     const collapsedBetween = n.members.some(fn => !expandedFunctions.has(fn.id) && previous >= fn.start && previous <= fn.end);
     if (previous !== null && l > previous + 1 && !collapsedBetween)
-      html += `<button class="fold" data-gap="${esc(n.id)}" data-from="${lines[i - 1] + 1}" data-to="${l - 1}">Show ${l - lines[i - 1] - 1} hidden lines (${lines[i - 1] + 1}–${l - 1})</button>`;
+      html += `<button class="fold" data-gap="${esc(n.id)}" data-from="${previous + 1}" data-to="${l - 1}">Show ${l - previous - 1} hidden lines (${previous + 1}–${l - 1})</button>`;
     html += lineHTML(n, l);
     previous = l;
   });
@@ -159,7 +212,7 @@ function render() {
         local = n.calls.filter(
           (c) => nodes.has(c.target) && !c.excluded,
         ).length;
-      return `<article data-node-id="${esc(n.id)}" style="width:${sizes.get(n.id)?.width || 340}px;height:auto" class="node ${n.members.some((fn) => fn.id === report.entry) ? "selected" : ""}" id="node-${n.id}" aria-label="${esc(n.name)} in ${esc(n.file)}"><div class="node-head"><div class="node-title"><button data-select="${n.id}">${esc(n.name)}</button></div><div class="path">${esc(n.file)}:${n.start}–${n.end}</div></div><div class="context"><button data-above="${n.id}" ${lines[0] <= 1 ? "disabled" : ""}>↑ ${Math.min(20, lines[0] - 1) > 0 ? `Show ${Math.min(20, lines[0] - 1)} line${Math.min(20, lines[0] - 1) === 1 ? "" : "s"} above` : "No lines above"}</button></div><div class="snippet ${wrapping.has(n.id) ? "wrap" : ""}">${snippet(n)}</div><div class="context"><button data-below="${n.id}" ${lines.at(-1) >= source(n).length ? "disabled" : ""}>↓ ${Math.min(20, source(n).length - lines.at(-1)) > 0 ? `Show ${Math.min(20, source(n).length - lines.at(-1))} line${Math.min(20, source(n).length - lines.at(-1)) === 1 ? "" : "s"} below` : "No lines below"}</button></div><div class="node-foot"><button data-wrap="${esc(n.id)}" aria-pressed="${wrapping.has(n.id)}" aria-label="Toggle line wrapping for ${esc(n.name)}">↵ Wrap</button><a href="vscode://file/${encodeURI(n.absolute).replaceAll("#", "%23")}:${n.start}">Editor ↗</a></div></article>`;
+      return `<article data-node-id="${esc(n.id)}" style="width:${sizes.get(n.id)?.width || 440}px;height:auto" class="node ${collapsedFiles.has(n.id) ? "file-collapsed" : ""} ${n.members.some((fn) => fn.id === report.entry) ? "selected" : ""}" id="node-${n.id}" aria-label="${esc(n.name)} in ${esc(n.file)}"><div class="node-head"><div class="node-title"><button data-collapse-file="${esc(n.id)}" aria-label="${collapsedFiles.has(n.id) ? "Expand" : "Collapse"} file ${esc(n.name)}">${collapsedFiles.has(n.id) ? "▸" : "▾"}</button><button data-select="${n.id}">${esc(n.file)}</button><div class="file-tools"><button data-undo="${esc(n.id)}" aria-label="Undo line visibility" ${visibilityHistory.get(n.id)?.undo.length ? "" : "disabled"}>↶</button><button data-redo="${esc(n.id)}" aria-label="Redo line visibility" ${visibilityHistory.get(n.id)?.redo.length ? "" : "disabled"}>↷</button><button data-wrap="${esc(n.id)}" aria-label="Toggle line wrapping for ${esc(n.name)}" aria-pressed="${wrapping.has(n.id)}">↵</button></div></div></div><div class="context"><button data-above="${n.id}" ${lines[0] <= 1 ? "disabled" : ""}>↑ ${Math.min(20, lines[0] - 1) > 0 ? `Show ${Math.min(20, lines[0] - 1)} line${Math.min(20, lines[0] - 1) === 1 ? "" : "s"} above` : "No lines above"}</button></div><div class="snippet ${wrapping.has(n.id) ? "wrap" : ""}">${snippet(n)}</div><div class="context"><button data-below="${n.id}" ${lines.at(-1) >= source(n).length ? "disabled" : ""}>↓ ${Math.min(20, source(n).length - lines.at(-1)) > 0 ? `Show ${Math.min(20, source(n).length - lines.at(-1))} line${Math.min(20, source(n).length - lines.at(-1)) === 1 ? "" : "s"} below` : "No lines below"}</button></div><div class="node-foot"><button data-editor="${esc(n.id)}">Editor ↗</button></div></article>`;
     })
     .join("");
   document.querySelectorAll(".node").forEach((card) => {
@@ -441,6 +494,7 @@ function expandRange(id, from, to) {
     set = new Set(shown(n));
   for (let l = Math.max(1, from); l <= Math.min(source(n).length, to); l++)
     set.add(l);
+  rememberVisibility(n);
   ranges.set(id, set);
   render();
 }
@@ -466,9 +520,16 @@ document.addEventListener("keydown", (e) => {
   }
 });
 document.addEventListener("click", (e) => {
+  const fileToggle = e.target.closest("[data-collapse-file]");
+  if(fileToggle){const id=fileToggle.dataset.collapseFile;rememberVisibility(panels.get(id));collapsedFiles.has(id)?collapsedFiles.delete(id):collapsedFiles.add(id);render();return;}
+  const undo=e.target.closest('[data-undo]'),redo=e.target.closest('[data-redo]');
+  if(undo||redo){restoreVisibility((undo||redo).dataset[undo?'undo':'redo'],undo?'undo':'redo');return;}
+  const editor=e.target.closest('[data-editor]');
+  if(editor){const panel=panels.get(editor.dataset.editor);window.codesurf?.openEditor?.({file:panel.absolute,line:panel.start}).catch(error=>{ $('status').hidden=false;$('status').textContent=error.message; });return;}
   const toggle = e.target.closest("[data-function-toggle]");
   if (toggle) {
     const id = toggle.dataset.functionToggle;
+    rememberVisibility(panels.get(graph.panelForFunction.get(id)));
     expandedFunctions.has(id) ? expandedFunctions.delete(id) : expandedFunctions.add(id);
     render(); return;
   }
@@ -528,7 +589,7 @@ document.addEventListener("click", (e) => {
     const line = Number(row.dataset.line);
     const fn = panel.members.find(fn => line >= fn.start && line <= fn.end) || panel.members[0];
     const text = source(panel)[line - 1] || "";
-    if (text.trim()) openChat({dataset:{tokenNode:fn.id, tokenLine:String(line), token:"0"},textContent:text}, true);
+    if (text.trim()) openChat({dataset:{tokenNode:fn.id, tokenLine:String(line), token:"0"},textContent:text,getBoundingClientRect:()=>row.getBoundingClientRect()}, true);
     return;
   }
   if (!e.target.closest(".chat")) activateChat(null);
@@ -635,3 +696,21 @@ new ResizeObserver(() => {
 }).observe($("viewport"));
 render();
 fit();
+
+// Allow the loading state to paint before measuring and revealing the graph.
+requestAnimationFrame(() => requestAnimationFrame(() => {
+  layout(); fit();
+  document.body.classList.add("flow-ready");
+  $("loading").hidden = true;
+}));
+
+document.addEventListener("pointerover", event => {
+  const token=event.target.closest?.("[data-symbol-key]");
+  if(!token)return;
+  hoveredSymbolKey=token.dataset.symbolKey;
+  refreshChatEmphasis();
+});
+document.addEventListener("pointerout", event => {
+  if(!event.target.closest?.("[data-symbol-key]"))return;
+  hoveredSymbolKey=null;refreshChatEmphasis();
+});

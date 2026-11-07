@@ -112,6 +112,7 @@ export function analyze(
           absolute: file,
           start,
           end,
+          contextLines:sf.text.split(/\r?\n/).slice(Math.max(0,start-2),start+1),
           lines: sf.text.split(/\r?\n/).slice(start - 1, end),
           inputs: n.parameters.map(p => ({
             name: p.name.getText(sf),
@@ -309,6 +310,7 @@ export function analyze(
           start,
           end,
           declaredEnd,
+          contextLines:sf.text.split(/\r?\n/).slice(Math.max(0,start-2),start+1),
           lines: sf.text.split(/\r?\n/).slice(start - 1, end),
           calls: [],
           changed: [],

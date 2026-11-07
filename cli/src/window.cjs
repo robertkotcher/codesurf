@@ -10,7 +10,7 @@ const legacyProfile = path.join(app.getPath("appData"), "CodeTrail");
 if (fs.existsSync(legacyProfile)) app.setPath("userData", legacyProfile);
 // All invocations share one desktop process and retain each run's renderer state.
 const handlers = new Map();
-for (const channel of ["trace", "inspect-token"])
+for (const channel of ["trace", "inspect-token", "open-editor"])
   ipcMain.handle(channel, (event, value) => {
     const handler = handlers.get(event.sender.id)?.[channel];
     if (!handler) throw new Error("Unknown run.");
@@ -62,6 +62,13 @@ function addRun(report) {
       shell.openExternal(url);
   });
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  register("open-editor", async (event, selection) => {
+    if(event.sender!==view.webContents || typeof selection?.file!=="string" || !Number.isInteger(selection.line) || selection.line<1)throw new Error("Invalid editor location");
+    const file=fs.realpathSync(selection.file);
+    const root=snapshot.roots.find(root=>file.startsWith(fs.realpathSync(root)+path.sep));
+    if(!root)throw new Error("File is outside this graph's repositories");
+    await new Promise((resolve,reject)=>{const child=spawn("code",["--reuse-window",root,"--goto",`${file}:${selection.line}`],{stdio:"ignore",shell:false});child.on("error",()=>reject(new Error("Install the VS Code 'code' command on PATH to open the project.")));child.on("close",code=>code===0?resolve():reject(new Error("Could not open project in VS Code")));});
+  });
   register("trace", async (event, question, onProgress) => {
     if (
       event.sender !== window.webContents ||
@@ -255,7 +262,6 @@ function addRun(report) {
     investigation?.kill();
     for (const child of explanations) child.kill();
   });
-  writeReport(snapshot, report);
   window.loadFile(report);
   select(id);
   host.show(); host.focus();

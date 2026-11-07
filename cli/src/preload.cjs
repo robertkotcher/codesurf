@@ -1,5 +1,6 @@
 const { contextBridge, ipcRenderer } = require("electron");
 const api = {
+  openEditor: (selection) => ipcRenderer.invoke("open-editor",selection),
   trace: (question) => ipcRenderer.invoke("trace", question),
   inspect: (selection) => ipcRenderer.invoke("inspect-token", selection),
   onProgress: (callback) =>

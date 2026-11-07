@@ -38,25 +38,71 @@ function restoreChats() {
       }
   } catch {}
 }
-function activateChat(id) {
-  activeChat = id;
-  for (const c of chats.values())
-    $("chat-" + c.id)?.classList.toggle("inactive", c.id !== id);
+let hoveredSymbolKey = null, hoveredChatId = null;
+function chatSymbolKey(c) {
+  if (!c || c.overview || c.explainLine) return null;
+  const ref = report.symbolRefs?.[c.file]?.find(r=>r.line===c.selection.line && r.column===c.selection.column);
+  return c.selection.symbolKey || ref?.target || c.selection.target || c.file+":"+c.selection.text;
+}
+function refreshChatEmphasis() {
+  const selected = chats.get(hoveredChatId || activeChat);
+  const key = hoveredSymbolKey || chatSymbolKey(selected);
+  for (const token of document.querySelectorAll("[data-symbol-key]"))
+    token.classList.toggle("symbol-highlight", Boolean(key) && token.dataset.symbolKey===key);
+  for (const c of chats.values()) {
+    const related = hoveredSymbolKey && chatSymbolKey(c)===hoveredSymbolKey;
+    $("chat-"+c.id)?.classList.toggle("inactive", !related && c.id !== hoveredChatId && c.id !== activeChat);
+    $("chat-"+c.id)?.classList.toggle("symbol-related", Boolean(related));
+  }
+  updateChatDirection();
+}
+function activateChat(id) { activeChat=id;refreshChatEmphasis(); }
+function anchorChat(c, button) {
+  const rect = button.getBoundingClientRect?.();
+  if (!rect) return;
+  const b = bounds();
+  c.x = (rect.left - b.left - tx) / scale;
+  c.y = (rect.bottom - b.top + 8 - ty) / scale;
+  c.manual = true;
 }
 function positionChats() {
   if (!folderLayout) return;
   for (const c of chats.values()) {
     if (c.overview) continue;
-    const p = endpoint(c.selection.nodeId),
-      element = $("chat-" + c.id);
+    const p = endpoint(c.selection.nodeId), element = $("chat-" + c.id);
     if (!p || !element) continue;
-    if (!c.manual) {
-      c.x = p.x + p.width + 24 + c.stack * 24;
-      c.y = p.y + 65 + c.stack * 24;
-    }
-    element.style.left = c.x * scale + tx + "px";
-    element.style.top = c.y * scale + ty + "px";
+    const panelId = graph.panelForFunction.get(c.selection.nodeId);
+    const card = $("node-" + panelId);
+    element.hidden = Boolean(p.folder || collapsedFiles.has(panelId) ||
+      !card?.querySelector(`[data-line="${c.selection.line}"]`));
+    if (!c.manual) {c.x=p.x+30;c.y=p.y+80;}
+    const left=c.x*scale+tx;
+    const top=c.y*scale+ty;
+    element.style.left=left+"px";element.style.top=top+"px";
+    element.style.transform=`scale(${scale})`;
+    element.style.transformOrigin="0 0";
   }
+  updateChatDirection();
+}
+function updateChatDirection() {
+  let indicator = $("chat-direction");
+  const key=hoveredSymbolKey;
+  const c=key && [...chats.values()].find(c=>!c.overview && chatSymbolKey(c)===key);
+  const element=c && $("chat-"+c.id);
+  if(!element || element.hidden){if(indicator)indicator.hidden=true;return;}
+  const b=bounds(),left=c.x*scale+tx,top=c.y*scale+ty;
+  const width=(element.offsetWidth || 340)*scale,height=(element.offsetHeight || 290)*scale;
+  if(left+width>=0 && left<=b.width && top+height>=0 && top<=b.height){if(indicator)indicator.hidden=true;return;}
+  if(!indicator){indicator=document.createElement("div");indicator.id="chat-direction";indicator.setAttribute("role","status");$("chats").append(indicator);}
+  const dx=left+width/2-b.width/2,dy=top+height/2-b.height/2;
+  const ratio=Math.min((b.width/2-65)/Math.max(1,Math.abs(dx)),(b.height/2-24)/Math.max(1,Math.abs(dy)));
+  indicator.style.left=Math.max(8,b.width/2+dx*ratio)+"px";
+  indicator.style.top=Math.max(8,b.height/2+dy*ratio)+"px";
+  const horizontal=Math.abs(dx)>Math.abs(dy);
+  const arrow=horizontal?(dx<0?"←":"→"):(dy<0?"↑":"↓");
+  indicator.textContent=`${arrow} Chat`;
+  indicator.setAttribute("aria-label",`Chat for ${c.selection.text} is offscreen ${horizontal?(dx<0?"left":"right"):(dy<0?"above":"below")}`);
+  indicator.hidden=false;
 }
 function openChat(button, explainLine = false) {
   const n = nodes.get(button.dataset.tokenNode),
@@ -64,6 +110,12 @@ function openChat(button, explainLine = false) {
     column = Number(button.dataset.token);
   const existing = [...chats.values()].find(c => !c.overview && c.file === n.file && c.selection.line === line);
   if (existing) {
+    if (!explainLine) {
+      existing.selection = {...existing.selection,column,text:button.textContent,target:button.dataset.target,symbolKey:button.dataset.symbolKey};
+      existing.explainLine = false;
+      renderChat(existing);
+      $("chat-" + existing.id).querySelector("strong").textContent = button.textContent;
+    }
     activateChat(existing.id);
     positionChats();
     $("chat-" + existing.id)?.querySelector("input")?.focus();
@@ -84,6 +136,8 @@ function openChat(button, explainLine = false) {
       column,
       text: button.textContent,
       module: ref?.module || "",
+      target: button.dataset.target || ref?.target,
+      symbolKey: button.dataset.symbolKey,
     },
     file: n.file,
     explainLine,
@@ -91,34 +145,16 @@ function openChat(button, explainLine = false) {
     stack,
     manual: false,
   };
+  anchorChat(c, button);
   chats.set(id, c);
   renderChat(c);
   activateChat(id);
   positionChats();
-  const element = $("chat-" + id),
-    b = bounds(),
-    left = parseFloat(element.style.left),
-    top = parseFloat(element.style.top);
-  if (left + 350 > b.width || top + 280 > b.height) {
-    c.x = (Math.max(8, Math.min(b.width - 360, left)) - tx) / scale;
-    c.y = (Math.max(90, Math.min(b.height - 290, top)) - ty) / scale;
-    c.manual = true;
-    positionChats();
-  }
-  element.querySelector("input").focus();
+  $("chat-" + id).querySelector("input").focus();
   saveChats();
 }
-function renderAnswer(text) {
-  let result = "",
-    at = 0;
-  const pattern = /\[([^\]]+)\]\((https:\/\/[^\s)]+)\)/g;
-  for (const match of text.matchAll(pattern)) {
-    result += esc(text.slice(at, match.index));
-    result += `<a href="${esc(match[2])}">${esc(match[1])}</a>`;
-    at = match.index + match[0].length;
-  }
-  return result + esc(text.slice(at));
-}
+const chatMarkdown = window.markdownit({html:false,linkify:true,breaks:true});
+function renderAnswer(text) { return chatMarkdown.render(String(text)); }
 function renderChat(c) {
   let element = $("chat-" + c.id);
   if (!element) {
@@ -127,7 +163,7 @@ function renderChat(c) {
     element.className = "chat inactive" + (c.explainLine ? " line-explanation" : "");
     element.dataset.chat = c.id;
     element.setAttribute("aria-label", "Questions about " + c.selection.text);
-    element.innerHTML = `<header class="chat-head" data-drag-chat="${c.id}"><div><strong>${esc(c.explainLine ? "Line " + c.selection.line : c.selection.text)}</strong><small>${esc(c.file)}:${c.selection.line}</small></div><button type="button" data-close-chat="${c.id}" aria-label="Close question panel">×</button></header><div class="chat-messages"></div><div class="chat-progress" role="status"></div><form class="chat-compose"><input aria-label="Ask a question about ${esc(c.selection.text)}" placeholder="Ask a follow-up question…"><button type="submit">Ask</button></form>`;
+    element.innerHTML = `<header class="chat-head" data-drag-chat="${c.id}"><div><strong>${esc(c.explainLine ? "Line " + c.selection.line : c.selection.text)}</strong><small>${esc(c.file)}:${c.selection.line}</small></div><button type="button" data-close-chat="${c.id}" aria-label="Close question panel">×</button></header><div class="chat-definition"></div><div class="chat-messages"></div><div class="chat-progress" role="status"></div><form class="chat-compose"><input aria-label="Ask a question about ${esc(c.selection.text)}" placeholder="Ask a follow-up question…"><button type="submit">Ask</button></form>`;
     if (c.overview) {
       element.classList.add("overview-chat");
       $("trace-overview").replaceChildren(element);
@@ -135,6 +171,8 @@ function renderChat(c) {
       element.querySelector("small").textContent = "Ask about any part of this trace";
       element.querySelector("[data-close-chat]").hidden = true;
     } else $("chats").append(element);
+    element.addEventListener("pointerenter", () => {hoveredChatId=c.id;refreshChatEmphasis();});
+    element.addEventListener("pointerleave", () => {hoveredChatId=null;refreshChatEmphasis();});
     element.addEventListener("pointerdown", () => activateChat(c.id));
     element.addEventListener("focusin", () => activateChat(c.id));
     element.querySelector("form").addEventListener("submit", (e) => {
@@ -176,12 +214,32 @@ function renderChat(c) {
         head.addEventListener("pointercancel", up);
       });
   }
+  if (!c.overview) {
+    const ref = report.symbolRefs?.[c.file]?.find(r=>r.line===c.selection.line && r.column===c.selection.column);
+    const target = ref?.target || c.selection.target;
+    const definition = target && definitions.get(target);
+    const detail = element.querySelector(".chat-definition");
+    detail.replaceChildren();
+    if (definition) {
+      const origin=document.createElement("div");
+      origin.className="definition-origin";
+      origin.textContent=definition.file;
+      const code=document.createElement("pre");
+      const fullSource=report.sources?.[definition.file];
+      const context=definition.contextLines || (fullSource ? fullSource.slice(Math.max(0,definition.start-2),definition.start+1) : definition.lines?.slice(0,2)) || [];
+      code.textContent=context.join("\n");
+      const eye=document.createElement("button");eye.className="definition-eye";eye.innerHTML='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>';eye.setAttribute("aria-label","Reveal definition in code");eye.onclick=()=>revealDefinition(definition);
+      detail.append(origin,eye,code);
+    } else if (!definition && c.selection.module) {
+      detail.textContent=`From ${c.selection.module} — source unavailable in this snapshot`;
+    }
+  }
   const body = element.querySelector(".chat-messages"),
     nearBottom = body.scrollHeight - body.clientHeight - body.scrollTop < 45;
   body.innerHTML = c.messages
     .map(
       (m) =>
-        `<div class="chat-message ${m.role}"><span class="chat-speaker">${m.role === "user" ? "You" : "CodeSurf"}</span><div class="chat-text">${m.status === "running" ? esc(m.text) : renderAnswer(m.text)}</div></div>`,
+        `<div class="chat-message ${m.role}"><span class="chat-speaker">${m.role === "user" ? "You" : "CodeSurf"}</span><div class="chat-text">${renderAnswer(m.text)}</div></div>`,
     )
     .join("");
   const last = c.messages.at(-1);

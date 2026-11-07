@@ -105,7 +105,7 @@ test("graph expands source, anchors edges to row sides, opens token questions, a
   });
   t.after(() => dom.window.close());
   const d = dom.window.document;
-  for (const id of [...d.querySelectorAll("[data-function-toggle]")].map(b => b.dataset.functionToggle)) d.querySelector(`[data-function-toggle="${id}"]`).click();
+  for (const id of [...d.querySelectorAll('[data-function-toggle][aria-expanded="false"]')].map(b => b.dataset.functionToggle)) d.querySelector(`[data-function-toggle="${id}"]`).click();
   const nextFrame = () =>
     new Promise((resolve) => dom.window.requestAnimationFrame(resolve));
   await nextFrame();
@@ -284,7 +284,7 @@ test("token questions stream into independent persistent panels and fade on clic
   });
   t.after(() => dom.window.close());
   const d = dom.window.document;
-  for (const id of [...d.querySelectorAll("[data-function-toggle]")].map(b => b.dataset.functionToggle)) d.querySelector(`[data-function-toggle="${id}"]`).click();
+  for (const id of [...d.querySelectorAll('[data-function-toggle][aria-expanded="false"]')].map(b => b.dataset.functionToggle)) d.querySelector(`[data-function-toggle="${id}"]`).click();
   const token = [...d.querySelectorAll("[data-token]")].find(
     (b) => b.textContent === "find" && b.dataset.tokenLine === "6",
   );
@@ -338,7 +338,7 @@ test("token questions stream into independent persistent panels and fade on clic
   }
   await new Promise((resolve) => dom.window.requestAnimationFrame(resolve));
   assert.equal(d.querySelectorAll(".chat:not(.overview-chat)").length, 2);
-  assert.equal(first.querySelector("a").href, "https://example.com/docs");
+  assert.equal(first.querySelector(".chat-messages a").href, "https://example.com/docs");
   d.querySelector("#viewport").click();
   assert.ok(
     [...d.querySelectorAll(".chat:not(.overview-chat)")].every((c) =>
@@ -348,7 +348,7 @@ test("token questions stream into independent persistent panels and fade on clic
   assert.ok(dom.window.localStorage.length > 0);
 });
 
-test("selected functions show every line even when the plan selects sparse evidence", (t) => {
+test("explicit gaps and surrounding context reveal source", (t) => {
   const root = fixture(t),
     out = path.join(root, "report.html");
   execFileSync(process.execPath, [
@@ -393,11 +393,13 @@ test("selected functions show every line even when the plan selects sparse evide
   });
   t.after(() => dom.window.close());
   const d = dom.window.document;
-  for (const id of [...d.querySelectorAll("[data-function-toggle]")].map(b => b.dataset.functionToggle)) d.querySelector(`[data-function-toggle="${id}"]`).click();
+  for (const id of [...d.querySelectorAll('[data-function-toggle][aria-expanded="false"]')].map(b => b.dataset.functionToggle)) d.querySelector(`[data-function-toggle="${id}"]`).click();
+  d.querySelector("[data-gap]").click();
+  d.querySelector('[data-file="src/route.ts"]').closest("article").querySelector("[data-below]").click();
   assert.equal(d.querySelectorAll("[data-gap], [data-expand]").length, 0);
   assert.equal(d.querySelector(".fold"), null);
   const route = d.querySelector('[data-file="src/route.ts"]').closest("article");
-  assert.deepEqual([...route.querySelectorAll(".line")].map(row => Number(row.dataset.line)), [2, 3, 4, 5, 6, 7, 8]);
+  assert.deepEqual([...route.querySelectorAll(".line")].map(row => Number(row.dataset.line)), [2, 3, 4, 5, 6, 7, 8, 9]);
   assert.equal(d.querySelectorAll(".folder").length, 1);
   assert.match(d.querySelector(".folder").textContent, /src/);
 
@@ -468,7 +470,7 @@ test("line whitespace opens an empty chat for a user question", async (t) => {
   });
   t.after(()=>dom.window.close());
   const d=dom.window.document;
-  for (const id of [...d.querySelectorAll("[data-function-toggle]")].map(b => b.dataset.functionToggle)) d.querySelector(`[data-function-toggle="${id}"]`).click();
+  for (const id of [...d.querySelectorAll('[data-function-toggle][aria-expanded="false"]')].map(b => b.dataset.functionToggle)) d.querySelector(`[data-function-toggle="${id}"]`).click();
   d.querySelector('[data-file="src/route.ts"][data-line="6"] .source-text').click();
   d.querySelector('[data-file="src/route.ts"][data-line="6"] .token').click();
   d.querySelector('[data-file="src/route.ts"][data-line="6"] .source-text').click();
@@ -479,7 +481,7 @@ test("line whitespace opens an empty chat for a user question", async (t) => {
   d.querySelector('.line-explanation form').dispatchEvent(new dom.window.Event('submit',{cancelable:true}));
   assert.equal(pending.length,1);
   assert.equal(pending[0].selection.question,'What does this line do?');
-  assert.equal(pending[0].selection.text,"  const result = find('hello');");
+  assert.equal(pending[0].selection.text,"const");
   assert.ok(d.querySelector('.line-explanation .chat-progress.busy'));
   pending[0].resolve({answer:'Looks up the value.'});
   await new Promise(resolve=>setTimeout(resolve,0));
@@ -513,7 +515,7 @@ test('introductory card supports follow-ups with the walkthrough in context', as
   report.summary='The handler looks up a value and returns it.';
   writeReport(report,out);
   let selection;
-  const dom=new JSDOM(fs.readFileSync(out,'utf8'),{runScripts:'dangerously',pretendToBeVisual:true,beforeParse(w){w.ResizeObserver=class{observe(){} disconnect(){}};w.codesurf={onInspect(){},inspect:async s=>{selection=s;return {answer:'It returns the lookup result.'};}};}});
+  const dom=new JSDOM(fs.readFileSync(out,'utf8'),{runScripts:'dangerously',pretendToBeVisual:true,beforeParse(w){w.ResizeObserver=class{observe(){} disconnect(){}};w.codesurf={onInspect(){},inspect:async s=>{selection=s;return {answer:'It returns the lookup result.\n\n[Docs](https://example.com)\n\n- **Result**: `string`\n\n<script>alert(1)</script>'};}};}});
   t.after(()=>dom.window.close());
   const card=dom.window.document.querySelector('.overview-chat');
   assert.ok(card);
@@ -524,4 +526,69 @@ test('introductory card supports follow-ups with the walkthrough in context', as
   assert.equal(selection.question,'What is returned?');
   assert.equal(selection.history[0].text,report.summary);
   assert.match(card.textContent,/returns the lookup result/);
+  assert.equal(card.querySelector('.chat-text a').href,'https://example.com/');
+  assert.ok(card.querySelector('.chat-text li strong'));
+  assert.ok(card.querySelector('.chat-text code'));
+  assert.equal(card.querySelector('.chat-text script'),null);
+});
+
+test('large functions initially show scenario evidence and expandable gaps',t=>{
+ const root=fixture(t), out=path.join(root,'focused.html');
+ fs.writeFileSync(path.join(root,'large.ts'),'export function renderPlane() {\n'+Array.from({length:100},(_,i)=>`  const value${i} = ${i};`).join('\n')+'\n}\n');
+ const report=analyze([root],'renderPlane',{entry:'large.ts#renderPlane'});
+ report.nodes[0].relevantLines=[5,95];writeReport(report,out);
+ const dom=new JSDOM(fs.readFileSync(out,'utf8'),{runScripts:'dangerously',pretendToBeVisual:true,beforeParse(w){w.ResizeObserver=class{observe(){} disconnect(){}};}});t.after(()=>dom.window.close());
+ const d=dom.window.document;
+ assert.ok(d.querySelector('[data-line="5"]'));
+ assert.equal(d.querySelector('[data-line="50"]'),null);
+ assert.ok(d.querySelectorAll('.line').length<25);
+ [...d.querySelectorAll('[data-gap]')].find(b => Number(b.dataset.from) <= 50 && Number(b.dataset.to) >= 50).click();
+ assert.ok(d.querySelector('[data-line="50"]'));
+ assert.equal(d.querySelector('[data-full-file]'),null);
+ d.querySelector('[data-undo]').click();
+ assert.equal(d.querySelector('[data-line="50"]'),null);
+ d.querySelector('[data-redo]').click();
+ assert.ok(d.querySelector('[data-line="50"]'));
+});
+
+test('symbol chats show definitions, scale with the canvas, and hide with files and folders',t=>{
+ const root=fixture(t),out=path.join(root,'symbols.html');
+ writeReport(analyze([root],'POST',{entry:'src/route.ts#POST'}),out);
+ const dom=new JSDOM(fs.readFileSync(out,'utf8'),{runScripts:'dangerously',pretendToBeVisual:true,beforeParse(w){w.ResizeObserver=class{observe(){} disconnect(){}};}});t.after(()=>dom.window.close());
+ const d=dom.window.document;
+ for(const id of [...d.querySelectorAll('[data-function-toggle]')].map(b=>b.dataset.functionToggle))d.querySelector(`[data-function-toggle="${id}"]`).click();
+ const token=[...d.querySelectorAll('[data-token]')].find(b=>b.textContent==='find');
+ token.click();
+ const chat=d.querySelector('.chat:not(.overview-chat)');
+ assert.match(chat.querySelector('.chat-definition .definition-origin').textContent,/service.ts/);
+ assert.match(chat.querySelector('.chat-definition pre').textContent,/id.trim/);
+ assert.equal(chat.querySelector('.chat-definition a'),null);
+ const before=chat.style.transform;d.querySelector('#plus').click();assert.notEqual(chat.style.transform,before);
+ const leftBefore=parseFloat(chat.style.left);
+ d.querySelector('#viewport').dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));
+ assert.ok(Math.abs(parseFloat(chat.style.left)-(leftBefore-40))<0.001);
+ const position=dom.window.eval('JSON.stringify([...chats.values()].find(c=>!c.overview).x)');
+ dom.window.eval('tx=-10000; transform()');
+ token.dispatchEvent(new dom.window.MouseEvent('pointerover',{bubbles:true}));
+ assert.equal(d.querySelector('#chat-direction').hidden,false);
+ assert.equal(dom.window.eval('JSON.stringify([...chats.values()].find(c=>!c.overview).x)'),position);
+
+ token.dispatchEvent(new dom.window.MouseEvent('pointerover',{bubbles:true}));assert.ok(token.classList.contains('symbol-highlight'));
+ d.querySelector('[data-collapse-file="file:src/route.ts"]').click();assert.equal(chat.hidden,true);
+ d.querySelector('[data-collapse-file="file:src/route.ts"]').click();assert.equal(chat.hidden,false);
+ d.querySelector('[data-folder="src"]').click();assert.equal(chat.hidden,true);
+ d.querySelector('[data-folder="src"]').click();assert.equal(chat.hidden,false);
+});
+
+test('definition hover never expands source; eye reveal supports file undo and redo',t=>{
+ const root=fixture(t),out=path.join(root,'eye.html');
+ fs.writeFileSync(path.join(root,'eye.ts'),'export function example() {\n  const item = 42;\n'+Array(40).fill('  // unrelated').join('\n')+'\n  return item;\n}\n');
+ const r=analyze([root],'example',{entry:'eye.ts#example'});r.nodes[0].relevantLines=[43];writeReport(r,out);
+ const dom=new JSDOM(fs.readFileSync(out,'utf8'),{runScripts:'dangerously',pretendToBeVisual:true,beforeParse(w){w.ResizeObserver=class{observe(){} disconnect(){}};}});t.after(()=>dom.window.close());
+ const d=dom.window.document,token=[...d.querySelectorAll('[data-token]')].find(t=>t.textContent==='item');
+ token.dispatchEvent(new dom.window.MouseEvent('pointerover',{bubbles:true}));assert.equal(d.querySelector('[data-line="2"]'),null);
+ token.click();const chat=d.querySelector('.chat:not(.overview-chat)');assert.match(chat.querySelector('.chat-definition pre').textContent,/const item/);
+ chat.querySelector('[aria-label="Reveal definition in code"]').click();assert.ok(d.querySelector('[data-line="2"]'));
+ d.querySelector('[data-undo]').click();assert.equal(d.querySelector('[data-line="2"]'),null);
+ d.querySelector('[data-redo]').click();assert.ok(d.querySelector('[data-line="2"]'));
 });
