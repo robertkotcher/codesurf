@@ -1,0 +1,2 @@
+CodeSurf GitHub sign-in and inline comment integration test.
+Disposable test fixture; do not merge.
