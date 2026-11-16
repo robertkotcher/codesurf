@@ -24,3 +24,11 @@ Source · Tour · Graph · Code cards · Delivery
 Example walkthrough
 
 Orient the reader in the invoice-created service and its public call method. Follow the handoff to process_with_invoice_hold, then the call to pause_invoice_advancement! and the line setting Stripe’s auto_advance to false. Reveal the payment split, the old negative balance reaching validation and raising, and the handler’s rescue. Show the fix that floors spendable Stash at zero, followed by the successful return and the line restoring the original auto_advance setting. Verify exact source and links for the revision being explained.
+
+UI reference for the example walkthrough
+
+Make the walkthrough UI look as close as possible to the screenshots below. Match the light canvas, left tour sidebar, top-right zoom controls, and syntax-highlighted code cards. Use the actual repository and question for the content.
+
+- Beginning (step 1 of 8): show the opening code card and highlight the line that starts the flow. https://codesurf.io/examples/walkthrough/beginning.jpg
+- Middle (step 4 of 8): keep earlier cards visible and reveal new cards with labeled arrows connecting the relevant lines. https://codesurf.io/examples/walkthrough/middle.jpg
+- End (step 8 of 8): show the complete flow, including the success and failure paths where relevant, and highlight the final action. https://codesurf.io/examples/walkthrough/end.jpg
