@@ -11,47 +11,17 @@
     <h1>CodeSurf</h1>
     <section aria-labelledby="humans">
       <h2 id="humans">For Humans</h2>
+      <p>CodeSurf gives your coding agent instructions for creating interactive walkthroughs of a codebase or pull request.</p>
       <p>Add this sentence to your <code>AGENTS.md</code>.</p>
-      <pre>When I ask you to “surf code” or “run CodeSurf,” read and follow the For Agents instructions at https://codesurf.io/llms.txt.</pre>
+      <pre>When I ask you to “surf code” or “run CodeSurf,” read and follow the instructions at https://codesurf.io/llms.txt.</pre>
     </section>
-    <section aria-labelledby="agents">
-      <h2 id="agents">For Agents</h2>
-      <p><a href="/llms.txt">Plain text instructions</a></p>
-      <pre>When Robert asks to “surf code” or “run CodeSurf,” create a guided, interactive code walkthrough of the behavior he asked about. Deliver a standalone HTML file he can open locally. Use the actual repository or pull request as the source of truth.
-Source · Tour · Graph · Code cards · Delivery
-1. Start with the exact question and the relevant repository, PR, or revision. Read the changed code and enough surrounding source to understand the real execution path. Pin file and line links to the source revision where possible.
-2. Find the actual entry point. Trace how a request, webhook, background job, queue message, or click reaches the method under discussion. Verify the handoff in code when available. Mark gaps if the upstream dispatch or other parts of the path cannot be verified.
-3. Follow the smallest coherent slice that answers the question. Include relevant failure, return, and recovery paths. For bug fixes, trace the old behavior and show the exact changed lines that yield the new behavior. Distinguish code behavior from deployment or production outcomes.
-4. Use an installed CodeSurf CLI for discovery if it helps. A pinned entry point and shallow call depth can keep the investigation focused. Use the verified result to author the HTML walkthrough described here.
-- Open directly on the first tour step. Assume the reader is new to the company, product, and repository. Explain what the feature does, what triggers it, what the file or class is responsible for, and how execution reaches the first piece of code. Define product terms when they first matter.
-- Make the opening card substantial enough to orient the reader. Show the class declaration and the public entry method with useful surrounding code. For a relevant class, show the class structure and method signatures where available. Expand the methods relevant to the flow and mute or fold the others using the rules below. An isolated call line is insufficient orientation.
-- Use concise step descriptions with one concept per step. Embed references as links on the phrases they explain. Hovering or focusing a reference highlights the exact code lines. Clicking brings those lines into view. Every referenced line is expanded and visible by default at its step.
-- Provide Back, Next, Exit tour, and a way to restart. Next reveals later cards and links while keeping earlier ones on the canvas. Back restores the earlier reveal state. Exit tour exposes the full graph. In conversational follow-up, stay on the current chunk, answer questions about it, and advance only when Robert says “next.”
-- Use a pannable, zoomable canvas with code cards and directional arrows. Offer zoom in, zoom out, and Fit. Keep code selectable as HTML text. A canvas layer behind the cards can draw arrows without sacrificing text selection.
-- An arrow tells the reader what to read next and why. It can represent a function call, event dispatch, queue handoff, return, exception, or another logical transition. Label it briefly with the actual relationship, such as “Stripe sends invoice.created,” “Call the hold helper,” or “ArgumentError jumps to rescue.” Identify any omitted intermediate call in the label when it matters.
-- When a specific line causes or receives a transition, align the arrow to that exact line at the card boundary. For a call, connect the invocation to the destination definition. For an exception, connect the raise to the receiving rescue when shown. Recalculate endpoints after folds or layout changes. Render an arrow only when both endpoints are visible.
-- Tint each visible arrow’s source row with a light version of its color. Use a consistent scheme, such as blue for the main flow, green for successful continuation, and red for a failure path. Keep the tint light enough to read code and make hover highlights distinct.
-- On load show only the opening portion. Reveal later portions as the reader advances. Keep the newly introduced code easy to find and retain access to earlier cards through pan, zoom, and Fit.
-- Use a light background, subdued borders, a monospace code font, and syntax highlighting appropriate to the language. Put the full repository-relative filepath in the header. Show real line numbers in a gutter and link them to source when an accessible URL exists.
-- Render exact source text with indentation and whitespace preserved. Disable wrapping in code. Give each card its own horizontal scrollbar and keep trackpad or Shift-scroll over the code from zooming the graph.
-- Keep relevant code expanded. Keep stretches of 10 or fewer consecutive less-relevant lines visible and visibly muted, while still legible. Fold only stretches longer than 10 lines. Give folds a clear line count or range, and show method names in the outline. Open any fold needed for a tour reference.
-- Show gaps explicitly when omitting source. For a PR change, show the old and new code with diff styling and correct line numbers for each side. Never fill in missing source from memory or present paraphrased code as a real excerpt.
-1. Use a single HTML file with embedded CSS, JavaScript, and the excerpts needed for the walkthrough. It should open directly as a local file. Keep source links for verification. Omit chat, prompt-copying and reply-pasting controls, CLI bridges, API keys, and server requirements.
-2. Save it to the requested location and provide a clickable link. When a temp copy and a deliverable copy are both needed, keep them identical. Report the actual file size if asked.
-3. Open the output in a browser when available. Step through from the first screen through the last step and back. Check that references highlight and navigate to the right rows, folds preserve numbering, cards scroll horizontally, arrows meet the intended lines, pan and zoom work, and Exit tour shows the full graph. Say what you could not verify.
-
-Example walkthrough
-
-Orient the reader in the invoice-created service and its public call method. Follow the handoff to process_with_invoice_hold, then the call to pause_invoice_advancement! and the line setting Stripe’s auto_advance to false. Reveal the payment split, the old negative balance reaching validation and raising, and the handler’s rescue. Show the fix that floors spendable Stash at zero, followed by the successful return and the line restoring the original auto_advance setting. Verify exact source and links for the revision being explained.
-
-UI reference for the example walkthrough
-
-Make the walkthrough UI look as close as possible to the screenshots below. Match the light canvas, left tour sidebar, top-right zoom controls, and syntax-highlighted code cards. Use the actual repository and question for the content.
-
-- Beginning (step 1 of 8): show the opening code card and highlight the line that starts the flow. <a href="https://codesurf.io/examples/walkthrough/beginning.jpg">https://codesurf.io/examples/walkthrough/beginning.jpg</a>
-- Middle (step 4 of 8): keep earlier cards visible and reveal new cards with labeled arrows connecting the relevant lines. <a href="https://codesurf.io/examples/walkthrough/middle.jpg">https://codesurf.io/examples/walkthrough/middle.jpg</a>
-- End (step 8 of 8): show the complete flow, including the success and failure paths where relevant, and highlight the final action. <a href="https://codesurf.io/examples/walkthrough/end.jpg">https://codesurf.io/examples/walkthrough/end.jpg</a>
-</pre>
+    <section aria-labelledby="examples">
+      <h2 id="examples">Examples</h2>
+      <ul>
+        <li>Surf code and show me how sign-in works.</li>
+        <li>Run CodeSurf on PR #42 and walk me through the fix.</li>
+        <li>Surf code and trace what happens when this background job fails.</li>
+      </ul>
     </section>
   </main>
 </body>
