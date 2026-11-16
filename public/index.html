@@ -17,11 +17,19 @@
     </section>
     <section aria-labelledby="examples">
       <h2 id="examples">Examples</h2>
-      <ul>
-        <li>Surf code and show me how sign-in works.</li>
-        <li>Run CodeSurf on PR #42 and walk me through the fix.</li>
-        <li>Surf code and trace what happens when this background job fails.</li>
-      </ul>
+      <p>Once you’ve added the instruction to <code>AGENTS.md</code>, try one of these prompts with your coding agent. CodeSurf produces an interactive HTML walkthrough you can open locally.</p>
+
+      <h3>Understand a feature</h3>
+      <pre class="example-prompt">Surf code and show me how sign-in works.</pre>
+      <p>Follow sign-in from its entry point through the code that checks credentials and handles success or failure.</p>
+
+      <h3>Review a pull request</h3>
+      <pre class="example-prompt">Run CodeSurf on PR #42 and walk me through the fix.</pre>
+      <p>See the original behavior, the exact lines the PR changes, and how those changes fix the problem.</p>
+
+      <h3>Trace an error</h3>
+      <pre class="example-prompt">Surf code and trace what happens when this background job fails.</pre>
+      <p>See where the error is raised, what catches it, and whether the job retries or stops.</p>
     </section>
   </main>
 </body>
