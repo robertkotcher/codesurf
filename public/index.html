@@ -1,142 +1,50 @@
 <!doctype html>
-<html lang="en" data-theme="light">
+<html lang="en">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="Install CodeSurf from your AI agent to explore Ruby, Python and TypeScript code in an interactive source graph.">
-<title>CodeSurf — install and use</title><link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/docs.css">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CodeSurf</title>
+  <link rel="stylesheet" href="/agent-instructions.css">
 </head>
-<body class="bg-base-100 text-base-content">
-<main class="mx-auto max-w-4xl px-5 py-10 sm:py-14 space-y-9">
-<header class="flex items-center gap-3"><img src="/favicon.svg" width="32" height="32" alt=""><h1 class="text-3xl font-bold tracking-tight">CodeSurf</h1><span class="badge badge-outline badge-sm">0.6.1</span></header>
-<section id="note" class="space-y-3">
-<h2 class="text-xl font-semibold">1. A note for humans and AI agents</h2>
-<p>CodeSurf is a local tool your AI agent installs and calls to show you how Ruby, Python, TypeScript, or JavaScript code works in an interactive graph. Agents: follow the installation steps below, then pass a repository path and the human’s question to open a separate window they can explore.</p>
-</section>
-<section id="install" class="space-y-3">
-<h2 class="text-xl font-semibold">2. How to Install</h2>
-<p class="text-sm">Agent: run these commands on the human’s computer, in their desktop session.</p>
-<pre class="rounded-box bg-base-200 p-4 overflow-x-auto text-sm"><code>node --version  # Requires Node.js 22.12+ (Node 24 LTS recommended)
-npm install -g https://codesurf.io/downloads/codesurf-cli-latest.tgz
-codesurf --version</code></pre>
-<p class="text-sm">For natural-language tracing and chat, CodeSurf uses a signed-in Codex CLI. If it is not already installed:</p>
-<pre class="rounded-box bg-base-200 p-4 overflow-x-auto text-sm"><code>npm install -g @openai/codex
-codex login</code></pre>
-<p class="text-sm">The human completes sign-in once; reuse their existing login. No separate CodeSurf account or private GitHub access is needed.</p>
-<ul class="list-disc pl-5 space-y-1 text-sm">
-<li>Ruby projects need an installed Ruby interpreter with Ripper that supports their syntax; set <code>CODESURF_RUBY</code> to select it. Methods, lexical namespaces and explicit class-method calls are indexed; Rails DSL routes, metaprogramming and unknown instance receivers are not inferred.</li>
-<li>Python projects need Python 3.10+ with support for the project’s syntax; set <code>CODESURF_PYTHON</code> to choose an interpreter.</li>
-<li>The viewer requires a graphical desktop. Run locally for a visible window; an agent running on a remote server should use <code>--html-only</code> and transfer the report to the human.</li>
-<li>macOS is tested. Windows and desktop Linux use the same npm package but have not yet been verified; Linux needs Electron’s system libraries.</li>
-<li>If global npm installation is denied, configure a user-owned npm prefix and add its executable directory to PATH; avoid installing as root.</li>
-</ul>
-<p class="text-sm">Check installation without AI or a repository:</p>
-<pre class="rounded-box bg-base-200 p-4 overflow-x-auto text-sm"><code>codesurf --demo</code></pre>
-<p class="text-xs text-base-content/60">Current release: <a class="link" href="/downloads/codesurf-cli-0.6.1.tgz">0.6.1 package</a> · <a class="link" href="/downloads/codesurf-cli-0.6.1.tgz.sha256">SHA-256</a> · <a class="link" href="/downloads/latest.json">release metadata</a> · <a class="link" href="/llms.txt">plain-text agent instructions</a></p>
-</section>
-<section id="update" class="space-y-3">
-<h2 class="text-xl font-semibold">3. How to Update</h2>
-<p class="text-sm">Agent: quit the open CodeSurf application, then reinstall from the latest URL and check the installed version. This preserves saved reports and chat histories.</p>
-<pre class="rounded-box bg-base-200 p-4 overflow-x-auto text-sm"><code>npm install -g https://codesurf.io/downloads/codesurf-cli-latest.tgz --prefer-online
-codesurf --version</code></pre>
-<p class="text-sm">Use the versioned package URL above to pin a release. <code>npm update codesurf-cli</code> is not the update method for this direct-download package.</p>
-</section>
-<section id="use" class="space-y-4">
-<h2 class="text-xl font-semibold">4. How to use</h2>
-<p class="text-sm"><strong>Human:</strong> tell your agent what you want to understand. <strong>Agent:</strong> call CodeSurf with the repository path and a specific question, including relevant inputs or assumptions.</p>
-<pre class="rounded-box bg-base-200 p-4 overflow-x-auto text-sm"><code>codesurf /path/to/repo \
-  "Trace a request with an expired access token. Assume refresh succeeds."</code></pre>
-<p class="text-sm">By default, the command opens the Electron desktop app with a left-to-right graph; further runs become tabs in the same window. The example below traces a request, a rejected access token, a token refresh, and a retry using the bundled example source.</p>
-<figure class="space-y-2"><a href="/images/code-flow.jpg"><img class="rounded-box border border-base-300 w-full" src="/images/code-flow.jpg" width="1280" height="720" alt="Actual CodeSurf report with focused source snippets, per-file undo and redo, a beginner explanation chat, and folder groups."></a><figcaption class="text-xs text-base-content/60">Actual report view from the bundled token-refresh example. Click to enlarge.</figcaption></figure>
-<ul class="list-disc pl-5 space-y-1 text-sm">
-<li>Scroll to zoom; drag empty canvas to pan. Use Fit to see the whole trace.</li>
-<li>Expand hidden sections as needed; use per-file undo and redo to restore line visibility. Click ⓘ for a function’s explanation, inputs, and return type.</li>
-<li>Hover a line to follow its call path. Click a line or token to open a chat and type your question; its definition preview has an eye button to reveal that source.</li>
-<li>Ask any chat to open a different flow or view to generate a new visualization tab.</li>
-<li>Ask broader follow-ups in the introductory chat. Each source line has one chat.</li>
-<li>Collapse folders and resize code cards horizontally; card height follows the visible code.</li>
-</ul>
-<figure class="space-y-2"><a href="/images/function-details.jpg"><img class="rounded-box border border-base-300 w-full" src="/images/function-details.jpg" width="1280" height="720" loading="lazy" alt="Actual CodeSurf view with a symbol chat and a three-line definition preview."></a><figcaption class="text-xs text-base-content/60">Open a symbol chat to inspect its definition preview and reveal it explicitly.</figcaption></figure>
-<div class="space-y-3">
-<h3 class="font-semibold">For humans: add this to AGENTS.md</h3>
-<p class="text-sm">Add this instruction to your repository’s <code>AGENTS.md</code> if you want your agent to use CodeSurf when explaining code. For use across repositories, add it to your agent’s global instructions instead.</p>
-<pre class="rounded-box bg-base-200 p-4 overflow-x-auto text-sm"><code>When helping me understand unfamiliar code or explaining an execution flow,
-use CodeSurf to open an interactive visualization alongside your explanation.
+<body>
+  <main>
+    <h1>CodeSurf</h1>
+    <section aria-labelledby="humans">
+      <h2 id="humans">For Humans</h2>
+      <p>Add this sentence to your <code>AGENTS.md</code>.</p>
+      <pre>When I ask you to “surf code” or “run CodeSurf,” read and follow the For Agents instructions at https://codesurf.io/llms.txt.</pre>
+    </section>
+    <section aria-labelledby="agents">
+      <h2 id="agents">For Agents</h2>
+      <p><a href="/llms.txt">Plain text instructions</a></p>
+      <pre>When Robert asks to “surf code” or “run CodeSurf,” create a guided, interactive code walkthrough of the behavior he asked about. Deliver a standalone HTML file he can open locally. Use the actual repository or pull request as the source of truth.
+Source · Tour · Graph · Code cards · Delivery
+1. Start with the exact question and the relevant repository, PR, or revision. Read the changed code and enough surrounding source to understand the real execution path. Pin file and line links to the source revision where possible.
+2. Find the actual entry point. Trace how a request, webhook, background job, queue message, or click reaches the method under discussion. Verify the handoff in code when available. Mark gaps if the upstream dispatch or other parts of the path cannot be verified.
+3. Follow the smallest coherent slice that answers the question. Include relevant failure, return, and recovery paths. For bug fixes, trace the old behavior and show the exact changed lines that yield the new behavior. Distinguish code behavior from deployment or production outcomes.
+4. Use an installed CodeSurf CLI for discovery if it helps. A pinned entry point and shallow call depth can keep the investigation focused. Use the verified result to author the HTML walkthrough described here.
+- Open directly on the first tour step. Assume the reader is new to the company, product, and repository. Explain what the feature does, what triggers it, what the file or class is responsible for, and how execution reaches the first piece of code. Define product terms when they first matter.
+- Make the opening card substantial enough to orient the reader. Show the class declaration and the public entry method with useful surrounding code. For a relevant class, show the class structure and method signatures where available. Expand the methods relevant to the flow and mute or fold the others using the rules below. An isolated call line is insufficient orientation.
+- Use concise step descriptions with one concept per step. Embed references as links on the phrases they explain. Hovering or focusing a reference highlights the exact code lines. Clicking brings those lines into view. Every referenced line is expanded and visible by default at its step.
+- Provide Back, Next, Exit tour, and a way to restart. Next reveals later cards and links while keeping earlier ones on the canvas. Back restores the earlier reveal state. Exit tour exposes the full graph. In conversational follow-up, stay on the current chunk, answer questions about it, and advance only when Robert says “next.”
+- Use a pannable, zoomable canvas with code cards and directional arrows. Offer zoom in, zoom out, and Fit. Keep code selectable as HTML text. A canvas layer behind the cards can draw arrows without sacrificing text selection.
+- An arrow tells the reader what to read next and why. It can represent a function call, event dispatch, queue handoff, return, exception, or another logical transition. Label it briefly with the actual relationship, such as “Stripe sends invoice.created,” “Call the hold helper,” or “ArgumentError jumps to rescue.” Identify any omitted intermediate call in the label when it matters.
+- When a specific line causes or receives a transition, align the arrow to that exact line at the card boundary. For a call, connect the invocation to the destination definition. For an exception, connect the raise to the receiving rescue when shown. Recalculate endpoints after folds or layout changes. Render an arrow only when both endpoints are visible.
+- Tint each visible arrow’s source row with a light version of its color. Use a consistent scheme, such as blue for the main flow, green for successful continuation, and red for a failure path. Keep the tint light enough to read code and make hover highlights distinct.
+- On load show only the opening portion. Reveal later portions as the reader advances. Keep the newly introduced code easy to find and retain access to earlier cards through pan, zoom, and Fit.
+- Use a light background, subdued borders, a monospace code font, and syntax highlighting appropriate to the language. Put the full repository-relative filepath in the header. Show real line numbers in a gutter and link them to source when an accessible URL exists.
+- Render exact source text with indentation and whitespace preserved. Disable wrapping in code. Give each card its own horizontal scrollbar and keep trackpad or Shift-scroll over the code from zooming the graph.
+- Keep relevant code expanded. Keep stretches of 10 or fewer consecutive less-relevant lines visible and visibly muted, while still legible. Fold only stretches longer than 10 lines. Give folds a clear line count or range, and show method names in the outline. Open any fold needed for a tour reference.
+- Show gaps explicitly when omitting source. For a PR change, show the old and new code with diff styling and correct line numbers for each side. Never fill in missing source from memory or present paraphrased code as a real excerpt.
+1. Use a single HTML file with embedded CSS, JavaScript, and the excerpts needed for the walkthrough. It should open directly as a local file. Keep source links for verification. Omit chat, prompt-copying and reply-pasting controls, CLI bridges, API keys, and server requirements.
+2. Save it to the requested location and provide a clickable link. When a temp copy and a deliverable copy are both needed, keep them identical. Report the actual file size if asked.
+3. Open the output in a browser when available. Step through from the first screen through the last step and back. Check that references highlight and navigate to the right rows, folds preserve numbering, cards scroll horizontally, arrows meet the intended lines, pan and zoom work, and Exit tour shows the full graph. Say what you could not verify.
 
-Read https://codesurf.io for installation and update instructions.
-If CodeSurf is missing, install it with my permission; reuse my existing
-Codex login. Run it on my local desktop so I can see the window:
+Example walkthrough
 
-codesurf /path/to/repo "The specific flow, inputs, and assumptions to trace"
-
-Use --html-only when no graphical desktop is available and tell me where
-the generated report was saved. Do not upload source reports without asking.</code></pre>
-</div>
-<details class="collapse collapse-arrow border border-base-300 rounded-box"><summary class="collapse-title font-medium">Agent reference</summary><div class="collapse-content text-sm space-y-3">
-<pre class="bg-base-200 p-3 rounded-box overflow-x-auto"><code># Save a report without a window
-codesurf /path/to/repo "Trace checkout" --html-only --out ./checkout.html
-
-# Add another repository
-codesurf /path/to/frontend "Trace login" --repo /path/to/backend
-
-# Offline analysis with a known entry point
-codesurf /path/to/repo "Trace login" --static --entry src/auth.ts#login
-
-codesurf --help</code></pre>
-<p>Electron is the default viewer. Only <code>--html-only</code> exports a self-contained HTML report with a JSON snapshot alongside it. Zero exit status means report generation succeeded. Chat requires the CodeSurf desktop viewer and Codex sign-in.</p>
-<p>Analysis reads source without executing the target application and can miss dynamic runtime behavior. AI investigation may send source to the configured model provider; reports contain source, so review them before sharing.</p>
-</div></details>
-</section>
-<section id="changelog" class="space-y-5 border-t border-base-300 pt-7">
-<h2 class="text-xl font-semibold">Changelog</h2>
-<article class="space-y-2">
-<h3 class="font-semibold">0.6.1 <span class="badge badge-sm badge-outline">Current</span></h3>
-<p class="text-sm">Definition previews now show source line numbers and a “Defined in file:line” label. Refreshed both screenshots.</p>
-</article><article class="space-y-2"><h3 class="font-semibold">0.6.0</h3>
-<p class="text-sm">Focused source snippets, reversible line expansion, and chats connected to the code.</p>
-<ul class="list-disc pl-5 space-y-1 text-sm">
-<li>Initial views show question-relevant lines rather than entire functions, with subtle gray expandable gaps.</li>
-<li>Per-file undo and redo restore line visibility; wider cards keep Wrap alongside those controls. Removed Show full functions.</li>
-<li>Symbol chats show a three-line definition preview; an eye button explicitly reveals it in the graph. Hover never expands code.</li>
-<li>Symbol and chat highlighting work both ways. Chats scale and pan with the canvas, hide with collapsed sources, and show directional hints when offscreen.</li>
-<li>Chat replies render Markdown links, lists and code. Execution paths use light blue.</li>
-<li>Added a centered loading message, readable startup errors, a README-style empty state, path-only card titles, and a Graphs sidebar label.</li>
-<li>Fixed a stale-process Markdown startup failure, trimmed report snapshots, and indexed symbol references for faster rendering.</li>
-<li>The Editor button opens the repository and selected file in VS Code; requires its code command on PATH.</li>
-</ul>
-</article><article class="space-y-2"><h3 class="font-semibold">0.5.0</h3>
-<p class="text-sm">Electron is the default experience. Use <code>--html-only</code> to explicitly export HTML; <code>--out</code> requires that flag. Replaces <code>--no-open</code>.</p>
-</article><article class="space-y-2"><h3 class="font-semibold">0.4.0</h3>
-<p class="text-sm">Ask any chat to open another flow or a different view: CodeSurf recognizes the request, carries over the relevant context, and opens a new visualization tab while preserving the current run.</p>
-</article><article class="space-y-2">
-<h3 class="font-semibold">0.3.1</h3>
-<p class="text-sm">Fixed chat failures caused by an unsupported configured Codex model: chats now select Codex’s advertised default model and a supported reasoning setting.</p>
-</article>
-<article class="space-y-2">
-<h3 class="font-semibold">0.3.0</h3>
-<p class="text-sm">Added Ruby support and separated language indexing into independent adapters.</p>
-<ul class="list-disc pl-5 space-y-1 text-sm">
-<li>Ruby methods, namespaces, class-method calls, parameter shapes, and source locations are indexed with the built-in Ripper parser.</li>
-<li>Choose the Ruby interpreter with <code>CODESURF_RUBY</code>, or select enabled adapters with <code>--languages typescript,python,ruby</code>.</li>
-<li>Parser and runtime failures are isolated so one language does not prevent the others from being indexed.</li>
-<li>Added regression coverage for Ruby, mixed-language repositories, Unicode, and missing runtimes.</li>
-</ul>
-</article>
-<article class="space-y-2">
-<h3 class="font-semibold">0.2.0</h3>
-<p class="text-sm">Updated the desktop viewer and added public installation and update instructions.</p>
-<ul class="list-disc pl-5 space-y-1 text-sm">
-<li>Runs share one window with closable tabs and a full-width title and navigation card.</li>
-<li>Functions start collapsed; expanding shows the full body. Info tooltips explain each function and show input and return shapes.</li>
-<li>Added a flow-level chat and one chat per source line, with follow-ups and streamed answers.</li>
-<li>Improved folder layout, line-number alignment, accurate expansion counts, and mouse-wheel zoom over code.</li>
-<li>Cards resize horizontally and automatically fit their visible code; removed green line highlights and redundant card labels.</li>
-<li>Added <code>--version</code>, the offline <code>--demo</code>, a latest-release download URL, checksums, and agent instructions.</li>
-</ul>
-</article>
-<article class="space-y-2">
-<h3 class="font-semibold">0.1.0</h3>
-<p class="text-sm">Initial public CodeSurf release: natural-language code tracing for Python, TypeScript, and JavaScript/Node.js, with a local desktop graph and downloadable HTML reports.</p>
-</article>
-</section>
-<footer class="border-t border-base-300 pt-4 text-xs text-base-content/60">MIT license · Early release</footer>
-</main></body></html>
+Orient the reader in the invoice-created service and its public call method. Follow the handoff to process_with_invoice_hold, then the call to pause_invoice_advancement! and the line setting Stripe’s auto_advance to false. Reveal the payment split, the old negative balance reaching validation and raising, and the handler’s rescue. Show the fix that floors spendable Stash at zero, followed by the successful return and the line restoring the original auto_advance setting. Verify exact source and links for the revision being explained.
+</pre>
+    </section>
+  </main>
+</body>
+</html>
