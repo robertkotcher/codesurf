@@ -60,3 +60,39 @@ footer { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8p
   .open-file { margin-left: 3px; }
   footer span:last-child { display: none; }
 }
+
+
+.comments-sidebar { width: 300px; border-right: 0; border-left: 1px solid #d8e0e7; background: #fff; padding: 14px; display: flex; flex-direction: column; gap: 10px; overflow: visible; min-height: 0; }
+.comments-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.comments-header h2 { margin: 0; }
+.comments-help { position: relative; }
+#comments-info { width: 24px; height: 24px; padding: 0; border-radius: 50%; font-weight: 600; color: #647787; }
+#comments-tooltip { display: none; position: absolute; z-index: 30; top: 30px; right: 0; width: 260px; padding: 10px 12px; border: 1px solid #d8e0e7; border-radius: 5px; background: #fff; box-shadow: 0 4px 16px #22384b20; font-size: 12px; line-height: 1.6; color: #394b59; }
+.comments-help:hover #comments-tooltip, .comments-help:focus-within #comments-tooltip { display: block; }
+.comments-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+#copy-status { color: #546675; font-size: 11px; }
+#review-prompt { flex: 1; width: 100%; min-height: 0; resize: none; padding: 12px; border: 1px solid #d8e0e7; border-radius: 5px; background: #fcfdfe; color: #273640; font: 12px/1.65 "CodeSurf Mono", monospace; overflow: auto; }
+#review-prompt:focus { outline: 2px solid #1683d6; outline-offset: 1px; }
+@media (max-width: 1100px) { .comments-sidebar { width: 260px; } }
+@media (max-width: 980px) {
+  .app.comments-open { display: grid; grid-template-columns: 205px minmax(0, 1fr); grid-template-rows: minmax(180px, 1fr) 235px; }
+  .tour-sidebar { width: auto; }
+  .comments-sidebar { grid-column: 1 / -1; width: auto; border-left: 0; border-top: 1px solid #d8e0e7; }
+  .comments-header { position: absolute; }
+  .comments-actions { justify-content: flex-end; min-height: 24px; }
+  .comments-help { margin-left: 10px; }
+  #comments-tooltip { right: auto; left: 0; }
+}
+
+
+.comments-sidebar[hidden] { display: none; }
+.code-row { position: relative; }
+.line-comment { position: absolute; left: 2px; top: 2px; width: 17px; height: 17px; padding: 0; border-radius: 3px; border: 1px solid #b4cde1; background: #edf6ff; color: #176db0; font: 14px/15px "CodeSurf Mono", monospace; opacity: 0; }
+.code-row:hover .line-comment, .code-row:focus-within .line-comment { opacity: 1; }
+#close-comments { padding: 0; width: 24px; height: 24px; font-size: 18px; }
+.comments-help { margin-left: auto; }
+.comments-header { position: relative; }
+@media (max-width: 980px) {
+  .comments-header { position: absolute; gap: 8px; }
+  .comments-actions { padding-left: 200px; }
+}

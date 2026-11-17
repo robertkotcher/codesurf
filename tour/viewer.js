@@ -1,5 +1,6 @@
 import hljs from "highlight.js/lib/common";
 import "highlight.js/styles/github.css";
+import { createReviewPrompt, createCommentEntry } from "./review-prompt.js";
 import { validateTour } from "./validate.js";
 
 const $ = (id) => document.getElementById(id);
@@ -13,6 +14,55 @@ let visibleCards = new Set(), visibleConnections = new Set();
 let expanded = new Set();
 let currentTargets = [];
 let drawing = false;
+const reviewDrafts = new Map();
+let reviewKey;
+let copyTimer;
+
+$("review-prompt").addEventListener("input", () => {
+  if (reviewKey) reviewDrafts.set(reviewKey, $("review-prompt").value);
+  $("copy-status").textContent = "";
+});
+function setCommentsOpen(open) {
+  const visible = Boolean(tour?.review && open);
+  document.querySelector(".app").classList.toggle("comments-open", visible);
+  document.querySelector(".comments-sidebar").hidden = !visible;
+  $("comments-toggle").setAttribute("aria-expanded", String(visible));
+}
+$("comments-toggle").onclick = () => setCommentsOpen(document.querySelector(".comments-sidebar").hidden);
+$("close-comments").onclick = () => {
+  setCommentsOpen(false);
+  $("comments-toggle").focus();
+};
+
+function addLineComment(card, line) {
+  if (!tour?.review) return;
+  const field = $("review-prompt");
+  field.value = field.value.trimEnd() + "\n" + createCommentEntry(tour, stepIndex, card.id, line);
+  reviewDrafts.set(reviewKey, field.value);
+  $("copy-status").textContent = "";
+  setCommentsOpen(true);
+  field.focus();
+  field.setSelectionRange(field.value.length, field.value.length);
+  field.scrollTop = field.scrollHeight;
+  requestAnimationFrame(() => {
+    focusTarget({ card: card.id, lines: [line, line] });
+    highlightTarget({ card: card.id, lines: [line, line] }, true);
+  });
+}
+$("copy-comments").onclick = async () => {
+  clearTimeout(copyTimer);
+  const field = $("review-prompt");
+  try {
+    if (!navigator.clipboard?.writeText) throw new Error("Clipboard unavailable");
+    await navigator.clipboard.writeText(field.value);
+    $("copy-status").textContent = "Copied";
+  } catch {
+    field.focus();
+    field.select();
+    $("copy-status").textContent = "Selected. Press Ctrl/⌘+C.";
+  }
+  copyTimer = setTimeout(() => { $("copy-status").textContent = ""; }, 4000);
+};
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -95,6 +145,14 @@ function codeRow(card, line, html, text) {
   if (html === undefined) code.textContent = text;
   else code.innerHTML = html;
   row.append(number, code);
+  if (tour.review) {
+    const button = el("button", "line-comment", "+");
+    button.type = "button";
+    button.setAttribute("aria-label", `Comment on ${file.path} line ${line} in ${card.title}`);
+    button.title = "Add review comment";
+    button.onclick = () => addLineComment(card, line);
+    row.prepend(button);
+  }
   rowNodes.get(card.id).set(line, row);
   return row;
 }
@@ -262,7 +320,13 @@ function showStep({ fitAll = false } = {}) {
 }
 function loadTour(data) {
   validateTour(data);
+  if (reviewKey) reviewDrafts.set(reviewKey, $("review-prompt").value);
+  reviewKey = JSON.stringify(data);
+  $("review-prompt").value = data.review ? (reviewDrafts.get(reviewKey) ?? createReviewPrompt(data)) : "";
+  $("copy-status").textContent = "";
   tour = data;
+  setCommentsOpen(false);
+  $("comments-toggle").hidden = !tour.review;
   files = new Map(tour.files.map((file) => [file.id, file]));
   stepIndex = 0;
   exploring = false;
@@ -274,6 +338,13 @@ function loadTour(data) {
   $("empty").hidden = true;
   $("error").textContent = "";
   showStep();
+  document.fonts.ready.then(() => {
+    if (tour === data) {
+      arrangeCards();
+      focusTarget(tour.steps[stepIndex].focus);
+      drawEdges();
+    }
+  });
 }
 $("file").onchange = async (event) => {
   try {
@@ -313,7 +384,7 @@ viewport.addEventListener("wheel", (event) => {
   } else { panX -= event.deltaX; panY -= event.deltaY; transform(); }
 }, { passive: false });
 document.addEventListener("keydown", (event) => {
-  if (!tour || event.target.closest("input,button,a,summary")) return;
+  if (!tour || event.target.closest("input,textarea,button,a,summary")) return;
   if (event.key === "ArrowRight" && !exploring) { event.preventDefault(); $("next").click(); }
   if (event.key === "ArrowLeft" && !exploring) { event.preventDefault(); $("back").click(); }
 });
