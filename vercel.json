@@ -35,7 +35,7 @@
         },
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self' ; style-src 'self' ; img-src 'self' data: blob:; connect-src 'self'; media-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://github.com"
+          "value": "default-src 'self'; script-src 'self' 'sha256-/dlPFq54009w30fM7Olpmmufo+aTb1MrEpuGrGL29e8='; style-src 'self' 'sha256-rhXHsu9Dc9Udws1dxYf3q6tMq9YgoJezARk1sxOzIl0='; img-src 'self' data: blob:; connect-src 'self'; media-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://github.com; font-src 'self' data:"
         }
       ]
     },

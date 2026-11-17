@@ -1,42 +1,68 @@
-When Robert asks to “surf code” or “run CodeSurf,” create a guided, interactive code walkthrough of the behavior he asked about. Deliver a standalone HTML file he can open locally. Use the actual repository or pull request as the source of truth.
-Source · Tour · Graph · Code cards · Delivery
-1. Start with the exact question and the relevant repository, PR, or revision. Read the changed code and enough surrounding source to understand the real execution path. Pin file and line links to the source revision where possible.
-2. Find the actual entry point. Trace how a request, webhook, background job, queue message, or click reaches the method under discussion. Verify the handoff in code when available. Mark gaps if the upstream dispatch or other parts of the path cannot be verified.
-3. Follow the smallest coherent slice that answers the question. Include relevant failure, return, and recovery paths. For bug fixes, trace the old behavior and show the exact changed lines that yield the new behavior. Distinguish code behavior from deployment or production outcomes.
-4. Use an installed CodeSurf CLI for discovery if it helps. A pinned entry point and shallow call depth can keep the investigation focused. Use the verified result to author the HTML walkthrough described here.
-- Open directly on the first tour step. Assume the reader is new to the company, product, and repository. Explain what the feature does, what triggers it, what the file or class is responsible for, and how execution reaches the first piece of code. Define product terms when they first matter.
-- Make the opening card substantial enough to orient the reader. Show the class declaration and the public entry method with useful surrounding code. For a relevant class, show the class structure and method signatures where available. Expand the methods relevant to the flow and mute or fold the others using the rules below. An isolated call line is insufficient orientation.
-- Use concise step descriptions with one concept per step. Embed references as links on the phrases they explain. Hovering or focusing a reference highlights the exact code lines. Clicking brings those lines into view. Every referenced line is expanded and visible by default at its step.
-- Provide Back, Next, Exit tour, and a way to restart. Next reveals later cards and links while keeping earlier ones on the canvas. Back restores the earlier reveal state. Exit tour exposes the full graph. In conversational follow-up, stay on the current chunk, answer questions about it, and advance only when Robert says “next.”
-- Use a pannable, zoomable canvas with code cards and directional arrows. Offer zoom in, zoom out, and Fit. Keep code selectable as HTML text. A canvas layer behind the cards can draw arrows without sacrificing text selection.
-- An arrow tells the reader what to read next and why. It can represent a function call, event dispatch, queue handoff, return, exception, or another logical transition. Label it briefly with the actual relationship, such as “Stripe sends invoice.created,” “Call the hold helper,” or “ArgumentError jumps to rescue.” Identify any omitted intermediate call in the label when it matters.
-- When a specific line causes or receives a transition, align the arrow to that exact line at the card boundary. For a call, connect the invocation to the destination definition. For an exception, connect the raise to the receiving rescue when shown. Recalculate endpoints after folds or layout changes. Render an arrow only when both endpoints are visible.
-- Tint each visible arrow’s source row with a light version of its color. Use a consistent scheme, such as blue for the main flow, green for successful continuation, and red for a failure path. Keep the tint light enough to read code and make hover highlights distinct.
-- On load show only the opening portion. Reveal later portions as the reader advances. Keep the newly introduced code easy to find and retain access to earlier cards through pan, zoom, and Fit.
-- Use a light background, subdued borders, a monospace code font, and syntax highlighting appropriate to the language. Put the full repository-relative filepath in the header. Show real line numbers in a gutter and link them to source when an accessible URL exists.
-- Render exact source text with indentation and whitespace preserved. Disable wrapping in code. Give each card its own horizontal scrollbar and keep trackpad or Shift-scroll over the code from zooming the graph.
-- Keep relevant code expanded. Keep stretches of 10 or fewer consecutive less-relevant lines visible and visibly muted, while still legible. Fold only stretches longer than 10 lines. Give folds a clear line count or range, and show method names in the outline. Open any fold needed for a tour reference.
-- Show gaps explicitly when omitting source. For a PR change, show the old and new code with diff styling and correct line numbers for each side. Never fill in missing source from memory or present paraphrased code as a real excerpt.
-1. Use a single HTML file with embedded CSS, JavaScript, and the excerpts needed for the walkthrough. It should open directly as a local file. Keep source links for verification. Omit chat, prompt-copying and reply-pasting controls, CLI bridges, API keys, and server requirements.
-2. Save it to the requested location and provide a clickable link. When a temp copy and a deliverable copy are both needed, keep them identical. Report the actual file size if asked.
-3. Open the output in a browser when available. Step through from the first screen through the last step and back. Check that references highlight and navigate to the right rows, folds preserve numbering, cards scroll horizontally, arrows meet the intended lines, pan and zoom work, and Exit tour shows the full graph. Say what you could not verify.
+# CodeSurf for agents
 
-Example walkthrough
+CodeSurf turns your investigation into a guided code tour using an official, consistent viewer. You create tour JSON locally from the repository. Download the versioned packager and use it to produce a standalone HTML file. The packager embeds the viewer, fonts, and source excerpts. Repository code stays on the user's computer.
 
-Orient the reader in the invoice-created service and its public call method. Follow the handoff to process_with_invoice_hold, then the call to pause_invoice_advancement! and the line setting Stripe’s auto_advance to false. Reveal the payment split, the old negative balance reaching validation and raising, and the handler’s rescue. Show the fix that floors spendable Stash at zero, followed by the successful return and the line restoring the original auto_advance setting. Verify exact source and links for the revision being explained.
+When the user asks to "surf code" or "run CodeSurf", follow this workflow. Build and open a tour, rather than merely explaining how to create one.
 
-UI reference for the example walkthrough
+## Start here
 
-Before implementing the walkthrough, open and study every reference screenshot below. Reproduce this UI exactly. Formatting is critical and must match the references perfectly. Match the light canvas, left tour sidebar, top-right zoom controls, and syntax-highlighted code cards. Use the actual repository and question for the content.
+1. Read https://codesurf.io/tour-format.txt and the JSON schema at https://codesurf.io/releases/1.0.0/tour.schema.json.
+2. Inspect the working example at https://codesurf.io/releases/1.0.0/example.json and the rendered demo at https://codesurf.io/releases/1.0.0/demo.html.
+3. Download https://codesurf.io/releases/1.0.0/codesurf.mjs to a local working directory. This single file includes the validator and the official viewer. It requires Node.js 20.19 or newer, with no npm install or server.
+4. Investigate the user's question and write tour.json using the format below.
+5. Validate and render locally:
+   node codesurf.mjs tour.json --validate
+   node codesurf.mjs tour.json --out tour.html
+6. Open tour.html in a browser, verify the tour, and give the user a clickable file link.
 
-- Beginning (step 1 of 8): show the opening code card and highlight the line that starts the flow. https://codesurf.io/examples/walkthrough/beginning.jpg
-- Middle (step 4 of 8): keep earlier cards visible and reveal new cards with labeled arrows connecting the relevant lines. https://codesurf.io/examples/walkthrough/middle.jpg
-- End (step 8 of 8): show the complete flow, including the success and failure paths where relevant, and highlight the final action. https://codesurf.io/examples/walkthrough/end.jpg
+Use a normal file download, for example:
+   curl -fsS https://codesurf.io/releases/1.0.0/codesurf.mjs -o codesurf.mjs
 
-Visual fidelity requirements
+To try the complete tool before investigating:
+   node codesurf.mjs --example > demo.json
+   node codesurf.mjs demo.json --out demo.html
 
-- Match the reference layout, spacing, typography, font sizes, background colors, borders, code-card headers, sidebar width, and navigation controls. Treat the screenshots as the visual specification.
-- Match code formatting exactly: preserve source indentation and whitespace, use a monospace font and language-appropriate syntax colors, align real line numbers in a consistent gutter, disable wrapping, and provide horizontal scrolling.
-- Put relevant code references directly into the sidebar explanation as links on meaningful phrases. Hovering or focusing a link must highlight its exact target lines. Clicking must bring those lines into view. Keep referenced blocks expanded at that step and make the highlight visibly distinct from muted surrounding code.
-- Match the card arrangement, progressive reveal, arrow colors, labels, and line-level attachment points shown at the beginning, middle, and end of the example.
-- Before delivery, capture screenshots of the generated walkthrough at comparable viewport sizes and tour steps. Compare them against every reference and correct formatting and interaction differences until the UI matches. Verify sidebar links using pointer and keyboard focus.
+Use --force only when intentionally replacing an existing generated HTML. The default protects existing output. Bundle version 1.0.0 accepts schemaVersion 1. Keep the versioned URL pinned during a task. Download hashes and sizes are published at https://codesurf.io/releases/1.0.0/manifest.json.
+
+## Investigate and author the tour
+
+- Start with the user's exact question and relevant repository, pull request, or revision. Read actual source and enough surrounding code to verify the execution path.
+- Find the real entry point and verify how execution reaches it. Cover the smallest coherent slice that answers the question, including relevant returns, errors, and recovery. State any unverified handoffs.
+- Assume the reader is new to the product and repository. Orient them in the opening step, explain each important function's purpose, inputs, and result, and use one concept per step.
+- Include exact source text, preserving indentation, blank lines, comments, and whitespace. Use full repository-relative paths and original one-based line numbers. Include enough surrounding code for useful context. The renderer owns syntax highlighting and formatting.
+- Include only the source needed for the tour. Use files[].startLine when an excerpt begins after line 1. Keep missing regions in separate file entries with their correct offsets. Explain omitted source in the step text. Never concatenate noncontiguous snippets and assign misleading line numbers.
+- Include files[].revision and an HTTPS files[].sourceUrl pinned to the relevant commit when available. Do not include credentials, secrets, or unrelated private data.
+- Build cards around coherent functions or related blocks. Set card.relevant to the exact important ranges. The viewer mutes other lines and folds irrelevant runs longer than 10 lines. Add outlines to label folded methods.
+- Write explanation as text segments. Attach target to a meaningful phrase whenever it refers to source. This creates the official sidebar link that highlights and navigates to the exact code lines. Every reference target is automatically expanded at its step.
+- Define connections using exact source and destination lines, a brief label describing the verified relationship, and kind call, event, return, success, or failure.
+- Introduce cards and connections through cumulative step revealCards and revealConnections. A connection may be introduced only when both cards are visible. Each step must focus a visible code range. Back restores the earlier reveal state.
+- For PRs and bug fixes, use separate before and after file entries with exact source and revisions, even when they have the same path. Mark cards with diff before or after and supply changedLines. Explain the old behavior and exact changed lines responsible for the fix. Distinguish source behavior from production outcomes.
+- Use automatic layout first. Optional card x and y placement hints can refine a complex graph. The viewer recalculates arrow endpoints after layout or folds change.
+
+## Preserve the official UI
+
+Do not ask the LLM to recreate or restyle the viewer. Generate the JSON and package it with the official download. The versioned viewer supplies the light background, tour sidebar, code cards, line gutters, selectable syntax-highlighted source, folds, labeled arrows, source-row colors, Back/Next/Exit/Restart, pan, zoom, and Fit.
+
+Study the official demo and reference screenshots to understand the expected presentation. Match their information density and teaching structure when choosing card ranges and tour steps. Code formatting and sidebar references are critical. Preserve exact source and use structured target links rather than handwritten HTML.
+
+Official viewer screenshots:
+- Opening step and folded context: https://codesurf.io/examples/viewer-v1/beginning.jpg
+- Expanded source formatting: https://codesurf.io/examples/viewer-v1/code-formatting.jpg
+- Sidebar phrase linked to highlighted source: https://codesurf.io/examples/viewer-v1/sidebar-reference.jpg
+- Intermediate reveal and arrows: https://codesurf.io/examples/viewer-v1/middle.jpg
+- Failure path and keyboard-focused reference: https://codesurf.io/examples/viewer-v1/failure-path.jpg
+- Final step and complete graph: https://codesurf.io/examples/viewer-v1/end.jpg
+
+Earlier design references (the official viewer defines the current UI):
+- Beginning: https://codesurf.io/examples/walkthrough/beginning.jpg
+- Middle: https://codesurf.io/examples/walkthrough/middle.jpg
+- End: https://codesurf.io/examples/walkthrough/end.jpg
+
+## Verify and deliver
+
+- Run the validator and correct every schema, range, missing-ID, or hidden-reference error.
+- Open the generated HTML. Advance from the first step to the last and back. Verify sidebar links highlight and navigate to the intended code, referenced lines are expanded, real line numbers stay correct, folds work, arrows meet their endpoint rows, and Exit tour reveals the full flow.
+- Verify pan, zoom, Fit, and horizontal code scrolling. Keep code text selectable.
+- Give the user the standalone HTML file. It includes its source snapshot and the viewer and works offline. Report any behavior you could not verify.
+- In conversational follow-up, stay on the current step and advance only when the user asks.
+- To revise the explanation, update the JSON and rerun the packager. Preserve the viewer.

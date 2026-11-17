@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Ask your coding agent for a guided code tour. CodeSurf renders it locally with a consistent viewer.">
   <title>CodeSurf</title>
   <link rel="stylesheet" href="/agent-instructions.css">
 </head>
@@ -11,25 +12,34 @@
     <h1>CodeSurf</h1>
     <section aria-labelledby="humans">
       <h2 id="humans">For Humans</h2>
-      <p>CodeSurf gives your coding agent instructions for creating interactive walkthroughs of a codebase or pull request.</p>
-      <p>Add this sentence to your <code>AGENTS.md</code>.</p>
+      <p>CodeSurf turns your coding agent’s explanation into an interactive code tour with a consistent UI, packaged as an HTML file you can open locally.</p>
+      <p>Add this sentence to your <code>AGENTS.md</code>, then ask your agent to surf code.</p>
       <pre>When I ask you to “surf code” or “run CodeSurf,” read and follow the instructions at https://codesurf.io/llms.txt.</pre>
+      <p>Your agent investigates the repository, writes a tour JSON file, and packages it with the official viewer. Source code is processed locally, and the resulting HTML works offline.</p>
+      <p><a href="/releases/1.0.0/demo.html">Try a demo tour</a> · <a href="/viewer.html">Open a local tour JSON file</a></p>
     </section>
     <section aria-labelledby="examples">
       <h2 id="examples">Examples</h2>
-      <p>Once you’ve added the instruction to <code>AGENTS.md</code>, try one of these prompts with your coding agent. CodeSurf produces an interactive HTML walkthrough you can open locally.</p>
-
       <h3>Understand a feature</h3>
       <pre class="example-prompt">Surf code and show me how sign-in works.</pre>
       <p>Follow sign-in from its entry point through the code that checks credentials and handles success or failure.</p>
-
       <h3>Review a pull request</h3>
       <pre class="example-prompt">Run CodeSurf on PR #42 and walk me through the fix.</pre>
       <p>See the original behavior, the exact lines the PR changes, and how those changes fix the problem.</p>
-
       <h3>Trace an error</h3>
       <pre class="example-prompt">Surf code and trace what happens when this background job fails.</pre>
       <p>See where the error is raised, what catches it, and whether the job retries or stops.</p>
+    </section>
+    <section aria-labelledby="local">
+      <h2 id="local">Build a tour locally</h2>
+      <p>The packager needs Node.js 20.19 or newer. Download it once, then generate a sample tour.</p>
+      <pre class="example-prompt">curl -fsS https://codesurf.io/releases/1.0.0/codesurf.mjs -o codesurf.mjs
+node codesurf.mjs --example &gt; demo.json
+node codesurf.mjs demo.json --out demo.html</pre>
+      <p>Open <code>demo.html</code> in your browser. To explain your own code, have your agent author a tour and run <code>node codesurf.mjs tour.json --out tour.html</code>.</p>
+      <p>Back and Next guide the tour. Sidebar links highlight the source they describe. Expand folded code, pan the canvas, or use Fit to see the revealed flow.</p>
+      <p>For agents and tool builders, see the <a href="/llms.txt">agent instructions</a>, <a href="/tour-format.txt">tour format</a>, <a href="/releases/1.0.0/tour.schema.json">JSON schema</a>, and <a href="/releases/1.0.0/example.json">complete example</a>.</p>
+      <p class="release">Viewer 1.0.0 · Tour schema 1 · <a href="/releases/1.0.0/manifest.json">Download hashes</a></p>
     </section>
   </main>
 </body>

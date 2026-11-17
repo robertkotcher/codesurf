@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
+<title>CodeSurf</title>
+<style>/* VIEWER_CSS */</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="heading"><h1 id="title">CodeSurf</h1><p id="subtitle">Interactive code tours, rendered locally.</p></div>
+  <nav aria-label="Canvas controls">
+    <button id="zoom-out" aria-label="Zoom out">−</button>
+    <button id="fit">Fit</button>
+    <button id="zoom-in" aria-label="Zoom in">+</button>
+    <output id="zoom">100%</output>
+    <label class="open-file">Open tour<input id="file" type="file" accept=".json,application/json"></label>
+  </nav>
+</header>
+<div class="app">
+  <aside aria-label="Tour">
+    <p id="progress"></p><h2 id="step-title">Open a tour</h2>
+    <p id="explanation">Choose a local tour JSON file to begin.</p>
+    <div class="navigation">
+      <button id="back" disabled>Back</button><button id="next" class="primary" disabled>Next</button>
+      <button id="exit" disabled>Exit tour</button>
+    </div>
+    <button id="restart" class="text-button" hidden>Restart tour</button>
+    <p id="error" role="alert"></p>
+  </aside>
+  <main id="viewport" aria-label="Code canvas" tabindex="0">
+    <div id="world"><svg id="edges" aria-hidden="true"></svg><div id="cards"></div></div>
+    <div id="empty">Open a tour JSON file or ask your agent to create one.</div>
+  </main>
+</div>
+<footer><span id="revision"></span><span>CodeSurf 1.0.0 · Drag the background to pan · Ctrl/⌘ + scroll to zoom</span></footer>
+<script id="tour-data" type="application/json">null</script>
+<script>/* VIEWER_JS */</script>
+</body>
+</html>
