@@ -8,8 +8,9 @@ const text = (text) => ({ text });
 const ref = (text, card, first, last = first) => ({ text, target: { card, lines: [first, last] } });
 const tour = {
   schemaVersion: 1,
-  title: "How checkout reserves stock and handles payment",
-  question: "What happens when a customer checks out, and how do we recover from a declined payment?",
+  title: "Example PR review: checkout and payment recovery",
+  review: { url: "https://example.com/demo-shop/pull/42", example: true },
+  question: "This fictional PR adds checkout to a demo shop. Review the stock reservation, payment, and recovery paths.",
   revision: "bundled-demo-v1",
   files,
   cards: [

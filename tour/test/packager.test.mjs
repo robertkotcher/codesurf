@@ -8,7 +8,7 @@ import { validateTour } from "../validate.js";
 import { checkout } from "../demo-repo/checkout.mjs";
 
 const root = new URL("../../", import.meta.url);
-const cli = new URL("public/releases/1.0.0/codesurf.mjs", root);
+const cli = new URL("public/releases/1.1.0/codesurf.mjs", root);
 const example = () => JSON.parse(fs.readFileSync(new URL("../example.json", import.meta.url), "utf8"));
 const run = (...args) => spawnSync(process.execPath, [cli.pathname, ...args], { encoding: "utf8" });
 

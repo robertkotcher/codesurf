@@ -58,20 +58,34 @@ try {
   fs.copyFileSync(path.join(root, "tour/schema.json"), path.join(output, "tour.schema.json"));
   fs.writeFileSync(path.join(output, "example.json"), JSON.stringify(example, null, 2) + "\n");
   fs.writeFileSync(path.join(root, "public/viewer.html"), viewer);
+  execFileSync(process.execPath, [path.join(output, "codesurf.mjs"), path.join(output, "example.json"), "--out", path.join(output, "demo.html"), "--force"]);
+  // Every published demo keeps working when a newer renderer is released.
   const configPath = path.join(root, "vercel.json");
   const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
   const policy = config.headers.flatMap((rule) => rule.headers)
     .find((header) => header.key.toLowerCase() === "content-security-policy");
   const hash = (text) => "'sha256-" + crypto.createHash("sha256").update(text).digest("base64") + "'";
+  const scriptHashes = new Set([hash(js)]);
+  const styleHashes = new Set([hash(css)]);
+  const releases = path.join(root, "public/releases");
+  for (const release of fs.readdirSync(releases, { withFileTypes: true })) {
+    if (!release.isDirectory()) continue;
+    const demoPath = path.join(releases, release.name, "demo.html");
+    if (!fs.existsSync(demoPath)) continue;
+    const html = fs.readFileSync(demoPath, "utf8");
+    for (const match of html.matchAll(/<script>([\s\S]*?)<\/script>/g))
+      scriptHashes.add(hash(match[1]));
+    for (const match of html.matchAll(/<style>([\s\S]*?)<\/style>/g))
+      styleHashes.add(hash(match[1]));
+  }
   if (!/font-src /.test(policy.value)) policy.value += "; font-src 'self' data:";
   policy.value = policy.value.split(";").map((part) => {
     const directive = part.trim();
-    if (directive.startsWith("script-src ")) return directive.replace(/\s*'sha256-[^']+'/g, "") + " " + hash(js);
-    if (directive.startsWith("style-src ")) return directive.replace(/\s*'sha256-[^']+'/g, "") + " " + hash(css);
+    if (directive.startsWith("script-src ")) return directive.replace(/\s*'sha256-[^']+'/g, "") + " " + [...scriptHashes].join(" ");
+    if (directive.startsWith("style-src ")) return directive.replace(/\s*'sha256-[^']+'/g, "") + " " + [...styleHashes].join(" ");
     return directive;
   }).join("; ");
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n");
-  execFileSync(process.execPath, [path.join(output, "codesurf.mjs"), path.join(output, "example.json"), "--out", path.join(output, "demo.html"), "--force"]);
   const manifest = { version: VERSION, schemaVersion: 1, files: {} };
   for (const name of ["codesurf.mjs", "tour.schema.json", "example.json", "demo.html", "LICENSES.txt"]) {
     const bytes = fs.readFileSync(path.join(output, name));

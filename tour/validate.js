@@ -1,6 +1,6 @@
 import validateSchema from "./.generated/schema-validator.cjs";
 
-export const VERSION = "1.0.0";
+export const VERSION = "1.1.0";
 
 export function validateTour(tour) {
   if (!validateSchema(tour)) {
@@ -15,6 +15,11 @@ export function validateTour(tour) {
     }
     return result;
   };
+  if (tour.review) {
+    const url = new URL(tour.review.url);
+    if (url.protocol !== "https:" || url.username || url.password)
+      throw new Error("The pull request URL must use HTTPS without credentials.");
+  }
   const files = index(tour.files, "file");
   const cards = index(tour.cards, "card");
   const connections = index(tour.connections, "connection");

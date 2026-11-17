@@ -1,12 +1,12 @@
 CodeSurf tour format v1
-Viewer release 1.0.0
+Viewer release 1.1.0
 
 Download
-https://codesurf.io/releases/1.0.0/codesurf.mjs
+https://codesurf.io/releases/1.1.0/codesurf.mjs
 JSON Schema
-https://codesurf.io/releases/1.0.0/tour.schema.json
+https://codesurf.io/releases/1.1.0/tour.schema.json
 Complete example
-https://codesurf.io/releases/1.0.0/example.json
+https://codesurf.io/releases/1.1.0/example.json
 
 Use the complete example as the starting point. Unknown properties are rejected.
 The CLI validates the JSON schema and cross-references before writing output.
@@ -17,6 +17,9 @@ Top-level fields
 - title: short human-readable tour title.
 - question: optional original question, displayed below the title.
 - revision: optional overall snapshot identifier, displayed in the footer.
+- review: optional PR review metadata, available in viewer 1.1.0.
+  Set {"url": "https://github.com/owner/repo/pull/42"} only for a PR review.
+  Omit for ordinary tours. review.example may be true for fictional demos.
 - files: source snapshots. At least one.
 - cards: code cards referencing those files. At least one.
 - connections: directional, labeled relationships between exact code lines.
@@ -120,7 +123,21 @@ The optional https://codesurf.io/viewer.html can open a local JSON file in
 the browser using a file picker. That file is processed in the browser.
 
 Versioning
-Keep the renderer URL pinned within a task. Viewer 1.0.0 and schemaVersion 1
+Keep the renderer URL pinned within a task. Viewer 1.1.0 and schemaVersion 1
 are tested together. Existing HTML includes its original viewer.
 For integrity checks, see the SHA-256 values in
-https://codesurf.io/releases/1.0.0/manifest.json.
+https://codesurf.io/releases/1.1.0/manifest.json.
+
+
+PR review comments sidebar
+Only tours with review.url enable line commenting. Omit review for learning
+tours and feature explanations. The sidebar starts hidden. Click + beside a
+source line to open it and append that exact file, line, revision, diff side,
+and current step to the copyable prompt. Write your comment after Comment.
+Comments accumulate across steps. Review comments reopens the sidebar.
+
+The prompt's instructions are fixed in the viewer release for every user.
+PR URL, source context, and typed comments are the variable data. Copy prompt
+copies the whole textarea. If clipboard access fails, the viewer selects the
+text for Ctrl/Cmd+C. Drafts persist only within the open tab. Copy before closing.
+Fictional demos set review.example to true so the agent keeps notes as practice.

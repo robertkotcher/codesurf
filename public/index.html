@@ -16,7 +16,7 @@
       <p>Add this sentence to your <code>AGENTS.md</code>, then ask your agent to surf code.</p>
       <pre>When I ask you to “surf code” or “run CodeSurf,” read and follow the instructions at https://codesurf.io/llms.txt.</pre>
       <p>Your agent investigates the repository, writes a tour JSON file, and packages it with the official viewer. Source code is processed locally, and the resulting HTML works offline.</p>
-      <p><a href="/releases/1.0.0/demo.html">Try a demo tour</a> · <a href="/viewer.html">Open a local tour JSON file</a></p>
+      <p><a href="/releases/1.1.0/demo.html">Try a demo tour</a> · <a href="/viewer.html">Open a local tour JSON file</a></p>
     </section>
     <section aria-labelledby="examples">
       <h2 id="examples">Examples</h2>
@@ -33,13 +33,13 @@
     <section aria-labelledby="local">
       <h2 id="local">Build a tour locally</h2>
       <p>The packager needs Node.js 20.19 or newer. Download it once, then generate a sample tour.</p>
-      <pre class="example-prompt">curl -fsS https://codesurf.io/releases/1.0.0/codesurf.mjs -o codesurf.mjs
+      <pre class="example-prompt">curl -fsS https://codesurf.io/releases/1.1.0/codesurf.mjs -o codesurf.mjs
 node codesurf.mjs --example &gt; demo.json
 node codesurf.mjs demo.json --out demo.html</pre>
       <p>Open <code>demo.html</code> in your browser. To explain your own code, have your agent author a tour and run <code>node codesurf.mjs tour.json --out tour.html</code>.</p>
-      <p>Back and Next guide the tour. Sidebar links highlight the source they describe. Expand folded code, pan the canvas, or use Fit to see the revealed flow.</p>
-      <p>For agents and tool builders, see the <a href="/llms.txt">agent instructions</a>, <a href="/tour-format.txt">tour format</a>, <a href="/releases/1.0.0/tour.schema.json">JSON schema</a>, and <a href="/releases/1.0.0/example.json">complete example</a>.</p>
-      <p class="release">Viewer 1.0.0 · Tour schema 1 · <a href="/releases/1.0.0/manifest.json">Download hashes</a></p>
+      <p>Back and Next guide the tour. Sidebar links highlight the source they describe. Expand folded code, pan the canvas, or use Fit to see the revealed flow. During a PR review, click + beside a code line to open the comments sidebar. Write your comment, then copy the prompt back into your agent to ask it to post your review.</p>
+      <p>For agents and tool builders, see the <a href="/llms.txt">agent instructions</a>, <a href="/tour-format.txt">tour format</a>, <a href="/releases/1.1.0/tour.schema.json">JSON schema</a>, and <a href="/releases/1.1.0/example.json">complete example</a>.</p>
+      <p class="release">Viewer 1.1.0 · Tour schema 1 · <a href="/releases/1.1.0/manifest.json">Download hashes</a></p>
     </section>
   </main>
 </body>
