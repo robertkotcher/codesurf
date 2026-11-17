@@ -1,5 +1,5 @@
 * { box-sizing: border-box; }
-:root { font-family: Arial, Helvetica, sans-serif; color: #202b34; background: #f5f9fc; font-synthesis: none; }
+:root { font-family: "CodeSurf Sans", sans-serif; color: #202b34; background: #f5f9fc; font-synthesis: none; }
 body { margin: 0; height: 100vh; display: flex; flex-direction: column; overflow: hidden; font-size: 13px; }
 button, .open-file { font: inherit; padding: 6px 10px; color: #29333d; border: 1px solid #dce2e8; border-radius: 4px; background: #fff; cursor: pointer; white-space: nowrap; }
 button:hover, .open-file:hover { background: #eef4fa; }
@@ -30,12 +30,12 @@ a { color: #176db0; text-decoration: underline; text-underline-offset: 2px; }
 #cards { position: absolute; inset: 0; }
 .card { position: absolute; width: 620px; border: 1px solid #d6dfe7; border-radius: 5px; background: #fff; box-shadow: 0 2px 6px #334c6210; cursor: default; overflow: hidden; }
 .card-header { padding: 9px 12px 8px; background: #f6f8fa; border-bottom: 1px solid #dfe5ec; font-size: 12px; }
-.file-path { display: block; overflow-wrap: anywhere; font: 11px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace; color: #376a93; }
+.file-path { display: block; overflow-wrap: anywhere; font: 11px/1.4 "CodeSurf Mono", monospace; color: #376a93; }
 .card-header h3 { margin: 4px 0 0; font-size: 13px; font-weight: 600; }
 .diff-label { margin-left: 8px; font-weight: 400; color: #5e6974; }
 .code-scroll { overflow-x: auto; overscroll-behavior: contain; touch-action: pan-x pan-y; }
 .code-content { width: max-content; min-width: 100%; }
-.code-row { display: flex; min-height: 21px; font: 12px/21px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre; }
+.code-row { display: flex; min-height: 21px; font: 12px/21px "CodeSurf Mono", monospace; white-space: pre; }
 .line-number { width: 55px; flex: 0 0 55px; text-align: right; padding-right: 12px; color: #83909c; text-decoration: none; user-select: none; }
 .source-text { padding-right: 20px; }
 .code-row.muted .source-text { opacity: .42; }
@@ -47,12 +47,12 @@ a { color: #176db0; text-decoration: underline; text-underline-offset: 2px; }
 .code-row.selected { background: #fff3b0; box-shadow: inset 3px 0 #d4a817; }
 .code-row.referenced { background: #ffe293; box-shadow: inset 3px 0 #bf8700; }
 .code-row.selected .source-text, .code-row.referenced .source-text { opacity: 1; }
-.fold summary { font: 11px/24px ui-monospace, monospace; background: #edf6fc; color: #51748e; padding: 0 12px; cursor: pointer; }
+.fold summary { font: 11px/24px "CodeSurf Mono", monospace; background: #edf6fc; color: #51748e; padding: 0 12px; cursor: pointer; }
 .fold[open] > summary { border-bottom: 1px solid #e1ebf2; }
 #empty { position: absolute; top: 40%; left: 10%; right: 10%; text-align: center; color: #687b8b; line-height: 1.6; }
 footer { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding: 6px 16px; border-top: 1px solid #dfe7ed; font-size: 10px; color: #677986; }
 .edge-path { fill: none; stroke-width: 1.4; }
-.edge-label { font: 10px Arial, sans-serif; paint-order: stroke; stroke: #f5f9fc; stroke-width: 4px; stroke-linejoin: round; }
+.edge-label { font: 10px "CodeSurf Sans", sans-serif; paint-order: stroke; stroke: #f5f9fc; stroke-width: 4px; stroke-linejoin: round; }
 @media (max-width: 700px) {
   .topbar { padding: 12px; align-items: flex-start; flex-wrap: wrap; gap: 8px; }
   h1 { font-size: 16px; }

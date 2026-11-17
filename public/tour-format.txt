@@ -114,7 +114,7 @@ node codesurf.mjs tour.json --out tour.html --force
 Local execution
 The packager reads the JSON and writes HTML. It makes no network requests,
 executes no repository code, and installs no dependencies. The resulting
-HTML embeds the source snapshot, renderer, CSS, and syntax highlighter.
+HTML embeds the source snapshot, renderer, CSS, fonts, and syntax highlighter.
 Source links open only when the reader clicks them.
 The optional https://codesurf.io/viewer.html can open a local JSON file in
 the browser using a file picker. That file is processed in the browser.

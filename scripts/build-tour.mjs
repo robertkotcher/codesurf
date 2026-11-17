@@ -26,7 +26,23 @@ try {
     outfile: path.join(temporary, "viewer.js"), minify: true,
   });
   const js = fs.readFileSync(path.join(temporary, "viewer.js"), "utf8").replaceAll("</script", "<\\/script");
-  const css = fs.readFileSync(path.join(root, "tour/viewer.css"), "utf8") + "\n" +
+  const fonts = [
+    ["inter", "CodeSurf Sans"],
+    ["ibm-plex-mono", "CodeSurf Mono"],
+  ];
+  let fontCSS = "";
+  let licenses = "";
+  for (const [name, family] of fonts) {
+    licenses += name + "\n" + fs.readFileSync(path.join(root, "node_modules/@fontsource", name, "LICENSE"), "utf8") + "\n\n";
+    for (const weight of [400, 600]) {
+      const bytes = fs.readFileSync(path.join(root, "node_modules/@fontsource", name, "files", `${name}-latin-${weight}-normal.woff2`));
+      fontCSS += `@font-face { font-family: "${family}"; font-style: normal; font-weight: ${weight}; font-display: swap; src: url(data:font/woff2;base64,${bytes.toString("base64")}) format("woff2"); }\n`;
+    }
+  }
+  licenses += "highlight.js\n" + fs.readFileSync(path.join(root, "node_modules/highlight.js/LICENSE"), "utf8") + "\n\najv\n" +
+    fs.readFileSync(path.join(root, "node_modules/ajv/LICENSE"), "utf8");
+  fs.writeFileSync(path.join(output, "LICENSES.txt"), licenses);
+  const css = "/* " + licenses.replaceAll("*/", "* /") + " */\n" + fontCSS + fs.readFileSync(path.join(root, "tour/viewer.css"), "utf8") + "\n" +
     fs.readFileSync(path.join(temporary, "viewer.css"), "utf8");
   const template = fs.readFileSync(path.join(root, "tour/viewer.html"), "utf8");
   const viewer = template.replace("/* VIEWER_CSS */", () => css).replace("/* VIEWER_JS */", () => js);
@@ -47,6 +63,7 @@ try {
   const policy = config.headers.flatMap((rule) => rule.headers)
     .find((header) => header.key.toLowerCase() === "content-security-policy");
   const hash = (text) => "'sha256-" + crypto.createHash("sha256").update(text).digest("base64") + "'";
+  if (!/font-src /.test(policy.value)) policy.value += "; font-src 'self' data:";
   policy.value = policy.value.split(";").map((part) => {
     const directive = part.trim();
     if (directive.startsWith("script-src ")) return directive.replace(/\s*'sha256-[^']+'/g, "") + " " + hash(js);
@@ -56,7 +73,7 @@ try {
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n");
   execFileSync(process.execPath, [path.join(output, "codesurf.mjs"), path.join(output, "example.json"), "--out", path.join(output, "demo.html"), "--force"]);
   const manifest = { version: VERSION, schemaVersion: 1, files: {} };
-  for (const name of ["codesurf.mjs", "tour.schema.json", "example.json", "demo.html"]) {
+  for (const name of ["codesurf.mjs", "tour.schema.json", "example.json", "demo.html", "LICENSES.txt"]) {
     const bytes = fs.readFileSync(path.join(output, name));
     manifest.files[name] = { url: `https://codesurf.io/releases/${VERSION}/${name}`,
       sha256: crypto.createHash("sha256").update(bytes).digest("hex"), bytes: bytes.length };

@@ -1,6 +1,6 @@
 # CodeSurf for agents
 
-CodeSurf turns your investigation into a guided code tour using an official, consistent viewer. You create tour JSON locally from the repository. Download the versioned packager and use it to produce a standalone HTML file. The packager embeds the viewer and source excerpts. Repository code stays on the user's computer.
+CodeSurf turns your investigation into a guided code tour using an official, consistent viewer. You create tour JSON locally from the repository. Download the versioned packager and use it to produce a standalone HTML file. The packager embeds the viewer, fonts, and source excerpts. Repository code stays on the user's computer.
 
 When the user asks to "surf code" or "run CodeSurf", follow this workflow. Build and open a tour, rather than merely explaining how to create one.
 

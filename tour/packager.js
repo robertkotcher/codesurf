@@ -45,6 +45,7 @@ try {
       const html = viewer.replace('<script id="tour-data" type="application/json">null</script>',
         () => '<script id="tour-data" type="application/json">' + json + "</script>");
       fs.writeFileSync(output, html, { flag: force ? "w" : "wx", mode: 0o600 });
+      fs.chmodSync(output, 0o600);
       console.log("Created " + path.resolve(output) + " · " + Buffer.byteLength(html) + " bytes");
     } else console.log("Valid CodeSurf tour · " + tour.steps.length + " steps");
   }

@@ -4,8 +4,8 @@
   "files": {
     "codesurf.mjs": {
       "url": "https://codesurf.io/releases/1.0.0/codesurf.mjs",
-      "sha256": "9b68087e77005a48edf8412ffa2efe871c85decddf3e98645d63a79201b8ed9f",
-      "bytes": 274977
+      "sha256": "e38a5773524b64dffc198698b692000503edb852b769a7cb2c22c40a3deacf63",
+      "bytes": 392613
     },
     "tour.schema.json": {
       "url": "https://codesurf.io/releases/1.0.0/tour.schema.json",
@@ -19,8 +19,13 @@
     },
     "demo.html": {
       "url": "https://codesurf.io/releases/1.0.0/demo.html",
-      "sha256": "c0723fd29ace4e0e5b398b3d00b97f5263d578e62d368a28f657d978a5cb7510",
-      "bytes": 229042
+      "sha256": "b1d10aa10bf1693ec75b99ca2c4bcdd4722bf1ab5431662936bab866edc51281",
+      "bytes": 346659
+    },
+    "LICENSES.txt": {
+      "url": "https://codesurf.io/releases/1.0.0/LICENSES.txt",
+      "sha256": "af8bef60effdea149f0bcf8a3140140719b315dfd92709972354e0d7cad3f1b6",
+      "bytes": 12423
     }
   }
 }

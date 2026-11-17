@@ -53,7 +53,9 @@ test("rendering embeds source safely and produces an offline HTML with protected
   assert.ok(!/<script[^>]+src=|<link[^>]+href=/.test(html));
   assert.equal(fs.statSync(output).mode & 0o777, 0o600);
   assert.equal(run(input, "--out", output).status, 1);
+  fs.chmodSync(output, 0o644);
   assert.equal(run(input, "--out", output, "--force").status, 0);
+  assert.equal(fs.statSync(output).mode & 0o777, 0o600);
   assert.equal(run(input, "--validate").status, 0);
 });
 
