@@ -7,8 +7,9 @@
     "dev": "node --env-file-if-exists=.env.local server.js",
     "start": "node --env-file-if-exists=.env.local server.js",
     "test": "node --test test/*.test.js",
-    "build": "esbuild browser/icons.js --bundle --format=esm --minify --outfile=public/icons.js && tailwindcss -i browser/docs.css -o public/docs.css --minify && node scripts/build-docs.mjs",
-    "runner:build": "docker build -t codesurf-runner:local runner"
+    "build": "esbuild browser/icons.js --bundle --format=esm --minify --outfile=public/icons.js && tailwindcss -i browser/docs.css -o public/docs.css --minify && node scripts/build-docs.mjs && node scripts/build-tour.mjs",
+    "runner:build": "docker build -t codesurf-runner:local runner",
+    "test:tour": "node scripts/build-tour.mjs && node --test tour/test/*.test.mjs"
   },
   "dependencies": {
     "express": "^5.1.0",
@@ -16,8 +17,10 @@
   },
   "devDependencies": {
     "@tailwindcss/cli": "^4.3.5",
+    "ajv": "^8.20.0",
     "daisyui": "^5.7.50",
     "esbuild": "^0.28.2",
+    "highlight.js": "^11.12.0",
     "tailwindcss": "^4.3.5"
   }
 }

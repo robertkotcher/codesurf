@@ -15,3 +15,5 @@ public/downloads/*.sha256
 
 public/downloads/latest.json
 public/docs.css
+
+tour/.generated/

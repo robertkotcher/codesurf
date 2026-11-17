@@ -1,0 +1,126 @@
+CodeSurf tour format v1
+Viewer release 1.0.0
+
+Download
+https://codesurf.io/releases/1.0.0/codesurf.mjs
+JSON Schema
+https://codesurf.io/releases/1.0.0/tour.schema.json
+Complete example
+https://codesurf.io/releases/1.0.0/example.json
+
+Use the complete example as the starting point. Unknown properties are rejected.
+The CLI validates the JSON schema and cross-references before writing output.
+The downloadable packager is self-contained and needs Node.js 20.19+.
+
+Top-level fields
+- schemaVersion: exactly 1.
+- title: short human-readable tour title.
+- question: optional original question, displayed below the title.
+- revision: optional overall snapshot identifier, displayed in the footer.
+- files: source snapshots. At least one.
+- cards: code cards referencing those files. At least one.
+- connections: directional, labeled relationships between exact code lines.
+- steps: ordered tour steps. At least one.
+
+Files
+Each file has id, path, language, and source. IDs contain letters, digits,
+underscores, or hyphens and are unique within their collection.
+source is a single string containing exact contiguous source text.
+startLine defaults to 1. Use the original starting line for an excerpt.
+sourceUrl is an optional HTTPS source-file URL, ideally pinned to a commit.
+The viewer adds #L<number> when linking individual lines.
+revision optionally identifies this file's commit or PR side.
+Supported languages are ruby, python, javascript, typescript, json, bash,
+css, xml, and plaintext. Use plaintext for other languages.
+
+Cards
+Each card has id, file (a file ID), title, and range [firstLine, lastLine].
+All ranges are inclusive, one-based, and in the file's original coordinates.
+relevant is an optional array of ranges to keep bright and expanded.
+Without relevant, the whole card range is relevant.
+Irrelevant runs of 10 lines or fewer stay visible and muted. Longer runs fold.
+outlines is an optional array of {name, lines: [first, last]} for fold labels.
+x and y are optional nonnegative integer canvas coordinates, at most 20000.
+Defaults arrange cards in two columns in their listed order.
+For PR comparisons use diff "before" or "after" and changedLines, an array
+of original line numbers on that side. Use a separate file ID per source side.
+
+Connections
+Each connection has id, from, to, label, and kind.
+from and to are {card: "card-id", line: 42}.
+Both endpoints must lie within their cards' ranges.
+kind is call, event, return, success, or failure.
+Call and event arrows are blue, success and return green, failure red.
+The source row gets a light tint. The current focus and sidebar reference
+highlight override that tint. Arrows attach to their exact endpoint rows.
+
+Steps
+Each step has title, explanation, revealCards, revealConnections, and focus.
+explanation is an ordered array of {text: "..."} segments. A segment can also
+have target: {card: "card-id", lines: [firstLine, lastLine]}.
+Targeted segments become sidebar links. Hover and keyboard focus highlight
+their exact code range. Clicking centers that range on the canvas.
+focus uses the same {card, lines} shape and marks the code for this step.
+revealCards and revealConnections are arrays of IDs added at this step.
+Reveals accumulate until the reader goes Back. Use [] when adding nothing.
+Referenced and focused cards must already be revealed. Connections need
+both cards visible. Every card and connection must appear in the tour.
+
+Minimal tour
+{
+  "schemaVersion": 1,
+  "title": "Return a greeting",
+  "files": [{
+    "id": "hello",
+    "path": "src/hello.py",
+    "language": "python",
+    "source": "def hello(name):\n    return f'Hello, {name}'\n"
+  }],
+  "cards": [{
+    "id": "greet",
+    "file": "hello",
+    "title": "hello(name)",
+    "range": [1, 2],
+    "relevant": [[1, 2]]
+  }],
+  "connections": [],
+  "steps": [{
+    "title": "Build the greeting",
+    "explanation": [
+      {"text": "This function takes a name and "},
+      {"text": "returns a greeting", "target": {"card": "greet", "lines": [2, 2]}},
+      {"text": "."}
+    ],
+    "revealCards": ["greet"],
+    "revealConnections": [],
+    "focus": {"card": "greet", "lines": [1, 2]}
+  }]
+}
+
+Limits
+10 MB input JSON. Up to 100 files, 100 cards, 300 connections, 200 steps.
+Each file source is at most 500000 characters. Ranges must resolve exactly.
+Use --validate to check without rendering. Output HTML files are written with
+owner-only permissions. Existing files require --force.
+
+CLI
+node codesurf.mjs --help
+node codesurf.mjs --version
+node codesurf.mjs --example > demo.json
+node codesurf.mjs tour.json --validate
+node codesurf.mjs tour.json --out tour.html
+node codesurf.mjs tour.json --out tour.html --force
+
+Local execution
+The packager reads the JSON and writes HTML. It makes no network requests,
+executes no repository code, and installs no dependencies. The resulting
+HTML embeds the source snapshot, renderer, CSS, and syntax highlighter.
+Source links open only when the reader clicks them.
+The optional https://codesurf.io/viewer.html can open a local JSON file in
+the browser using a file picker. That file is processed in the browser.
+
+Versioning
+Keep the renderer URL pinned within a task. Viewer 1.0.0 and schemaVersion 1
+are tested together. Existing HTML includes its original viewer.
+For integrity checks, see the SHA-256 values in
+https://codesurf.io/releases/1.0.0/manifest.json.
