@@ -27,8 +27,16 @@ Orient the reader in the invoice-created service and its public call method. Fol
 
 UI reference for the example walkthrough
 
-Make the walkthrough UI look as close as possible to the screenshots below. Match the light canvas, left tour sidebar, top-right zoom controls, and syntax-highlighted code cards. Use the actual repository and question for the content.
+Before implementing the walkthrough, open and study every reference screenshot below. Reproduce this UI exactly. Formatting is critical and must match the references perfectly. Match the light canvas, left tour sidebar, top-right zoom controls, and syntax-highlighted code cards. Use the actual repository and question for the content.
 
 - Beginning (step 1 of 8): show the opening code card and highlight the line that starts the flow. https://codesurf.io/examples/walkthrough/beginning.jpg
 - Middle (step 4 of 8): keep earlier cards visible and reveal new cards with labeled arrows connecting the relevant lines. https://codesurf.io/examples/walkthrough/middle.jpg
 - End (step 8 of 8): show the complete flow, including the success and failure paths where relevant, and highlight the final action. https://codesurf.io/examples/walkthrough/end.jpg
+
+Visual fidelity requirements
+
+- Match the reference layout, spacing, typography, font sizes, background colors, borders, code-card headers, sidebar width, and navigation controls. Treat the screenshots as the visual specification.
+- Match code formatting exactly: preserve source indentation and whitespace, use a monospace font and language-appropriate syntax colors, align real line numbers in a consistent gutter, disable wrapping, and provide horizontal scrolling.
+- Put relevant code references directly into the sidebar explanation as links on meaningful phrases. Hovering or focusing a link must highlight its exact target lines. Clicking must bring those lines into view. Keep referenced blocks expanded at that step and make the highlight visibly distinct from muted surrounding code.
+- Match the card arrangement, progressive reveal, arrow colors, labels, and line-level attachment points shown at the beginning, middle, and end of the example.
+- Before delivery, capture screenshots of the generated walkthrough at comparable viewport sizes and tour steps. Compare them against every reference and correct formatting and interaction differences until the UI matches. Verify sidebar links using pointer and keyboard focus.
