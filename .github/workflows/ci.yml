@@ -24,4 +24,3 @@ jobs:
       - run: npm ci --prefix cli
       - run: npm test --prefix cli
       - run: npm run build
-      - run: npm run test:tour

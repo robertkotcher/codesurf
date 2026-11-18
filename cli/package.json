@@ -1,31 +1,31 @@
 {
-  "name": "codesurf-cli",
-  "version": "0.6.1",
+  "name": "codesurf",
+  "version": "2.0.0",
   "type": "module",
+  "description": "Ask questions about a repository and explore visual, source-backed answers locally.",
   "bin": {
     "codesurf": "src/cli.js"
   },
   "scripts": {
-    "test": "node --test",
-    "demo": "node src/cli.js examples/auth-refresh \"Trace an authenticated request that gets a 401, refreshes the token, and retries once. Assume refresh succeeds.\""
+    "test": "node --test test/*.test.js",
+    "start": "node src/cli.js serve"
   },
   "dependencies": {
-    "electron": "^45.2.3",
-    "markdown-it": "^15.0.3",
+    "esbuild": "^0.28.2",
+    "highlight.js": "^11.11.1",
+    "playwright-core": "^1.56.1",
     "typescript": "^6.0.3"
   },
-  "devDependencies": {
-    "jsdom": "^27.0.1"
-  },
-  "description": "A CLI for agents to open source-backed code maps that help humans learn unfamiliar repositories.",
-  "license": "MIT",
-  "homepage": "https://codesurf.io",
   "files": [
     "src",
+    "viewer",
     "examples",
+    "skill",
     "README.md",
     "LICENSE"
   ],
+  "homepage": "https://codesurf.io",
+  "license": "MIT",
   "engines": {
     "node": ">=22.12.0"
   }

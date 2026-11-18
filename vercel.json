@@ -54,6 +54,21 @@
       "source": "/github/:owner/:repo/pull/:number",
       "destination": "/review/github/:owner/:repo/pr/:number",
       "permanent": false
+    },
+    {
+      "source": "/downloads/codesurf-cli-latest.tgz",
+      "destination": "/downloads/codesurf-latest.tgz",
+      "permanent": false
+    },
+    {
+      "source": "/releases/:path*",
+      "destination": "/llms.txt",
+      "permanent": false
+    },
+    {
+      "source": "/viewer.html",
+      "destination": "/",
+      "permanent": false
     }
   ]
 }

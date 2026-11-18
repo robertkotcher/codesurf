@@ -3,44 +3,66 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Ask your coding agent for a guided code tour. CodeSurf renders it locally with a consistent viewer.">
-  <title>CodeSurf</title>
+  <meta name="description" content="Ask your coding agent about any repository and explore the answer as real, clickable source code in your browser.">
+  <title>CodeSurf: see how code works</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/agent-instructions.css">
 </head>
 <body>
   <main>
-    <h1>CodeSurf</h1>
-    <section aria-labelledby="humans">
-      <h2 id="humans">For Humans</h2>
-      <p>CodeSurf turns your coding agent’s explanation into an interactive code tour with a consistent UI, packaged as an HTML file you can open locally.</p>
-      <p>Add this sentence to your <code>AGENTS.md</code>, then ask your agent to surf code.</p>
-      <pre>When I ask you to “surf code” or “run CodeSurf,” read and follow the instructions at https://codesurf.io/llms.txt.</pre>
-      <p>Your agent investigates the repository, writes a tour JSON file, and packages it with the official viewer. Source code is processed locally, and the resulting HTML works offline.</p>
-      <p><a href="/releases/1.1.0/demo.html">Try a demo tour</a> · <a href="/viewer.html">Open a local tour JSON file</a></p>
+    <header class="hero">
+      <h1>CodeSurf</h1>
+      <p class="lede">Ask your coding agent how something in your code works. CodeSurf shows you the answer as the real source, step by step, in your browser.</p>
+    </header>
+
+    <section aria-labelledby="start">
+      <h2 id="start">Get started</h2>
+      <p>Paste this into Claude Code, Codex or any coding agent that can run commands:</p>
+      <pre class="prompt">Set up CodeSurf by following https://codesurf.io/llms.txt</pre>
+      <p>Then ask it something like:</p>
+      <pre class="prompt">Surf this repo: what happens when a user's session expires?</pre>
     </section>
-    <section aria-labelledby="examples">
-      <h2 id="examples">Examples</h2>
-      <h3>Understand a feature</h3>
-      <pre class="example-prompt">Surf code and show me how sign-in works.</pre>
-      <p>Follow sign-in from its entry point through the code that checks credentials and handles success or failure.</p>
-      <h3>Review a pull request</h3>
-      <pre class="example-prompt">Run CodeSurf on PR #42 and walk me through the fix.</pre>
-      <p>See the original behavior, the exact lines the PR changes, and how those changes fix the problem.</p>
-      <h3>Trace an error</h3>
-      <pre class="example-prompt">Surf code and trace what happens when this background job fails.</pre>
-      <p>See where the error is raised, what catches it, and whether the job retries or stops.</p>
+
+    <figure>
+      <img src="/images/viewer-flow.jpg" width="1800" height="1125" alt="A CodeSurf tour of a declined payment: a screenshot of the checkout page with the Pay button circled, connected by arrows through the click handler, the server route, checkout, inventory and payments code, to a screenshot of the error the customer sees.">
+      <figcaption>A tour of a declined payment. It starts at the button the customer clicks and follows the real code to the error they see.</figcaption>
+    </figure>
+
+    <section aria-labelledby="what">
+      <h2 id="what">What you can do</h2>
+      <ul class="features">
+        <li><b>Read the answer first.</b> The direct answer sits at the top, and the steps show the code behind it, one idea at a time.</li>
+        <li><b>Follow real code.</b> Every card is your actual source, read from disk, with one card per file. Arrows connect the exact lines that call each other, and CodeSurf checks every line before you see it.</li>
+        <li><b>Explore beyond the tour.</b> Hover any name to see its type. Click it to open where it's defined, even in another file.</li>
+        <li><b>Ask follow-up questions.</b> Ask in the viewer and a read-only agent answers from your repository, drawing a new view when a picture helps.</li>
+        <li><b>See the app, too.</b> When a flow starts with a click or a form, your agent runs the app with demo data and circles what was used.</li>
+        <li><b>Jump around.</b> The timeline lets you go back to any step, or see just the code a few steps talk about, diff style.</li>
+      </ul>
     </section>
-    <section aria-labelledby="local">
-      <h2 id="local">Build a tour locally</h2>
-      <p>The packager needs Node.js 20.19 or newer. Download it once, then generate a sample tour.</p>
-      <pre class="example-prompt">curl -fsS https://codesurf.io/releases/1.1.0/codesurf.mjs -o codesurf.mjs
-node codesurf.mjs --example &gt; demo.json
-node codesurf.mjs demo.json --out demo.html</pre>
-      <p>Open <code>demo.html</code> in your browser. To explain your own code, have your agent author a tour and run <code>node codesurf.mjs tour.json --out tour.html</code>.</p>
-      <p>Back and Next guide the tour. Sidebar links highlight the source they describe. Expand folded code, pan the canvas, or use Fit to see the revealed flow. During a PR review, click + beside a code line to open the comments sidebar. Write your comment, then copy the prompt back into your agent to ask it to post your review.</p>
-      <p>For agents and tool builders, see the <a href="/llms.txt">agent instructions</a>, <a href="/tour-format.txt">tour format</a>, <a href="/releases/1.1.0/tour.schema.json">JSON schema</a>, and <a href="/releases/1.1.0/example.json">complete example</a>.</p>
-      <p class="release">Viewer 1.1.0 · Tour schema 1 · <a href="/releases/1.1.0/manifest.json">Download hashes</a></p>
+
+    <figure>
+      <img src="/images/viewer-hover.jpg" width="1800" height="1125" alt="Hovering handleCheckout in a CodeSurf tour shows its full TypeScript type, with buttons to go to its definition or ask about it.">
+      <figcaption>Hover for the real type. Click to open the definition.</figcaption>
+    </figure>
+
+    <section aria-labelledby="manual">
+      <h2 id="manual">Install it yourself</h2>
+      <p>You need Node.js 22.12 or newer. Google Chrome is used for app screenshots, and the <a href="https://claude.com/claude-code">Claude Code</a> CLI answers follow-up questions.</p>
+      <pre>npm install -g https://codesurf.io/downloads/codesurf-latest.tgz
+codesurf setup
+codesurf example</pre>
+      <p><code>codesurf setup</code> teaches Claude Code the workflow. For other agents, add this line to your <code>AGENTS.md</code>:</p>
+      <pre class="prompt">When I ask you to "surf" code or explain code visually, run `codesurf guide` and follow it.</pre>
     </section>
+
+    <section aria-labelledby="privacy">
+      <h2 id="privacy">Privacy</h2>
+      <p>CodeSurf runs on your computer. The viewer is served from 127.0.0.1, tours are saved in <code>~/.codesurf</code>, and your code is never uploaded by CodeSurf. Your coding agent and the follow-up agent send what they read to their own model provider, just as they do when you chat with them.</p>
+    </section>
+
+    <footer>
+      <a href="/llms.txt">Agent instructions</a> · <a href="/tour-format.txt">Tour format</a> · <a href="https://github.com/robertkotcher/codesurf">Source</a> · <a href="/downloads/latest.json">Latest release</a>
+    </footer>
   </main>
 </body>
 </html>

@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CodeSurf</title>
+<link rel="stylesheet" href="/app/bundle.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="heading">
+    <h1 id="title">CodeSurf</h1>
+    <p id="subtitle"></p>
+  </div>
+  <button id="answer-button" aria-haspopup="dialog" aria-expanded="false" hidden><b>Answer</b><span id="answer-preview"></span></button>
+  <nav aria-label="Canvas controls">
+    <button id="trail-back" hidden title="Back to where you were before following a definition (Alt+←)">← Back</button>
+    <button id="clear-explored" hidden title="Remove code you opened while exploring">Clear explored</button>
+    <button id="zoom-out" aria-label="Zoom out">−</button>
+    <button id="fit">Fit</button>
+    <button id="zoom-in" aria-label="Zoom in">+</button>
+    <output id="zoom">100%</output>
+    <button id="comments-toggle" hidden>Review comments</button>
+    <button id="home" title="All tours">Tours</button>
+  </nav>
+</header>
+<div id="tabs" role="tablist" aria-label="Open views" hidden></div>
+<div class="app">
+  <aside class="tour-sidebar" aria-label="Tour">
+    <section id="step">
+      <p id="progress"></p>
+      <h2 id="step-title">Loading…</h2>
+      <p id="explanation"></p>
+      <div class="navigation">
+        <button id="back" disabled>Back</button><button id="next" class="primary" disabled>Next</button>
+        <button id="exit" disabled>Show all</button>
+      </div>
+      <button id="restart" class="text-button" hidden>Restart tour</button>
+    </section>
+    <p id="error" role="alert"></p>
+    <section id="chat" aria-label="Follow-up questions">
+      <div id="messages" aria-live="polite"></div>
+      <form id="ask-form">
+        <div id="ask-context"></div>
+        <textarea id="ask-input" rows="2" placeholder="Ask a follow-up about this code…" aria-label="Ask a follow-up question"></textarea>
+        <div class="ask-actions">
+          <span class="hint">Click code to jump to its definition. Select code to ask about it.</span>
+          <button id="ask-stop" type="button" hidden>Stop</button>
+          <button id="ask-send" class="primary" type="submit">Ask</button>
+        </div>
+      </form>
+    </section>
+  </aside>
+  <main id="viewport" aria-label="Code canvas" tabindex="0">
+    <div id="world"><svg id="edges" aria-hidden="true"></svg><div id="cards"></div></div>
+    <div id="empty" hidden></div>
+    <div id="popover" role="dialog" hidden></div>
+    <div id="token-mark" hidden></div>
+    <section id="step-code" aria-label="Code in the selected steps" hidden>
+      <header>
+        <h2 id="step-code-title">Code in this step</h2>
+        <span class="hint">Shift-click steps in the timeline to see the code for several.</span>
+        <button id="step-code-close" aria-label="Close step code">×</button>
+      </header>
+      <div id="step-code-body"></div>
+    </section>
+  </main>
+  <aside class="comments-sidebar" aria-label="Review comments" hidden>
+    <div class="comments-header">
+      <h2><label for="review-prompt">Review comments</label></h2>
+      <button id="close-comments" aria-label="Close review comments">×</button>
+    </div>
+    <p class="comments-help">Click + beside a line to add a comment. Copy the prompt into your agent to post them.</p>
+    <div class="comments-actions">
+      <button id="copy-comments">Copy prompt</button>
+      <span id="copy-status" role="status" aria-live="polite"></span>
+    </div>
+    <textarea id="review-prompt" spellcheck="false"></textarea>
+  </aside>
+</div>
+<footer id="timeline-bar">
+  <div id="timeline-title" aria-live="polite"></div>
+  <div id="timeline" role="tablist" aria-label="Tour steps"></div>
+  <button id="step-code-toggle" title="Show the code these steps talk about (C)">Code in this step</button>
+</footer>
+<div class="statusline"><span id="revision"></span><span>CodeSurf 2 (local) · Drag to pan · Ctrl/⌘ + scroll to zoom · ←/→ steps · Shift-click steps to select a range</span></div>
+<div id="answer-dialog" role="dialog" aria-label="Answer" hidden>
+  <header><h2>Answer</h2><button id="answer-close" aria-label="Close answer">×</button></header>
+  <div id="answer-body" class="markdown"></div>
+</div>
+<script src="/app/bundle.js"></script>
+</body>
+</html>
