@@ -9,11 +9,9 @@ node_modules/
 
 .codesurf/
 
-# Generated public release archive (rebuilt from cli source).
-public/downloads/*.tgz
-public/downloads/*.sha256
-
-public/downloads/latest.json
 public/docs.css
 
-tour/.generated/
+
+# Built from cli/ by scripts/build-docs.mjs
+public/downloads/
+public/tour-format.txt

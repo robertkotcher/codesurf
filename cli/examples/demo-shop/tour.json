@@ -1,0 +1,124 @@
+{
+  "schemaVersion": 2,
+  "title": "What happens when a payment is declined",
+  "question": "A customer clicks Pay now with a card that gets declined. What happens, and does the stock come back?",
+  "answer": "The browser posts the cart to `/checkout`. The server reserves the stock first, then asks the payment provider to charge. When the charge is declined, `checkout` puts the reserved stock back and rethrows the error, so the server answers 402 and the page shows **Payment failed**.",
+  "files": [
+    { "id": "page", "path": "public/cart.js" },
+    { "id": "server", "path": "server.mjs" },
+    { "id": "checkout", "path": "checkout.mjs" },
+    { "id": "inventory", "path": "inventory.mjs" },
+    { "id": "payments", "path": "payments.mjs" }
+  ],
+  "cards": [
+    { "id": "pay-screen", "kind": "screenshot", "title": "Checkout page", "image": "shots/checkout.png",
+      "url": "http://127.0.0.1:4400/", "viewport": { "width": 900, "height": 640 },
+      "highlights": [{ "x": 240, "y": 368, "width": 420, "height": 40, "label": "Pay now" }],
+      "caption": "Demo data: 2 coffees, 1 tea, the declined demo card." },
+    { "id": "handler", "file": "page", "title": "Click handler: send the cart", "range": [5, 20] },
+    { "id": "route", "file": "server", "title": "POST /checkout route", "range": [9, 23], "relevant": [[10, 20]] },
+    { "id": "checkout", "file": "checkout", "symbol": "checkout" },
+    { "id": "handle", "file": "checkout", "symbol": "handleCheckout" },
+    { "id": "reserve", "file": "inventory", "symbol": "reserve", "relevant": [[7, 8], [23, 26]] },
+    { "id": "release", "file": "inventory", "symbol": "release" },
+    { "id": "charge", "file": "payments", "symbol": "charge" },
+    { "id": "declined-screen", "kind": "screenshot", "title": "What the customer sees", "image": "shots/declined.png",
+      "url": "http://127.0.0.1:4400/", "viewport": { "width": 900, "height": 640 },
+      "highlights": [{ "x": 240, "y": 420, "width": 300, "height": 28, "label": "Error message" }] }
+  ],
+  "connections": [
+    { "id": "clicked", "from": { "card": "pay-screen", "highlight": 0 }, "to": { "card": "handler", "line": 5, "text": "addEventListener(\"click\"" }, "label": "Click runs the handler", "kind": "event" },
+    { "id": "post", "from": { "card": "handler", "line": 10, "text": "fetch(\"/checkout\"" }, "to": { "card": "route", "line": 10, "text": "\"/checkout\"" }, "label": "POST /checkout", "kind": "call" },
+    { "id": "to-handle", "from": { "card": "route", "line": 14, "text": "handleCheckout(" }, "to": { "card": "handle", "line": 18 }, "label": "Parse body, hand off", "kind": "call" },
+    { "id": "to-checkout", "from": { "card": "handle", "line": 19 }, "to": { "card": "checkout", "line": 6 }, "label": "Cart + token", "kind": "call" },
+    { "id": "reserve-call", "from": { "card": "checkout", "line": 7, "text": "reserve(cart)" }, "to": { "card": "reserve", "line": 7 }, "label": "Reserve stock first", "kind": "call" },
+    { "id": "charge-call", "from": { "card": "checkout", "line": 9, "text": "charge(" }, "to": { "card": "charge", "line": 2 }, "label": "Charge the total", "kind": "call" },
+    { "id": "declined", "from": { "card": "charge", "line": 4, "text": "Payment declined" }, "to": { "card": "checkout", "line": 11, "text": "catch" }, "label": "Declined: throws", "kind": "failure" },
+    { "id": "restore", "from": { "card": "checkout", "line": 12, "text": "release(reservation)" }, "to": { "card": "release", "line": 29 }, "label": "Give stock back", "kind": "failure" },
+    { "id": "402", "from": { "card": "route", "line": 18, "text": "402" }, "to": { "card": "handler", "line": 15 }, "label": "402 + error message", "kind": "failure" },
+    { "id": "shown", "from": { "card": "handler", "line": 19, "text": "Payment failed" }, "to": { "card": "declined-screen", "highlight": 0 }, "label": "Rendered on the page", "kind": "return" }
+  ],
+  "steps": [
+    {
+      "title": "The customer clicks Pay now",
+      "explanation": [
+        { "text": "The demo cart has two coffees and a tea, and the customer picked the " },
+        { "text": "declined demo card", "target": { "card": "pay-screen", "highlight": 0 } },
+        { "text": ". Clicking the circled button is where this flow starts." }
+      ],
+      "revealCards": ["pay-screen"],
+      "focus": { "card": "pay-screen" }
+    },
+    {
+      "title": "The page sends the cart to the server",
+      "explanation": [
+        { "text": "The click handler " },
+        { "text": "collects the quantities", "target": { "card": "handler", "lines": [6, 8] } },
+        { "text": " and the card token, then " },
+        { "text": "posts them to /checkout", "target": { "card": "handler", "lines": [10, 14] } },
+        { "text": "." }
+      ],
+      "revealConnections": ["clicked"],
+      "focus": { "card": "handler", "lines": [5, 14] }
+    },
+    {
+      "title": "The server hands off to checkout",
+      "explanation": [
+        { "text": "The route " },
+        { "text": "parses the JSON body", "target": { "card": "route", "lines": [12, 14] } },
+        { "text": " and calls " },
+        { "text": "handleCheckout", "target": { "card": "handle", "lines": [18, 20] } },
+        { "text": ", which passes the cart and token to checkout." }
+      ],
+      "revealConnections": ["post", "to-handle", "to-checkout"],
+      "focus": { "card": "route", "lines": [10, 14] }
+    },
+    {
+      "title": "Stock is reserved before charging",
+      "explanation": [
+        { "text": "checkout " },
+        { "text": "reserves the stock", "target": { "card": "checkout", "lines": [7, 7] } },
+        { "text": " first. reserve " },
+        { "text": "subtracts the quantities and returns the total", "target": { "card": "reserve", "lines": [23, 26] } },
+        { "text": ", in cents." }
+      ],
+      "revealConnections": ["reserve-call"],
+      "focus": { "card": "reserve", "lines": [23, 26] }
+    },
+    {
+      "title": "The charge is declined",
+      "explanation": [
+        { "text": "The demo provider only approves one token, so " },
+        { "text": "charge throws \"Payment declined\"", "target": { "card": "charge", "lines": [3, 5] } },
+        { "text": ". The error lands in " },
+        { "text": "checkout's catch block", "target": { "card": "checkout", "lines": [11, 14] } },
+        { "text": "." }
+      ],
+      "revealConnections": ["charge-call", "declined"],
+      "focus": { "card": "charge", "lines": [2, 7] }
+    },
+    {
+      "title": "Reserved stock goes back",
+      "explanation": [
+        { "text": "Before rethrowing, checkout calls " },
+        { "text": "release", "target": { "card": "release", "lines": [29, 33] } },
+        { "text": ", which adds each reserved quantity back so another customer can buy it." }
+      ],
+      "revealConnections": ["restore"],
+      "focus": { "card": "release", "lines": [29, 33] }
+    },
+    {
+      "title": "The customer sees the failure",
+      "explanation": [
+        { "text": "The route " },
+        { "text": "answers 402 with the error message", "target": { "card": "route", "lines": [17, 20] } },
+        { "text": ", and the page " },
+        { "text": "shows it in red", "target": { "card": "handler", "lines": [16, 19] } },
+        { "text": "." }
+      ],
+      "revealCards": ["declined-screen"],
+      "revealConnections": ["402", "shown"],
+      "focus": { "card": "declined-screen" }
+    }
+  ]
+}
